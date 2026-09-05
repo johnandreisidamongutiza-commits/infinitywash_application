@@ -81,6 +81,8 @@ class RoleCard extends StatelessWidget {
               Text(
                 subtitle,
                 style: AppTheme.lightTheme.textTheme.bodyMedium,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),

@@ -41,23 +41,33 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   }
 
   Widget _buildServiceSelection() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('How would you like to proceed?', style: AppTheme.lightTheme.textTheme.headlineMedium),
-          const SizedBox(height: 30),
-          _buildSelectableCard('Drop-off', 'Bring your laundry to our shop', Icons.store),
-          const SizedBox(height: 16),
-          _buildSelectableCard('Pick-up', 'We will pick up from your address', Icons.delivery_dining),
-          const Spacer(),
-          ElevatedButton(
-            onPressed: () => setState(() => _currentStep = 2),
-            child: const Text('Continue'),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('How would you like to proceed?', style: AppTheme.lightTheme.textTheme.headlineMedium),
+                  const SizedBox(height: 30),
+                  _buildSelectableCard('Drop-off', 'Bring your laundry to our shop', Icons.store),
+                  const SizedBox(height: 16),
+                  _buildSelectableCard('Pick-up', 'We will pick up from your address', Icons.delivery_dining),
+                  const Spacer(),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () => setState(() => _currentStep = 2),
+                    child: const Text('Continue'),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

@@ -31,20 +31,24 @@ class CustomerHomeScreen extends StatelessWidget {
   Widget _buildHeader() {
     return Row(
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Hello, Customer!',
-              style: AppTheme.lightTheme.textTheme.headlineMedium,
-            ),
-            Text(
-              'Your laundry is our priority. 🫧',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
-            ),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Hello, Customer!',
+                style: AppTheme.lightTheme.textTheme.headlineMedium,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                'Your laundry is our priority. 🫧',
+                style: AppTheme.lightTheme.textTheme.bodyMedium,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
-        const Spacer(),
+        const SizedBox(width: 16),
         Container(
           width: 50,
           height: 50,

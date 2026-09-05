@@ -70,14 +70,24 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           ),
         ),
         const SizedBox(width: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Infinity Wash', style: AppTheme.lightTheme.textTheme.titleMedium),
-            const Text('RIDER', style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2)),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Infinity Wash',
+                style: AppTheme.lightTheme.textTheme.titleMedium,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const Text(
+                'RIDER',
+                style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
-        const Spacer(),
+        const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
@@ -135,13 +145,15 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                       decoration: BoxDecoration(color: AppTheme.errorRed.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
                       child: const Icon(Icons.shopping_bag_outlined, color: AppTheme.errorRed),
                     ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('8', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24)),
-                        Text('Total Stops', style: TextStyle(color: AppTheme.textLight, fontSize: 12)),
-                      ],
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('8', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24)),
+                          Text('Total Stops', style: TextStyle(color: AppTheme.textLight, fontSize: 10), overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -156,13 +168,15 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                       decoration: BoxDecoration(color: AppTheme.teamMemberIconOrange.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
                       child: const Icon(Icons.location_on_outlined, color: AppTheme.teamMemberIconOrange),
                     ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('24.5', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24)),
-                        Text('Total Distance', style: TextStyle(color: AppTheme.textLight, fontSize: 12)),
-                      ],
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('24.5', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24)),
+                          Text('Total Distance', style: TextStyle(color: AppTheme.textLight, fontSize: 10), overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
                     ),
                   ],
                 ),

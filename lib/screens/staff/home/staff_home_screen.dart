@@ -32,6 +32,7 @@ class StaffHomeScreen extends StatelessWidget {
 
   Widget _buildHeader() {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Container(
           width: 60,
@@ -39,8 +40,9 @@ class StaffHomeScreen extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppTheme.softGray,
             shape: BoxShape.circle,
+            border: Border.all(color: AppTheme.textDark, width: 1.5), // Match the image's border
           ),
-          padding: const EdgeInsets.all(4),
+          padding: const EdgeInsets.all(2),
           child: ClipOval(
             child: Image.asset(
               'assets/images/logo.jpg',
@@ -50,20 +52,30 @@ class StaffHomeScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Hi, Staff!',
-              style: AppTheme.lightTheme.textTheme.headlineMedium,
-            ),
-            Text(
-              'Let\'s keep things moving today. ✨',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
-            ),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Hi, Staff!',
+                style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                'Let\'s keep things moving today. ✨',
+                style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                  fontSize: 13,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
-        const Spacer(),
+        const SizedBox(width: 8),
         _buildNotificationIcon(),
       ],
     );
@@ -106,11 +118,12 @@ class StaffHomeScreen extends StatelessWidget {
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildQueueCard('24', 'To Be\nPicked Up', Icons.shopping_bag_outlined, AppTheme.lightBlue, AppTheme.accentBlue),
-              _buildQueueCard('18', 'In Progress', Icons.camera_alt_outlined, AppTheme.teamMemberOrange, AppTheme.teamMemberIconOrange),
-              _buildQueueCard('7', 'Ready for\nPickup', Icons.shopping_basket_outlined, const Color(0xFFFCE4EC), AppTheme.errorRed),
-              _buildQueueCard('5', 'Completed', Icons.check_circle_outline, const Color(0xFFE8F5E9), Colors.green),
+              Expanded(child: _buildQueueCard('24', 'To Be\nPicked Up', Icons.shopping_bag_outlined, AppTheme.lightBlue, AppTheme.accentBlue)),
+              Expanded(child: _buildQueueCard('18', 'In Progress', Icons.camera_alt_outlined, AppTheme.teamMemberOrange, AppTheme.teamMemberIconOrange)),
+              Expanded(child: _buildQueueCard('7', 'Ready for\nPickup', Icons.shopping_basket_outlined, const Color(0xFFFCE4EC), AppTheme.errorRed)),
+              Expanded(child: _buildQueueCard('5', 'Completed', Icons.check_circle_outline, const Color(0xFFE8F5E9), Colors.green)),
             ],
           ),
         ],
@@ -120,19 +133,34 @@ class StaffHomeScreen extends StatelessWidget {
 
   Widget _buildQueueCard(String count, String label, IconData icon, Color bgColor, Color iconColor) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 50,
-          height: 50,
+          width: 45,
+          height: 45,
           decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
-          child: Icon(icon, color: iconColor, size: 24),
+          child: Icon(icon, color: iconColor, size: 20),
         ),
         const SizedBox(height: 8),
-        Text(count, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 20)),
         Text(
-          label,
-          textAlign: TextAlign.center,
-          style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(fontSize: 10),
+          count,
+          style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: 30, // Fixed height for labels to ensure vertical alignment
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+              fontSize: 9,
+              height: 1.1,
+            ),
+          ),
         ),
       ],
     );

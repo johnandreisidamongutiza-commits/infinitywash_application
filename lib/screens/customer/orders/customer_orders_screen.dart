@@ -27,36 +27,46 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   }
 
   Widget _buildNoOrderView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.shopping_basket_outlined, size: 100, color: AppTheme.textLight.withOpacity(0.2)),
-            const SizedBox(height: 24),
-            Text(
-              'No active orders',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(color: AppTheme.textLight),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(40.0),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Spacer(),
+                  Icon(Icons.shopping_basket_outlined, size: 100, color: AppTheme.textLight.withOpacity(0.2)),
+                  const SizedBox(height: 24),
+                  Text(
+                    'No active orders',
+                    style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(color: AppTheme.textLight),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Your current laundry requests will appear here.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const Spacer(),
+                  const SizedBox(height: 40),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
+                      );
+                    },
+                    child: const Text('Request Laundry Service'),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'Your current laundry requests will appear here.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 40),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
-                );
-              },
-              child: const Text('Request Laundry Service'),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
