@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../role_selection_screen.dart';
+import 'options/account_details_screen.dart';
+import 'options/change_password_screen.dart';
+import 'options/notification_settings_screen.dart';
+import 'options/help_support_screen.dart';
 
 class StaffProfileScreen extends StatelessWidget {
   const StaffProfileScreen({super.key});
@@ -44,7 +48,7 @@ class StaffProfileScreen extends StatelessWidget {
                     right: 0,
                     child: Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(color: AppTheme.accentBlue, shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: AppTheme.accentBlue, shape: BoxShape.circle),
                       child: const Icon(Icons.edit, color: Colors.white, size: 20),
                     ),
                   ),
@@ -55,10 +59,30 @@ class StaffProfileScreen extends StatelessWidget {
             Text('Staff Member', style: AppTheme.lightTheme.textTheme.headlineMedium),
             Text('staff@infinitywash.com', style: AppTheme.lightTheme.textTheme.bodyMedium),
             const SizedBox(height: 40),
-            _buildProfileOption(Icons.person_outline, 'Account Details'),
-            _buildProfileOption(Icons.lock_outline, 'Change Password'),
-            _buildProfileOption(Icons.notifications_none, 'Notification Settings'),
-            _buildProfileOption(Icons.help_outline, 'Help & Support'),
+            _buildProfileOption(
+              context,
+              Icons.person_outline,
+              'Account Details',
+              const AccountDetailsScreen(),
+            ),
+            _buildProfileOption(
+              context,
+              Icons.lock_outline,
+              'Change Password',
+              const ChangePasswordScreen(),
+            ),
+            _buildProfileOption(
+              context,
+              Icons.notifications_none,
+              'Notification Settings',
+              const NotificationSettingsScreen(),
+            ),
+            _buildProfileOption(
+              context,
+              Icons.help_outline,
+              'Help & Support',
+              const HelpSupportScreen(),
+            ),
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () {
@@ -89,19 +113,27 @@ class StaffProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileOption(IconData icon, String label) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: AppStyles.cardDecoration,
-      child: Row(
-        children: [
-          Icon(icon, color: AppTheme.textDark),
-          const SizedBox(width: 16),
-          Text(label, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 16)),
-          const Spacer(),
-          const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
-        ],
+  Widget _buildProfileOption(BuildContext context, IconData icon, String label, Widget destination) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => destination),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: AppStyles.cardDecoration,
+        child: Row(
+          children: [
+            Icon(icon, color: AppTheme.textDark),
+            const SizedBox(width: 16),
+            Text(label, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 16)),
+            const Spacer(),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
+          ],
+        ),
       ),
     );
   }

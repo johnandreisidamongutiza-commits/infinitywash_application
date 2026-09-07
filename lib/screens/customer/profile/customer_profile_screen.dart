@@ -27,11 +27,49 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
           children: [
             _buildProfileHeader(),
             const SizedBox(height: 40),
-            const CustomTextField(label: 'Full Name', hint: 'John Customer', prefixIcon: Icons.person_outline),
+            const Row(
+              children: [
+                Expanded(
+                  child: CustomTextField(
+                    label: 'First Name',
+                    hint: 'John',
+                    prefixIcon: Icons.person_outline,
+                  ),
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: CustomTextField(
+                    label: 'Last Name',
+                    hint: 'Customer',
+                    prefixIcon: Icons.person_outline,
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 20),
-            const CustomTextField(label: 'Phone Number', hint: '0912-345-6789', prefixIcon: Icons.phone_android),
+            const CustomTextField(
+              label: 'Phone Number',
+              hint: '0912-345-6789',
+              prefixIcon: Icons.phone_android,
+            ),
             const SizedBox(height: 20),
-            const CustomTextField(label: 'Default Address', hint: '123 Laundry St, Clean City', prefixIcon: Icons.location_on_outlined),
+            const CustomTextField(
+              label: 'Email Address',
+              hint: 'john.customer@email.com',
+              prefixIcon: Icons.email_outlined,
+            ),
+            const SizedBox(height: 20),
+            const CustomTextField(
+              label: 'Default Address',
+              hint: '123 Laundry St, Clean City',
+              prefixIcon: Icons.location_on_outlined,
+            ),
+            const SizedBox(height: 20),
+            const CustomTextField(
+              label: 'Landmark (Optional)',
+              hint: 'Near the blue gate',
+              prefixIcon: Icons.assistant_navigation,
+            ),
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () {

@@ -4,6 +4,7 @@ import '../widgets/custom_text_field.dart';
 import 'staff/staff_main_screen.dart';
 import 'customer/customer_main_screen.dart';
 import 'rider/rider_main_screen.dart';
+import 'customer/customer_registration_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final String role;
@@ -162,14 +163,21 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Need help? ',
+                  widget.role == 'Customer' ? "Don't have an account? " : 'Need help? ',
                   style: AppTheme.lightTheme.textTheme.bodyMedium,
                 ),
                 TextButton(
-                  onPressed: () {},
-                  child: const Text(
-                    'Contact your administrator.',
-                    style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
+                  onPressed: () {
+                    if (widget.role == 'Customer') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const CustomerRegistrationScreen()),
+                      );
+                    }
+                  },
+                  child: Text(
+                    widget.role == 'Customer' ? 'Register' : 'Contact administrator.',
+                    style: const TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],

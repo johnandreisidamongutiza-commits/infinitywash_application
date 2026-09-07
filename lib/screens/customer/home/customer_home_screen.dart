@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 
+import '../orders/request_service_flow.dart';
+import '../delivery/delivery_tracking_screen.dart';
+
 class CustomerHomeScreen extends StatelessWidget {
   const CustomerHomeScreen({super.key});
 
@@ -18,7 +21,7 @@ class CustomerHomeScreen extends StatelessWidget {
               const SizedBox(height: 30),
               _buildStatusCard(),
               const SizedBox(height: 30),
-              _buildQuickActions(),
+              _buildQuickActions(context),
               const SizedBox(height: 30),
               _buildRecentActivity(),
             ],
@@ -127,7 +130,7 @@ class CustomerHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildQuickActions() {
+  Widget _buildQuickActions(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -141,6 +144,12 @@ class CustomerHomeScreen extends StatelessWidget {
                 Icons.add_shopping_cart,
                 AppTheme.lightBlue,
                 AppTheme.accentBlue,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
+                  );
+                },
               ),
             ),
             const SizedBox(width: 16),
@@ -150,6 +159,12 @@ class CustomerHomeScreen extends StatelessWidget {
                 Icons.delivery_dining,
                 AppTheme.teamMemberOrange,
                 AppTheme.teamMemberIconOrange,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const DeliveryTrackingScreen()),
+                  );
+                },
               ),
             ),
           ],
@@ -158,20 +173,24 @@ class CustomerHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActionCard(String title, IconData icon, Color bgColor, Color iconColor) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: AppStyles.cardDecoration,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
-            child: Icon(icon, color: iconColor, size: 28),
-          ),
-          const SizedBox(height: 12),
-          Text(title, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 14)),
-        ],
+  Widget _buildActionCard(String title, IconData icon, Color bgColor, Color iconColor, {required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: AppStyles.cardDecoration,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+              child: Icon(icon, color: iconColor, size: 28),
+            ),
+            const SizedBox(height: 12),
+            Text(title, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 14)),
+          ],
+        ),
       ),
     );
   }

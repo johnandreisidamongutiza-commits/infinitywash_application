@@ -74,7 +74,7 @@ class DeliveryTrackingScreen extends StatelessWidget {
           Container(
             width: 60,
             height: 60,
-            decoration: const BoxDecoration(color: AppTheme.lightBlue, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: AppTheme.lightBlue, shape: BoxShape.circle),
             child: const Icon(Icons.person, color: AppTheme.accentBlue, size: 30),
           ),
           const SizedBox(width: 16),

@@ -110,7 +110,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               Switch(
                 value: _isOnline,
                 onChanged: (value) => setState(() => _isOnline = value),
-                activeColor: Colors.white,
+                activeThumbColor: Colors.white,
                 activeTrackColor: AppTheme.accentBlue,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
@@ -240,7 +240,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           Container(
             width: 30,
             height: 30,
-            decoration: const BoxDecoration(color: AppTheme.accentBlue, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: AppTheme.accentBlue, shape: BoxShape.circle),
             child: Center(child: Text(number, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
           ),
           const SizedBox(width: 16),

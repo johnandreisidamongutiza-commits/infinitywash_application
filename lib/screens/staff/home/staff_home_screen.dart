@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../orders/orders_screen.dart';
+import '../notifications/staff_notifications_screen.dart';
 
 class StaffHomeScreen extends StatelessWidget {
   const StaffHomeScreen({super.key});
@@ -14,13 +16,11 @@ class StaffHomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(),
+              _buildHeader(context),
               const SizedBox(height: 30),
               _buildTodayQueue(),
               const SizedBox(height: 30),
-              _buildScanButton(),
-              const SizedBox(height: 30),
-              _buildTasksSection(),
+              _buildTasksSection(context),
               const SizedBox(height: 30),
               _buildSummarizationSection(),
             ],
@@ -30,7 +30,7 @@ class StaffHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -40,7 +40,7 @@ class StaffHomeScreen extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppTheme.softGray,
             shape: BoxShape.circle,
-            border: Border.all(color: AppTheme.textDark, width: 1.5), // Match the image's border
+            border: Border.all(color: AppTheme.textDark, width: 1.5),
           ),
           padding: const EdgeInsets.all(2),
           child: ClipOval(
@@ -76,32 +76,35 @@ class StaffHomeScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        _buildNotificationIcon(),
-      ],
-    );
-  }
-
-  Widget _buildNotificationIcon() {
-    return Stack(
-      children: [
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.notifications_none, size: 28),
-        ),
-        Positioned(
-          right: 8,
-          top: 8,
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: const BoxDecoration(
-              color: AppTheme.errorRed,
-              shape: BoxShape.circle,
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const StaffNotificationsScreen()),
+                );
+              },
+              icon: const Icon(Icons.notifications_none, size: 28),
             ),
-            child: const Text(
-              '3',
-              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+            Positioned(
+              right: 12,
+              top: 12,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: AppTheme.errorRed,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+                child: const Text(
+                  '3',
+                  style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ],
     );
@@ -151,7 +154,7 @@ class StaffHomeScreen extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         SizedBox(
-          height: 30, // Fixed height for labels to ensure vertical alignment
+          height: 30,
           child: Text(
             label,
             textAlign: TextAlign.center,
@@ -166,68 +169,88 @@ class StaffHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildScanButton() {
-    return ElevatedButton(
-      onPressed: () {},
-      style: ElevatedButton.styleFrom(
-        minimumSize: const Size(double.infinity, 80),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.qr_code_scanner, size: 30),
-          const SizedBox(width: 16),
-          Text('Scan Order', style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(color: Colors.white, fontSize: 20)),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildTasksSection() {
+  Widget _buildTasksSection(BuildContext context) {
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('My Tasks', style: AppTheme.lightTheme.textTheme.titleMedium),
-            TextButton(onPressed: () {}, child: const Text('View All', style: TextStyle(color: AppTheme.accentBlue))),
+            TextButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const OrdersScreen()),
+                );
+              },
+              child: const Text('View All', style: TextStyle(color: AppTheme.accentBlue)),
+            ),
           ],
         ),
         const SizedBox(height: 10),
-        _buildTaskItem('Pick Up Orders', '12 orders', Icons.shopping_bag_outlined, AppTheme.lightBlue, AppTheme.accentBlue),
+        _buildTaskItem(
+          context,
+          'Pick Up Orders',
+          '12 orders',
+          Icons.shopping_bag_outlined,
+          AppTheme.lightBlue,
+          AppTheme.accentBlue,
+        ),
         const SizedBox(height: 12),
-        _buildTaskItem('Process Orders', '8 orders', Icons.camera_alt_outlined, AppTheme.teamMemberOrange, AppTheme.teamMemberIconOrange),
+        _buildTaskItem(
+          context,
+          'Process Orders',
+          '8 orders',
+          Icons.camera_alt_outlined,
+          AppTheme.teamMemberOrange,
+          AppTheme.teamMemberIconOrange,
+        ),
         const SizedBox(height: 12),
-        _buildTaskItem('Ready for Pickup', '5 orders', Icons.shopping_basket_outlined, const Color(0xFFFCE4EC), AppTheme.errorRed),
+        _buildTaskItem(
+          context,
+          'Ready for Pickup',
+          '5 orders',
+          Icons.shopping_basket_outlined,
+          const Color(0xFFFCE4EC),
+          AppTheme.errorRed,
+        ),
       ],
     );
   }
 
-  Widget _buildTaskItem(String title, String subtitle, IconData icon, Color bgColor, Color iconColor) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: AppStyles.cardDecoration,
-      child: Row(
-        children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
-            child: Icon(icon, color: iconColor, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppTheme.lightTheme.textTheme.titleMedium),
-                Text(subtitle, style: AppTheme.lightTheme.textTheme.bodyMedium),
-              ],
+  Widget _buildTaskItem(BuildContext context, String title, String subtitle, IconData icon, Color bgColor, Color iconColor) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const OrdersScreen()),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: AppStyles.cardDecoration,
+        child: Row(
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+              child: Icon(icon, color: iconColor, size: 24),
             ),
-          ),
-          const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
-        ],
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AppTheme.lightTheme.textTheme.titleMedium),
+                  Text(subtitle, style: AppTheme.lightTheme.textTheme.bodyMedium),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
+          ],
+        ),
       ),
     );
   }

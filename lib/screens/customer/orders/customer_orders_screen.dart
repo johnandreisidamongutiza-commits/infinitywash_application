@@ -27,46 +27,35 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   }
 
   Widget _buildNoOrderView() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(40.0),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: IntrinsicHeight(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Spacer(),
-                  Icon(Icons.shopping_basket_outlined, size: 100, color: AppTheme.textLight.withOpacity(0.2)),
-                  const SizedBox(height: 24),
-                  Text(
-                    'No active orders',
-                    style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(color: AppTheme.textLight),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Your current laundry requests will appear here.',
-                    textAlign: TextAlign.center,
-                  ),
-                  const Spacer(),
-                  const SizedBox(height: 40),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
-                      );
-                    },
-                    child: const Text('Request Laundry Service'),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 80.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.shopping_basket_outlined, size: 100, color: AppTheme.textLight.withOpacity(0.2)),
+          const SizedBox(height: 24),
+          Text(
+            'No active orders',
+            style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(color: AppTheme.textLight),
           ),
-        );
-      },
+          const SizedBox(height: 12),
+          const Text(
+            'Your current laundry requests will appear here.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 60),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
+              );
+            },
+            child: const Text('Request Laundry Service'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -101,15 +90,29 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
           _buildDetailRow('Service Type', 'Pick-up and Delivery'),
           _buildDetailRow('Instructions', 'No fabric softener please.'),
           _buildDetailRow('Estimated Total', '₱350.00'),
-          const SizedBox(height: 40),
+          const SizedBox(height: 30),
+          // New Button added here to request another service
+          ElevatedButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
+              );
+            },
+            child: const Text('Request New Service'),
+          ),
+          const SizedBox(height: 16),
           OutlinedButton(
             onPressed: () => setState(() => _hasActiveOrder = false),
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(double.infinity, 56),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              foregroundColor: AppTheme.errorRed,
+              side: const BorderSide(color: AppTheme.errorRed),
             ),
-            child: const Text('Cancel Request'),
+            child: const Text('Cancel Active Request'),
           ),
+          const SizedBox(height: 20),
         ],
       ),
     );
