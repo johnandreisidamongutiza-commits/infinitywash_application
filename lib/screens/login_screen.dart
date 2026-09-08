@@ -5,6 +5,7 @@ import 'staff/staff_main_screen.dart';
 import 'customer/customer_main_screen.dart';
 import 'rider/rider_main_screen.dart';
 import 'customer/customer_registration_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final String role;
@@ -117,7 +118,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text('Remember me'),
                 const Spacer(),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => ForgotPasswordScreen(role: widget.role)),
+                    );
+                  },
                   child: const Text(
                     'Forgot password?',
                     style: TextStyle(color: AppTheme.accentBlue),

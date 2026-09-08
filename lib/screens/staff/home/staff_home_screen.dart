@@ -220,36 +220,40 @@ class StaffHomeScreen extends StatelessWidget {
   }
 
   Widget _buildTaskItem(BuildContext context, String title, String subtitle, IconData icon, Color bgColor, Color iconColor) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const OrdersScreen()),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: AppStyles.cardDecoration,
-        child: Row(
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
-              child: Icon(icon, color: iconColor, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: AppTheme.lightTheme.textTheme.titleMedium),
-                  Text(subtitle, style: AppTheme.lightTheme.textTheme.bodyMedium),
-                ],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const OrdersScreen()),
+          );
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: AppStyles.cardDecoration.copyWith(color: Colors.transparent),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+                child: Icon(icon, color: iconColor, size: 24),
               ),
-            ),
-            const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
-          ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: AppTheme.lightTheme.textTheme.titleMedium),
+                    Text(subtitle, style: AppTheme.lightTheme.textTheme.bodyMedium),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
+            ],
+          ),
         ),
       ),
     );

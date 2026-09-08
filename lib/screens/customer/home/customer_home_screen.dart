@@ -4,6 +4,8 @@ import '../../../theme/app_theme.dart';
 import '../orders/request_service_flow.dart';
 import '../delivery/delivery_tracking_screen.dart';
 
+import '../orders/customer_orders_screen.dart';
+
 class CustomerHomeScreen extends StatelessWidget {
   const CustomerHomeScreen({super.key});
 
@@ -23,7 +25,7 @@ class CustomerHomeScreen extends StatelessWidget {
               const SizedBox(height: 30),
               _buildQuickActions(context),
               const SizedBox(height: 30),
-              _buildRecentActivity(),
+              _buildRecentActivity(context),
             ],
           ),
         ),
@@ -174,51 +176,70 @@ class CustomerHomeScreen extends StatelessWidget {
   }
 
   Widget _buildActionCard(String title, IconData icon, Color bgColor, Color iconColor, {required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: AppStyles.cardDecoration,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
-              child: Icon(icon, color: iconColor, size: 28),
-            ),
-            const SizedBox(height: 12),
-            Text(title, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 14)),
-          ],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: AppStyles.cardDecoration.copyWith(
+            color: Colors.transparent, // Let Material handle the background
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+                child: Icon(icon, color: iconColor, size: 28),
+              ),
+              const SizedBox(height: 12),
+              Text(title, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 14)),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildRecentActivity() {
+  Widget _buildRecentActivity(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Recent Activity', style: AppTheme.lightTheme.textTheme.titleMedium),
         const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: AppStyles.cardDecoration,
-          child: Row(
-            children: [
-              const Icon(Icons.history, color: AppTheme.textLight),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Last Order: IW-102', style: TextStyle(fontWeight: FontWeight.bold)),
-                    Text('Total Spent: ₱300.00', style: TextStyle(fontSize: 12)),
-                  ],
-                ),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CustomerOrdersScreen()),
+              );
+            },
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: AppStyles.cardDecoration.copyWith(
+                color: Colors.transparent,
               ),
-              const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.textLight),
-            ],
+              child: Row(
+                children: [
+                  const Icon(Icons.history, color: AppTheme.textLight),
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Last Order: IW-102', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('Total Spent: ₱300.00', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.textLight),
+                ],
+              ),
+            ),
           ),
         ),
       ],

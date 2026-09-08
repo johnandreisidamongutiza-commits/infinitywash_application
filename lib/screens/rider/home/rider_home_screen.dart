@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 
+import '../route/rider_route_screen.dart';
+
 class RiderHomeScreen extends StatefulWidget {
   const RiderHomeScreen({super.key});
 
@@ -28,7 +30,12 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               _buildRouteSection(),
               const SizedBox(height: 30),
               ElevatedButton(
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const RiderRouteScreen()),
+                  );
+                },
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 80),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -201,7 +208,12 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               Text('Today\'s Route', style: AppTheme.lightTheme.textTheme.titleMedium),
               const Spacer(),
               TextButton(
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const RiderRouteScreen()),
+                  );
+                },
                 child: const Row(
                   children: [
                     Text('View Map', style: TextStyle(color: AppTheme.accentBlue)),
@@ -233,34 +245,46 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   }
 
   Widget _buildRouteStop(String number, String name, String address, String type, String time, Color typeColor) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Row(
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(color: AppTheme.accentBlue, shape: BoxShape.circle),
-            child: Center(child: Text(number, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const RiderRouteScreen()),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: const BoxDecoration(color: AppTheme.accentBlue, shape: BoxShape.circle),
+                child: Center(child: Text(number, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text(address, style: TextStyle(color: AppTheme.textLight, fontSize: 10), overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: typeColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                child: Text(type, style: TextStyle(color: typeColor, fontSize: 10, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 12),
+              Text(time, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text(address, style: TextStyle(color: AppTheme.textLight, fontSize: 10), overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: typeColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-            child: Text(type, style: TextStyle(color: typeColor, fontSize: 10, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(width: 12),
-          Text(time, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
-        ],
+        ),
       ),
     );
   }
