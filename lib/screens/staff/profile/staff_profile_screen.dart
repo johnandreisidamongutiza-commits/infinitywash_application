@@ -79,8 +79,8 @@ class StaffProfileScreen extends StatelessWidget {
             ),
             _buildProfileOption(
               context,
-              Icons.help_outline,
-              'Help & Support',
+              Icons.auto_awesome,
+              'Infinity AI Assistant',
               const HelpSupportScreen(),
             ),
             const SizedBox(height: 40),

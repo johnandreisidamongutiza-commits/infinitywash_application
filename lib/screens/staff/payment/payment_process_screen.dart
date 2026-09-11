@@ -50,24 +50,36 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   }
 
   Widget _buildOrderSummary() {
-    double total = widget.order.weight * 50;
+    const double total = 170.0;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppTheme.softGray,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(widget.order.customerName, style: AppTheme.lightTheme.textTheme.titleMedium),
-              Text('Order ${widget.order.id}', style: AppTheme.lightTheme.textTheme.bodyMedium),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.order.customerName, style: AppTheme.lightTheme.textTheme.titleMedium),
+                  Text('Order ${widget.order.id} • ${widget.order.weight.toStringAsFixed(1)} kg', style: AppTheme.lightTheme.textTheme.bodyMedium),
+                ],
+              ),
+              Text('₱${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: AppTheme.accentBlue)),
             ],
           ),
-          Text('₱${total.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: AppTheme.accentBlue)),
+          const SizedBox(height: 8),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Full Service (Wash, Dry & Fold) • Detergent, Fab Con & Delivery Included',
+              style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+            ),
+          ),
         ],
       ),
     );
@@ -106,14 +118,14 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.check_circle, size: 100, color: Colors.green),
-              const SizedBox(height: 24),
+              const Icon(Icons.check_circle, size: 90, color: Colors.green),
+              const SizedBox(height: 20),
               Text('Payment Successful', style: AppTheme.lightTheme.textTheme.headlineMedium),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text('The digital receipt has been generated.', style: AppTheme.lightTheme.textTheme.bodyMedium),
-              const SizedBox(height: 40),
+              const SizedBox(height: 30),
               _buildReceiptCard(),
-              const SizedBox(height: 40),
+              const SizedBox(height: 30),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Back to Payments'),
@@ -126,20 +138,24 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   }
 
   Widget _buildReceiptCard() {
-    double total = widget.order.weight * 50;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: AppStyles.cardDecoration,
       child: Column(
         children: [
           const Text('INFINITY WASH', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-          const Text('Digital Receipt', style: TextStyle(fontSize: 12, letterSpacing: 2)),
+          const Text('Official Digital Receipt', style: TextStyle(fontSize: 12, letterSpacing: 2, color: AppTheme.textLight)),
           const SizedBox(height: 20),
           _receiptRow('Customer', widget.order.customerName),
+          _receiptRow('Order ID', widget.order.id),
+          _receiptRow('Weight', '${widget.order.weight.toStringAsFixed(1)} kg'),
+          _receiptRow('Package', 'Full Service (Wash, Dry & Fold)'),
+          _receiptRow('Detergent & Fab Con', 'INCLUDED (FREE)'),
+          _receiptRow('Pick-up & Delivery', 'INCLUDED (FREE)'),
           _receiptRow('Date', 'Sept 04, 2026'),
-          _receiptRow('Method', _selectedMethod!),
-          const Divider(),
-          _receiptRow('Total Amount', '₱${total.toStringAsFixed(0)}', isBold: true),
+          _receiptRow('Payment Method', _selectedMethod!),
+          const Divider(height: 24),
+          _receiptRow('Total Amount Paid', '₱170.00', isBold: true),
         ],
       ),
     );

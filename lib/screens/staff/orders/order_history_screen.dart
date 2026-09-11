@@ -12,7 +12,7 @@ class OrderHistoryScreen extends StatelessWidget {
       LaundryOrder(
         id: 'IW-999',
         customerName: 'Jane Smith',
-        type: OrderType.walkIn,
+        channel: OrderChannel.walkIn,
         status: OrderStatus.completed,
         paymentStatus: PaymentStatus.paid,
         weight: 4.0,
@@ -21,7 +21,9 @@ class OrderHistoryScreen extends StatelessWidget {
       LaundryOrder(
         id: 'IW-998',
         customerName: 'Bob Brown',
-        type: OrderType.pickUpAndDelivery,
+        channel: OrderChannel.online,
+        collectionMethod: CollectionMethod.riderPickup,
+        returnMethod: ReturnMethod.delivery,
         status: OrderStatus.completed,
         paymentStatus: PaymentStatus.paid,
         weight: 7.2,

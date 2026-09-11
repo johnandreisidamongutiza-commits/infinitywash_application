@@ -3,24 +3,34 @@ import '../../theme/app_theme.dart';
 import 'home/rider_home_screen.dart';
 import 'orders/rider_orders_screen.dart';
 import 'route/rider_route_screen.dart';
-import 'notifications/rider_notifications_screen.dart';
+import 'chats/rider_chats_screen.dart';
 import 'profile/rider_profile_screen.dart';
 
 class RiderMainScreen extends StatefulWidget {
-  const RiderMainScreen({super.key});
+  final int initialIndex;
+
+  const RiderMainScreen({super.key, this.initialIndex = 0});
 
   @override
   State<RiderMainScreen> createState() => _RiderMainScreenState();
 }
 
 class _RiderMainScreenState extends State<RiderMainScreen> {
-  int _currentIndex = 0;
+  late int _currentIndex;
 
-  final List<Widget> _screens = [
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+  }
+
+  List<Widget> get _screens => [
     const RiderHomeScreen(),
-    const RiderRouteScreen(),
+    RiderRouteScreen(
+      onBackToHome: () => setState(() => _currentIndex = 0),
+    ),
     const RiderOrdersScreen(),
-    const RiderNotificationsScreen(),
+    const RiderChatsScreen(),
     const RiderProfileScreen(),
   ];
 
@@ -67,9 +77,9 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
               label: 'Orders',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.notifications_none),
-              activeIcon: Icon(Icons.notifications),
-              label: 'Notifications',
+              icon: Icon(Icons.chat_bubble_outline),
+              activeIcon: Icon(Icons.chat_bubble),
+              label: 'Chats',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),

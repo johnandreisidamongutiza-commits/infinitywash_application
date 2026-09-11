@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import 'home/staff_home_screen.dart';
 import 'orders/orders_screen.dart';
-import 'inventory/inventory_screen.dart';
 import 'payment/payment_screen.dart';
 import 'profile/staff_profile_screen.dart';
 
@@ -19,7 +18,6 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
   final List<Widget> _screens = [
     const StaffHomeScreen(),
     const OrdersScreen(),
-    const InventoryScreen(),
     const PaymentScreen(),
     const StaffProfileScreen(),
   ];
@@ -60,11 +58,6 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
               icon: Icon(Icons.assignment_outlined),
               activeIcon: Icon(Icons.assignment),
               label: 'Orders',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.inventory_2_outlined),
-              activeIcon: Icon(Icons.inventory_2),
-              label: 'Inventory',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.payments_outlined),

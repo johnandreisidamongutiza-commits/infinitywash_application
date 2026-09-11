@@ -18,7 +18,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     LaundryOrder(
       id: 'IW-101',
       customerName: 'Alice Green',
-      type: OrderType.walkIn,
+      channel: OrderChannel.walkIn,
       status: OrderStatus.ready,
       paymentStatus: PaymentStatus.unpaid,
       weight: 4.5,
@@ -27,7 +27,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
     LaundryOrder(
       id: 'IW-102',
       customerName: 'Charlie Brown',
-      type: OrderType.pickUpAndDelivery,
+      channel: OrderChannel.online,
+      collectionMethod: CollectionMethod.riderPickup,
+      returnMethod: ReturnMethod.delivery,
       status: OrderStatus.completed,
       paymentStatus: PaymentStatus.paid,
       weight: 6.0,
@@ -95,7 +97,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Widget _buildPaymentCard(LaundryOrder order) {
-    double total = order.weight * 50; // Mock rate
+    double total = 170.0; // Flat Full Service package rate (₱170.00)
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration,

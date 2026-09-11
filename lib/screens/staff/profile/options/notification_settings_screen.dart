@@ -10,7 +10,6 @@ class NotificationSettingsScreen extends StatefulWidget {
 
 class _NotificationSettingsScreenState extends State<NotificationSettingsScreen> {
   bool _newOrder = true;
-  bool _lowStock = true;
   bool _paymentAlerts = true;
 
   @override
@@ -28,8 +27,6 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
         child: Column(
           children: [
             _buildSwitchTile('New Order Assigned', 'Receive alerts when a new laundry order is assigned.', _newOrder, (val) => setState(() => _newOrder = val)),
-            const SizedBox(height: 12),
-            _buildSwitchTile('Low Stock Alerts', 'Get notified when supplies are running low.', _lowStock, (val) => setState(() => _lowStock = val)),
             const SizedBox(height: 12),
             _buildSwitchTile('Payment Alerts', 'Receive notifications for successful payments.', _paymentAlerts, (val) => setState(() => _paymentAlerts = val)),
           ],

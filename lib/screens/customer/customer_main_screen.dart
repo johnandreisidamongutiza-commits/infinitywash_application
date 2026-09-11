@@ -3,7 +3,6 @@ import '../../theme/app_theme.dart';
 import 'home/customer_home_screen.dart';
 import 'orders/customer_orders_screen.dart';
 import 'delivery/delivery_tracking_screen.dart';
-import 'feedback/feedback_screen.dart';
 import 'profile/customer_profile_screen.dart';
 
 class CustomerMainScreen extends StatefulWidget {
@@ -16,20 +15,21 @@ class CustomerMainScreen extends StatefulWidget {
 class _CustomerMainScreenState extends State<CustomerMainScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
-    const CustomerHomeScreen(),
-    const CustomerOrdersScreen(),
-    const DeliveryTrackingScreen(),
-    const FeedbackScreen(),
-    const CustomerProfileScreen(),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final List<Widget> screens = [
+      const CustomerHomeScreen(key: ValueKey('customer_home')),
+      const CustomerOrdersScreen(key: ValueKey('customer_orders')),
+      const DeliveryTrackingScreen(key: ValueKey('customer_delivery')),
+      const CustomerProfileScreen(key: ValueKey('customer_profile')),
+    ];
+
+    final safeIndex = _currentIndex.clamp(0, screens.length - 1);
+
     return Scaffold(
       body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+        index: safeIndex,
+        children: screens,
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -65,11 +65,6 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
               icon: Icon(Icons.delivery_dining_outlined),
               activeIcon: Icon(Icons.delivery_dining),
               label: 'Delivery',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.rate_review_outlined),
-              activeIcon: Icon(Icons.rate_review),
-              label: 'Feedback',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),

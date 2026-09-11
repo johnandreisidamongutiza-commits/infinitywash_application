@@ -3,11 +3,18 @@ import '../../../theme/app_theme.dart';
 
 import '../orders/request_service_flow.dart';
 import '../delivery/delivery_tracking_screen.dart';
-
 import '../orders/customer_orders_screen.dart';
+import '../notifications/customer_notifications_screen.dart';
 
-class CustomerHomeScreen extends StatelessWidget {
+class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
+
+  @override
+  State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
+}
+
+class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+  int _unreadNotificationsCount = 2;
 
   @override
   Widget build(BuildContext context) {
@@ -53,15 +60,71 @@ class CustomerHomeScreen extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: AppTheme.softGray,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+              ),
+              child: IconButton(
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CustomerNotificationsScreen(
+                        onNotificationsCleared: () {
+                          setState(() => _unreadNotificationsCount = 0);
+                        },
+                      ),
+                    ),
+                  );
+                },
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.notifications_none_rounded, color: AppTheme.textDark, size: 24),
+                tooltip: 'Notifications',
+              ),
+            ),
+            if (_unreadNotificationsCount > 0)
+              Positioned(
+                top: -2,
+                right: -2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.errorRed,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                  child: Text(
+                    '$_unreadNotificationsCount',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(width: 10),
         Container(
-          width: 50,
-          height: 50,
+          width: 46,
+          height: 46,
           decoration: BoxDecoration(
             color: AppTheme.softGray,
             shape: BoxShape.circle,
           ),
-          padding: const EdgeInsets.all(4),
+          padding: const EdgeInsets.all(2),
           child: ClipOval(
             child: Image.asset(
               'assets/images/logo.jpg',
@@ -206,8 +269,22 @@ class CustomerHomeScreen extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Recent Activity', style: AppTheme.lightTheme.textTheme.titleMedium),
-        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Recent Activity', style: AppTheme.lightTheme.textTheme.titleMedium),
+            TextButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const CustomerOrdersScreen()),
+                );
+              },
+              child: const Text('View All', style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         Material(
           color: Colors.transparent,
           child: InkWell(
@@ -220,23 +297,119 @@ class CustomerHomeScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             child: Container(
               padding: const EdgeInsets.all(20),
-              decoration: AppStyles.cardDecoration.copyWith(
-                color: Colors.transparent,
-              ),
-              child: Row(
+              decoration: AppStyles.cardDecoration,
+              child: Column(
                 children: [
-                  const Icon(Icons.history, color: AppTheme.textLight),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Last Order: IW-102', style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('Total Spent: ₱300.00', style: TextStyle(fontSize: 12)),
-                      ],
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.lightBlue,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.local_laundry_service, color: AppTheme.accentBlue, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Order #IW-105',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Sept 04, 2026 • Wash, Dry & Fold',
+                              style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentBlue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.sync, size: 12, color: AppTheme.accentBlue),
+                            SizedBox(width: 4),
+                            Text(
+                              'Processing',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.textLight),
+                  const Divider(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: Row(
+                          children: [
+                            Icon(Icons.scale_outlined, size: 15, color: AppTheme.textLight),
+                            SizedBox(width: 4),
+                            Text('5.5 kg', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textDark)),
+                            SizedBox(width: 8),
+                            Icon(Icons.delivery_dining_outlined, size: 15, color: AppTheme.textLight),
+                            SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                'Doorstep Delivery',
+                                style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '₱170.00',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.accentBlue),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: Row(
+                          children: [
+                            Icon(Icons.person_pin_circle_outlined, size: 15, color: AppTheme.textLight),
+                            SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'Rider: Michael Rider',
+                                style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Order Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue)),
+                          SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_ios, size: 11, color: AppTheme.accentBlue),
+                        ],
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),

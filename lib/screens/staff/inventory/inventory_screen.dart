@@ -3,6 +3,8 @@ import '../../../theme/app_theme.dart';
 import '../../../models/supply.dart';
 import 'manage_supply_screen.dart';
 
+import '../../../services/mock_data_service.dart';
+
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
 
@@ -11,15 +13,10 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
-  // Mock data
-  final List<Supply> _supplies = [
-    Supply(id: '1', name: 'Liquid Detergent', currentAmount: 2.5, maxAmount: 10.0, unit: 'L'),
-    Supply(id: '2', name: 'Fabric Conditioner', currentAmount: 0.8, maxAmount: 5.0, unit: 'L'),
-    Supply(id: '3', name: 'Bleach', currentAmount: 4.5, maxAmount: 5.0, unit: 'L'),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final supplies = MockDataService().supplies;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -35,14 +32,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
           children: [
             Text('Current Supplies', style: AppTheme.lightTheme.textTheme.titleMedium),
             const SizedBox(height: 16),
-            ..._supplies.map((s) => _buildSupplyCard(s)),
+            ...supplies.map((s) => _buildSupplyCard(s)),
             const SizedBox(height: 30),
             ElevatedButton(
-              onPressed: () {
-                Navigator.push(
+              onPressed: () async {
+                await Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const ManageSupplyScreen(mode: ManageSupplyMode.add)),
                 );
+                setState(() {});
               },
               child: const Text('Add New Supply Type'),
             ),

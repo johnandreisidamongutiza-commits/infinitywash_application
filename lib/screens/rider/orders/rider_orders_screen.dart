@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../route/rider_route_screen.dart';
+import 'rider_order_details_screen.dart';
 
 class RiderOrdersScreen extends StatefulWidget {
   const RiderOrdersScreen({super.key});
@@ -114,7 +115,12 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const RiderRouteScreen()),
+                      MaterialPageRoute(
+                        builder: (context) => RiderOrderDetailsScreen(
+                          orderIndex: index,
+                          isPickup: _showNew,
+                        ),
+                      ),
                     );
                   },
                   child: const Text('View Details'),

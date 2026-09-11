@@ -37,17 +37,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             const SizedBox(height: 40),
             _buildOrderDetails(),
             const SizedBox(height: 40),
-            if (_currentStatus != OrderStatus.completed)
-              ElevatedButton(
-                onPressed: _advanceStatus,
-                child: Text(_getNextButtonText()),
-              ),
             if (_currentStatus == OrderStatus.ready)
-              const Padding(
-                padding: EdgeInsets.only(top: 16),
-                child: Text(
-                  'Customer has been notified!',
-                  style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Customer has been notified!',
+                      style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                    ),
+                  ],
                 ),
               ),
           ],
@@ -59,13 +67,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Widget _buildStatusTracker() {
     return Column(
       children: [
-        _buildStatusStep(OrderStatus.washing, 'Washing', Icons.water_drop_outlined),
+        _buildStatusStep(OrderStatus.processing, 'Processing', Icons.sync),
         _buildConnector(),
-        _buildStatusStep(OrderStatus.drying, 'Drying', Icons.air_outlined),
-        _buildConnector(),
-        _buildStatusStep(OrderStatus.folding, 'Folding', Icons.layers_outlined),
-        _buildConnector(),
-        _buildStatusStep(OrderStatus.ready, 'Ready', Icons.shopping_basket_outlined),
+        _buildStatusStep(OrderStatus.ready, 'Ready for Pickup', Icons.check_circle_outline),
       ],
     );
   }
@@ -120,9 +124,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         children: [
           _buildDetailRow('Customer', widget.order.customerName),
           const Divider(),
-          _buildDetailRow('Weight', '${widget.order.weight} kg'),
+          _buildDetailRow('Collection', widget.order.collectionText),
           const Divider(),
-          _buildDetailRow('Type', widget.order.type == OrderType.walkIn ? 'Walk-in' : 'Pick-up'),
+          _buildDetailRow('Return', widget.order.returnText),
+          const Divider(),
+          _buildDetailRow('RFID Tag', widget.order.rfidTag ?? 'Not assigned'),
           const Divider(),
           _buildDetailRow('Instructions', widget.order.instructions ?? 'None'),
         ],
@@ -145,23 +151,5 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   bool _isStatusDone(OrderStatus status) {
     return _currentStatus.index > status.index;
-  }
-
-  void _advanceStatus() {
-    setState(() {
-      if (_currentStatus.index < OrderStatus.completed.index) {
-        _currentStatus = OrderStatus.values[_currentStatus.index + 1];
-      }
-    });
-  }
-
-  String _getNextButtonText() {
-    switch (_currentStatus) {
-      case OrderStatus.washing: return 'Start Drying';
-      case OrderStatus.drying: return 'Start Folding';
-      case OrderStatus.folding: return 'Mark as Ready';
-      case OrderStatus.ready: return 'Complete Order';
-      case OrderStatus.completed: return 'Completed';
-    }
   }
 }
