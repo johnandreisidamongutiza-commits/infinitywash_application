@@ -21,7 +21,6 @@ class AppTheme {
         primary: primaryBlue,
         secondary: accentBlue,
         surface: Colors.white,
-        background: Colors.white,
       ),
       textTheme: GoogleFonts.lexendTextTheme().copyWith(
         displaySmall: GoogleFonts.lexend(

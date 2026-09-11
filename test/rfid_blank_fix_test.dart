@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:infinitywash/screens/staff/home/staff_home_screen.dart';
-import 'package:infinitywash/screens/staff/orders/rfid_checker_screen.dart';
 
 void main() {
   testWidgets('Staff HomeScreen to RfidCheckerScreen renders completely without blank screen', (WidgetTester tester) async {
