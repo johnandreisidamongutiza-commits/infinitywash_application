@@ -52,7 +52,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               maxLines: 5,
               decoration: InputDecoration(
                 hintText: 'Tell us more about our service...',
-                hintStyle: TextStyle(color: AppTheme.textLight.withOpacity(0.5)),
+                hintStyle: TextStyle(color: AppTheme.textLight.withValues(alpha: 0.5)),
                 filled: true,
                 fillColor: AppTheme.softGray,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),

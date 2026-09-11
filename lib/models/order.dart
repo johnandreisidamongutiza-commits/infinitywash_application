@@ -7,6 +7,9 @@ enum PaymentStatus { paid, unpaid }
 class LaundryOrder {
   final String id;
   final String customerName;
+  final String? customerPhone;
+  final String? deliveryAddress;
+  final String? deliveryLandmark;
   final OrderChannel channel;
   final CollectionMethod collectionMethod;
   final ReturnMethod returnMethod;
@@ -20,6 +23,9 @@ class LaundryOrder {
   LaundryOrder({
     required this.id,
     required this.customerName,
+    this.customerPhone,
+    this.deliveryAddress,
+    this.deliveryLandmark,
     required this.channel,
     this.collectionMethod = CollectionMethod.dropOff,
     this.returnMethod = ReturnMethod.shopPickup,

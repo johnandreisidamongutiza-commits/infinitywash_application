@@ -124,7 +124,7 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.notifications_none, size: 80, color: AppTheme.textLight.withOpacity(0.2)),
+            Icon(Icons.notifications_none, size: 80, color: AppTheme.textLight.withValues(alpha: 0.2)),
             const SizedBox(height: 16),
             const Text(
               'No notifications yet',
@@ -156,12 +156,12 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
         break;
       case 'payment':
         iconColor = Colors.green;
-        iconBgColor = Colors.green.withOpacity(0.12);
+        iconBgColor = Colors.green.withValues(alpha: 0.12);
         icon = Icons.payments_outlined;
         break;
       case 'completed':
         iconColor = Colors.green;
-        iconBgColor = Colors.green.withOpacity(0.12);
+        iconBgColor = Colors.green.withValues(alpha: 0.12);
         icon = Icons.check_circle_outline;
         break;
       default:
@@ -178,15 +178,15 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isRead ? Colors.white : AppTheme.accentBlue.withOpacity(0.03),
+            color: isRead ? Colors.white : AppTheme.accentBlue.withValues(alpha: 0.03),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: isRead ? AppTheme.borderGray.withOpacity(0.6) : AppTheme.accentBlue.withOpacity(0.3),
+              color: isRead ? AppTheme.borderGray.withValues(alpha: 0.6) : AppTheme.accentBlue.withValues(alpha: 0.3),
               width: isRead ? 1 : 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.02),
+                color: Colors.black.withValues(alpha: 0.02),
                 blurRadius: 8,
                 offset: const Offset(0, 3),
               ),
@@ -237,7 +237,7 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
                       notif['desc'],
                       style: TextStyle(
                         fontSize: 12,
-                        color: isRead ? AppTheme.textLight : AppTheme.textDark.withOpacity(0.8),
+                        color: isRead ? AppTheme.textLight : AppTheme.textDark.withValues(alpha: 0.8),
                         height: 1.3,
                       ),
                     ),

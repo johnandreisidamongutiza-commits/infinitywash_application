@@ -121,13 +121,13 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.online_prediction, size: 80, color: AppTheme.textLight.withOpacity(0.2)),
+            Icon(Icons.online_prediction, size: 80, color: AppTheme.textLight.withValues(alpha: 0.2)),
             const SizedBox(height: 16),
             const Text('No pending online requests', style: TextStyle(color: AppTheme.textLight)),
             const SizedBox(height: 8),
             Text(
               'New requests from customers will appear here.',
-              style: TextStyle(color: AppTheme.textLight.withOpacity(0.5), fontSize: 12),
+              style: TextStyle(color: AppTheme.textLight.withValues(alpha: 0.5), fontSize: 12),
             ),
           ],
         ),
@@ -233,7 +233,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppTheme.errorRed.withOpacity(0.1),
+                    color: AppTheme.errorRed.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Row(
@@ -251,7 +251,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                 )
               else
                 DropdownButtonFormField<String>(
-                  value: selectedRfidTag,
+                  initialValue: selectedRfidTag,
                   decoration: const InputDecoration(
                     labelText: 'RFID Tag',
                     border: OutlineInputBorder(),
@@ -300,7 +300,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.assignment_outlined, size: 80, color: AppTheme.textLight.withOpacity(0.2)),
+            Icon(Icons.assignment_outlined, size: 80, color: AppTheme.textLight.withValues(alpha: 0.2)),
             const SizedBox(height: 16),
             const Text('No active orders', style: TextStyle(color: AppTheme.textLight)),
           ],
@@ -353,7 +353,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                     Text('${order.weight} kg', style: AppTheme.lightTheme.textTheme.bodyMedium),
                     if (order.rfidTag != null) ...[
                       const SizedBox(width: 12),
-                      Icon(Icons.nfc_outlined, size: 14, color: AppTheme.accentBlue.withOpacity(0.7)),
+                      Icon(Icons.nfc_outlined, size: 14, color: AppTheme.accentBlue.withValues(alpha: 0.7)),
                       const SizedBox(width: 4),
                       Text(
                         order.rfidTag!,
@@ -412,7 +412,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.history, size: 80, color: AppTheme.textLight.withOpacity(0.2)),
+            Icon(Icons.history, size: 80, color: AppTheme.textLight.withValues(alpha: 0.2)),
             const SizedBox(height: 16),
             const Text('No completed orders yet', style: TextStyle(color: AppTheme.textLight)),
           ],
@@ -433,7 +433,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+                decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), shape: BoxShape.circle),
                 child: const Icon(Icons.check, color: Colors.green),
               ),
               const SizedBox(width: 16),
@@ -472,7 +472,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
@@ -486,7 +486,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(

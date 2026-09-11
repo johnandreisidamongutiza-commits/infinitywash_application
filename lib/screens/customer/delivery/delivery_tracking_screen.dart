@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/top_notification.dart';
+import '../chats/customer_chat_detail_screen.dart';
 
 class DeliveryTrackingScreen extends StatelessWidget {
   const DeliveryTrackingScreen({super.key});
@@ -20,7 +22,7 @@ class DeliveryTrackingScreen extends StatelessWidget {
           children: [
             _buildMapMock(),
             const SizedBox(height: 30),
-            _buildDriverInfo(),
+            _buildDriverInfo(context),
             const SizedBox(height: 30),
             _buildDeliveryStatus(),
           ],
@@ -41,7 +43,7 @@ class DeliveryTrackingScreen extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Icon(Icons.map_outlined, size: 100, color: AppTheme.textLight.withOpacity(0.1)),
+          Icon(Icons.map_outlined, size: 100, color: AppTheme.textLight.withValues(alpha: 0.1)),
           Positioned(
             top: 50,
             right: 80,
@@ -56,7 +58,7 @@ class DeliveryTrackingScreen extends StatelessWidget {
             top: 20,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)]),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10)]),
               child: const Text('Rider is 5 mins away', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.accentBlue)),
             ),
           ),
@@ -65,32 +67,73 @@ class DeliveryTrackingScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDriverInfo() {
+  Widget _buildDriverInfo(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration,
       child: Row(
         children: [
           Container(
-            width: 60,
-            height: 60,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(color: AppTheme.lightBlue, shape: BoxShape.circle),
-            child: const Icon(Icons.person, color: AppTheme.accentBlue, size: 30),
+            child: const Icon(Icons.delivery_dining, color: AppTheme.accentBlue, size: 28),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Rider: Michael Rider', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                Text('Vehicle: Honda Click (ABC-1234)', style: TextStyle(fontSize: 12)),
+                Text('Michael Rider', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                SizedBox(height: 2),
+                Text('Honda Click (ABC-1234)', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
-            child: const Icon(Icons.phone, color: Colors.white, size: 20),
+          InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CustomerChatDetailScreen(
+                    recipientName: 'Michael Rider',
+                    recipientRole: 'Assigned Delivery Rider',
+                    recipientType: ChatRecipientType.rider,
+                    orderId: 'IW-105',
+                    phoneNumber: '+63 912 345 6789',
+                  ),
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.accentBlue.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.chat_bubble_outline, color: AppTheme.accentBlue, size: 20),
+            ),
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: () {
+              showTopNotification(
+                context,
+                message: 'Calling rider Michael (+63 912 345 6789)...',
+                icon: Icons.phone,
+                backgroundColor: AppTheme.accentBlue,
+              );
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.phone, color: Colors.green, size: 20),
+            ),
           ),
         ],
       ),

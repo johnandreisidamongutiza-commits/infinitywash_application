@@ -140,7 +140,7 @@ class _RiderRouteMapScreenState extends State<RiderRouteMapScreen> {
           color: Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
+              color: Colors.black.withValues(alpha: 0.08),
               blurRadius: 10,
               offset: const Offset(0, -4),
             ),
@@ -245,7 +245,7 @@ class _RiderRouteMapScreenState extends State<RiderRouteMapScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Row(
@@ -288,7 +288,7 @@ class _RiderRouteMapScreenState extends State<RiderRouteMapScreen> {
             ),
             boxShadow: [
               BoxShadow(
-                color: color.withOpacity(0.4),
+                color: color.withValues(alpha: 0.4),
                 blurRadius: isSelected ? 8 : 4,
                 spreadRadius: isSelected ? 2 : 0,
               ),
@@ -300,7 +300,7 @@ class _RiderRouteMapScreenState extends State<RiderRouteMapScreen> {
           margin: const EdgeInsets.only(top: 2),
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
@@ -376,7 +376,7 @@ class _RiderRouteMapScreenState extends State<RiderRouteMapScreen> {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: (stop['typeColor'] as Color).withOpacity(0.12),
+              color: (stop['typeColor'] as Color).withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             child: Center(
@@ -401,7 +401,7 @@ class _RiderRouteMapScreenState extends State<RiderRouteMapScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: (stop['typeColor'] as Color).withOpacity(0.1),
+                  color: (stop['typeColor'] as Color).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(

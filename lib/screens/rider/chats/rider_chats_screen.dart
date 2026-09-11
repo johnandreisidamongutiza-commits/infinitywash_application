@@ -225,7 +225,7 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
             Icon(
               Icons.chat_bubble_outline,
               size: 100,
-              color: AppTheme.textLight.withOpacity(0.2),
+              color: AppTheme.textLight.withValues(alpha: 0.2),
             ),
             const SizedBox(height: 24),
             Text(
@@ -256,7 +256,7 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
             Icon(
               Icons.search_off,
               size: 80,
-              color: AppTheme.textLight.withOpacity(0.2),
+              color: AppTheme.textLight.withValues(alpha: 0.2),
             ),
             const SizedBox(height: 24),
             Text(

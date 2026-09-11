@@ -39,7 +39,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.online_prediction, size: 80, color: AppTheme.textLight.withOpacity(0.2)),
+          Icon(Icons.online_prediction, size: 80, color: AppTheme.textLight.withValues(alpha: 0.2)),
           const SizedBox(height: 16),
           const Text('No pending online requests', style: TextStyle(color: AppTheme.textLight)),
         ],
@@ -107,7 +107,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
@@ -152,7 +152,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
 
                   // Category Dropdown
                   DropdownButtonFormField<String>(
-                    value: selectedCategory,
+                    initialValue: selectedCategory,
                     decoration: const InputDecoration(
                       labelText: 'Laundry Category',
                       border: OutlineInputBorder(),
@@ -226,7 +226,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
                     )
                   else
                     DropdownButtonFormField<String>(
-                      value: selectedRfidTag,
+                      initialValue: selectedRfidTag,
                       decoration: const InputDecoration(
                         labelText: 'Assign RFID Tag',
                         border: OutlineInputBorder(),

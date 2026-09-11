@@ -49,14 +49,14 @@ class _CustomTextFieldState extends State<CustomTextField> {
           decoration: InputDecoration(
             hintText: widget.hint,
             hintStyle: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-              color: AppTheme.textLight.withOpacity(0.5),
+              color: AppTheme.textLight.withValues(alpha: 0.5),
             ),
-            prefixIcon: Icon(widget.prefixIcon, color: AppTheme.textDark.withOpacity(0.5)),
+            prefixIcon: Icon(widget.prefixIcon, color: AppTheme.textDark.withValues(alpha: 0.5)),
             suffixIcon: widget.isPassword
                 ? IconButton(
                     icon: Icon(
                       _obscureText ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                      color: AppTheme.textDark.withOpacity(0.5),
+                      color: AppTheme.textDark.withValues(alpha: 0.5),
                     ),
                     onPressed: () => setState(() => _obscureText = !_obscureText),
                   )

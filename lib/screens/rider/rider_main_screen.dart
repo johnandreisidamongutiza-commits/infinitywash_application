@@ -45,7 +45,7 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, -5),
             ),
@@ -57,7 +57,7 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
           selectedItemColor: AppTheme.accentBlue,
-          unselectedItemColor: AppTheme.textLight.withOpacity(0.5),
+          unselectedItemColor: AppTheme.textLight.withValues(alpha: 0.5),
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
           unselectedLabelStyle: const TextStyle(fontSize: 12),
           items: const [

@@ -85,7 +85,7 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _showNew ? AppTheme.errorRed.withOpacity(0.1) : AppTheme.teamMemberIconOrange.withOpacity(0.1),
+                  color: _showNew ? AppTheme.errorRed.withValues(alpha: 0.1) : AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(

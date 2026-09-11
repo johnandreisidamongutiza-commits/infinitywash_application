@@ -219,7 +219,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: (_currentStop['typeColor'] as Color).withOpacity(0.12),
+                  color: (_currentStop['typeColor'] as Color).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -257,7 +257,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.primaryBlue.withOpacity(0.2),
+            color: AppTheme.primaryBlue.withValues(alpha: 0.2),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -268,7 +268,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.turn_right, color: Colors.white, size: 26),
@@ -294,7 +294,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                       ? 'ETA: ${_currentStop['eta']}'
                       : 'Park safely & proceed to door',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.85),
+                    color: Colors.white.withValues(alpha: 0.85),
                     fontSize: 12,
                   ),
                 ),
@@ -357,7 +357,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: AppTheme.accentBlue.withOpacity(0.2),
+                  color: AppTheme.accentBlue.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
                 child: Center(
@@ -395,7 +395,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                       border: Border.all(color: Colors.white, width: 2),
                       boxShadow: [
                         BoxShadow(
-                          color: (_currentStop['typeColor'] as Color).withOpacity(0.4),
+                          color: (_currentStop['typeColor'] as Color).withValues(alpha: 0.4),
                           blurRadius: 6,
                         ),
                       ],
@@ -414,7 +414,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                       borderRadius: BorderRadius.circular(6),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: 4,
                         ),
                       ],
@@ -435,7 +435,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
               child: Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.explore, size: 22, color: AppTheme.primaryBlue),
@@ -476,7 +476,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 10,
             offset: const Offset(0, -4),
           ),
@@ -492,7 +492,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: (_currentStop['typeColor'] as Color).withOpacity(0.12),
+                  color: (_currentStop['typeColor'] as Color).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -673,7 +673,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                 width: 90,
                 height: 90,
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.12),
+                  color: Colors.green.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.task_alt, color: Colors.green, size: 50),

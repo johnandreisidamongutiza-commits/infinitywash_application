@@ -52,7 +52,7 @@ class OrderHistoryScreen extends StatelessWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+                  decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), shape: BoxShape.circle),
                   child: const Icon(Icons.check, color: Colors.green),
                 ),
                 const SizedBox(width: 16),

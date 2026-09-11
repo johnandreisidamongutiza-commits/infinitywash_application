@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../route/rider_route_screen.dart';
-import '../chats/rider_chat_detail_screen.dart';
 
 class RiderOrderDetailsScreen extends StatelessWidget {
   final int orderIndex;
@@ -134,7 +133,7 @@ class RiderOrderDetailsScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: isPickup ? AppTheme.errorRed.withOpacity(0.1) : AppTheme.teamMemberIconOrange.withOpacity(0.1),
+              color: isPickup ? AppTheme.errorRed.withValues(alpha: 0.1) : AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -263,14 +262,14 @@ class RiderOrderDetailsScreen extends StatelessWidget {
   }
 
   Widget _buildStatusStep(String label, IconData icon, bool isActive, {required bool isLast}) {
-    Color color = isActive ? AppTheme.accentBlue : AppTheme.textLight.withOpacity(0.3);
+    Color color = isActive ? AppTheme.accentBlue : AppTheme.textLight.withValues(alpha: 0.3);
     return Row(
       children: [
         Container(
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             shape: BoxShape.circle,
             border: Border.all(color: color, width: 2),
           ),
@@ -291,7 +290,7 @@ class RiderOrderDetailsScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: AppTheme.accentBlue.withOpacity(0.1),
+              color: AppTheme.accentBlue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(

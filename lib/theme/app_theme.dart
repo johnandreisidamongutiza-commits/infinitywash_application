@@ -71,10 +71,10 @@ class AppStyles {
   static BoxDecoration cardDecoration = BoxDecoration(
     color: Colors.white,
     borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: AppTheme.borderGray.withOpacity(0.5)),
+    border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.5)),
     boxShadow: [
       BoxShadow(
-        color: Colors.black.withOpacity(0.03),
+        color: Colors.black.withValues(alpha: 0.03),
         blurRadius: 10,
         offset: const Offset(0, 4),
       ),
@@ -87,7 +87,7 @@ class AppStyles {
     border: Border.all(color: AppTheme.accentBlue, width: 2),
     boxShadow: [
       BoxShadow(
-        color: AppTheme.accentBlue.withOpacity(0.1),
+        color: AppTheme.accentBlue.withValues(alpha: 0.1),
         blurRadius: 10,
         offset: const Offset(0, 4),
       ),

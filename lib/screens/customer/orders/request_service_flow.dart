@@ -327,7 +327,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               decoration: BoxDecoration(
                 color: AppTheme.softGray,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.borderGray.withOpacity(0.6)),
+                border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
               ),
               child: Row(
                 children: [
@@ -379,7 +379,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               maxLines: 3,
               decoration: InputDecoration(
                 hintText: 'e.g. Separate whites, delicate garments, ring doorbell twice...',
-                hintStyle: TextStyle(color: AppTheme.textLight.withOpacity(0.5)),
+                hintStyle: TextStyle(color: AppTheme.textLight.withValues(alpha: 0.5)),
                 filled: true,
                 fillColor: AppTheme.softGray,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -626,8 +626,8 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: _isUsingCustomDetails
-                      ? AppTheme.teamMemberIconOrange.withOpacity(0.12)
-                      : AppTheme.accentBlue.withOpacity(0.12),
+                      ? AppTheme.teamMemberIconOrange.withValues(alpha: 0.12)
+                      : AppTheme.accentBlue.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(

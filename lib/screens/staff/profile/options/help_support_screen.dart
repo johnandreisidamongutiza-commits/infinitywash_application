@@ -150,7 +150,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
           preferredSize: const Size.fromHeight(1),
           child: Container(
             height: 1,
-            color: AppTheme.borderGray.withOpacity(0.5),
+            color: AppTheme.borderGray.withValues(alpha: 0.5),
           ),
         ),
       ),
@@ -219,7 +219,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -239,7 +239,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                   timeStr,
                   style: TextStyle(
                     fontSize: 10,
-                    color: AppTheme.textLight.withOpacity(0.5),
+                    color: AppTheme.textLight.withValues(alpha: 0.5),
                   ),
                 ),
               ],
@@ -261,7 +261,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
             'Quick questions:',
             style: TextStyle(
               fontSize: 12,
-              color: AppTheme.textLight.withOpacity(0.6),
+              color: AppTheme.textLight.withValues(alpha: 0.6),
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -277,7 +277,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.accentBlue.withOpacity(0.3)),
+                    border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     reply,
@@ -308,7 +308,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -2),
           ),
@@ -328,7 +328,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                 decoration: InputDecoration(
                   hintText: 'Ask me anything...',
                   hintStyle: TextStyle(
-                    color: AppTheme.textLight.withOpacity(0.5),
+                    color: AppTheme.textLight.withValues(alpha: 0.5),
                     fontSize: 14,
                   ),
                   border: InputBorder.none,

@@ -4,6 +4,7 @@ import '../../../models/order.dart';
 import '../orders/orders_screen.dart';
 import '../orders/create_order_flow.dart';
 import '../orders/order_status_screen.dart';
+import '../orders/rfid_checker_screen.dart';
 import '../notifications/staff_notifications_screen.dart';
 import '../../../services/mock_data_service.dart';
 
@@ -134,9 +135,9 @@ class StaffHomeScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppTheme.accentBlue.withOpacity(0.1),
+          color: AppTheme.accentBlue.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.accentBlue.withOpacity(0.3)),
+          border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
         ),
         child: Row(
           children: [
@@ -243,7 +244,23 @@ class StaffHomeScreen extends StatelessWidget {
                 },
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildQuickActionCard(
+                context,
+                'RFID\nChecker',
+                Icons.nfc,
+                const Color(0xFF00897B),
+                const Color(0xFFE0F2F1),
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const RfidCheckerScreen()),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
             Expanded(
               child: _buildQuickActionCard(
                 context,
@@ -272,28 +289,30 @@ class StaffHomeScreen extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
           decoration: AppStyles.cardDecoration,
           child: Column(
             children: [
               Container(
-                width: 50,
-                height: 50,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
                   color: bgColor,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: iconColor, size: 24),
+                child: Icon(icon, color: iconColor, size: 22),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Text(
                 label,
                 textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
-                  fontSize: 13,
-                  height: 1.3,
+                  fontSize: 12,
+                  height: 1.25,
                 ),
               ),
             ],
@@ -311,7 +330,13 @@ class StaffHomeScreen extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Currently Processing', style: AppTheme.lightTheme.textTheme.titleMedium),
+            Expanded(
+              child: Text(
+                'Currently Processing',
+                style: AppTheme.lightTheme.textTheme.titleMedium,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             TextButton(
               onPressed: () {
                 Navigator.push(
@@ -331,13 +356,13 @@ class StaffHomeScreen extends StatelessWidget {
             decoration: AppStyles.cardDecoration,
             child: Column(
               children: [
-                Icon(Icons.local_laundry_service_outlined, size: 48, color: AppTheme.textLight.withOpacity(0.3)),
+                Icon(Icons.local_laundry_service_outlined, size: 48, color: AppTheme.textLight.withValues(alpha: 0.3)),
                 const SizedBox(height: 12),
                 Text(
                   'No laundry in the machines right now 🧺',
                   textAlign: TextAlign.center,
                   style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textLight.withOpacity(0.6),
+                    color: AppTheme.textLight.withValues(alpha: 0.6),
                   ),
                 ),
               ],
@@ -374,7 +399,7 @@ class StaffHomeScreen extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: AppStyles.cardDecoration.copyWith(
-            border: Border.all(color: AppTheme.teamMemberIconOrange.withOpacity(0.3)),
+            border: Border.all(color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
@@ -405,7 +430,7 @@ class StaffHomeScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         Text(
                           '•',
-                          style: TextStyle(color: AppTheme.textLight.withOpacity(0.5)),
+                          style: TextStyle(color: AppTheme.textLight.withValues(alpha: 0.5)),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -418,25 +443,37 @@ class StaffHomeScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Row(
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Icon(Icons.scale_outlined, size: 14, color: AppTheme.textLight.withOpacity(0.7)),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${order.weight} kg',
-                          style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(fontSize: 12),
-                        ),
-                        const SizedBox(width: 16),
-                        if (order.rfidTag != null) ...[
-                          Icon(Icons.nfc_outlined, size: 14, color: AppTheme.accentBlue.withOpacity(0.7)),
-                          const SizedBox(width: 4),
-                          Text(
-                            order.rfidTag!,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.accentBlue,
-                              fontWeight: FontWeight.w500,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.scale_outlined, size: 14, color: AppTheme.textLight.withValues(alpha: 0.7)),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${order.weight} kg',
+                              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(fontSize: 12),
                             ),
+                          ],
+                        ),
+                        if (order.rfidTag != null) ...[
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.nfc_outlined, size: 14, color: AppTheme.accentBlue.withValues(alpha: 0.7)),
+                              const SizedBox(width: 4),
+                              Text(
+                                order.rfidTag!,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.accentBlue,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ],
@@ -444,13 +481,13 @@ class StaffHomeScreen extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.schedule, size: 14, color: AppTheme.textLight.withOpacity(0.7)),
+                        Icon(Icons.schedule, size: 14, color: AppTheme.textLight.withValues(alpha: 0.7)),
                         const SizedBox(width: 4),
                         Text(
                           'Started $elapsedText',
                           style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                             fontSize: 11,
-                            color: AppTheme.textLight.withOpacity(0.7),
+                            color: AppTheme.textLight.withValues(alpha: 0.7),
                           ),
                         ),
                       ],

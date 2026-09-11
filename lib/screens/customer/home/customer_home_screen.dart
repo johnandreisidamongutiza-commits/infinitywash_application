@@ -65,8 +65,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           clipBehavior: Clip.none,
           children: [
             Container(
-              width: 46,
-              height: 46,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: AppTheme.softGray,
                 shape: BoxShape.circle,
@@ -86,7 +86,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   );
                 },
                 padding: EdgeInsets.zero,
-                icon: const Icon(Icons.notifications_none_rounded, color: AppTheme.textDark, size: 24),
+                icon: const Icon(Icons.notifications_none_rounded, color: AppTheme.textDark, size: 22),
                 tooltip: 'Notifications',
               ),
             ),
@@ -116,10 +116,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
           ],
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         Container(
-          width: 46,
-          height: 46,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
             color: AppTheme.softGray,
             shape: BoxShape.circle,
@@ -146,7 +146,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.accentBlue.withOpacity(0.3),
+            color: AppTheme.accentBlue.withValues(alpha: 0.3),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -170,7 +170,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.local_laundry_service, color: Colors.white),
@@ -180,7 +180,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           const SizedBox(height: 20),
           LinearProgressIndicator(
             value: 0.6,
-            backgroundColor: Colors.white.withOpacity(0.2),
+            backgroundColor: Colors.white.withValues(alpha: 0.2),
             valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
             minHeight: 8,
             borderRadius: BorderRadius.circular(4),
@@ -333,7 +333,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentBlue.withOpacity(0.1),
+                          color: AppTheme.accentBlue.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: const Row(

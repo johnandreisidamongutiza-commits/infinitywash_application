@@ -42,9 +42,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
+                  color: Colors.green.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
                 ),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -77,7 +77,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Widget _buildStatusStep(OrderStatus status, String label, IconData icon) {
     bool isDone = _isStatusDone(status);
     bool isCurrent = _currentStatus == status;
-    Color color = isDone || isCurrent ? AppTheme.accentBlue : AppTheme.textLight.withOpacity(0.3);
+    Color color = isDone || isCurrent ? AppTheme.accentBlue : AppTheme.textLight.withValues(alpha: 0.3);
 
     return Row(
       children: [
@@ -85,7 +85,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           width: 50,
           height: 50,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             shape: BoxShape.circle,
             border: Border.all(color: color, width: 2),
           ),

@@ -105,7 +105,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.notifications_none, size: 48, color: AppTheme.textLight.withOpacity(0.3)),
+                              Icon(Icons.notifications_none, size: 48, color: AppTheme.textLight.withValues(alpha: 0.3)),
                               const SizedBox(height: 12),
                               Text('No notifications', style: TextStyle(color: AppTheme.textLight, fontSize: 14)),
                             ],
@@ -124,7 +124,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: (notif['color'] as Color).withOpacity(0.1),
+                                  color: (notif['color'] as Color).withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Icon(notif['icon'] as IconData, color: notif['color'] as Color, size: 22),
@@ -142,7 +142,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                                   const SizedBox(height: 4),
                                   Text(notif['message'] as String, style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
                                   const SizedBox(height: 4),
-                                  Text(notif['time'] as String, style: TextStyle(fontSize: 11, color: AppTheme.textLight.withOpacity(0.6))),
+                                  Text(notif['time'] as String, style: TextStyle(fontSize: 11, color: AppTheme.textLight.withValues(alpha: 0.6))),
                                 ],
                               ),
                               trailing: !isRead
@@ -332,7 +332,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppTheme.teamMemberIconOrange.withOpacity(0.1),
+                        color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.local_shipping_outlined, color: AppTheme.teamMemberIconOrange),
@@ -358,7 +358,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppTheme.errorRed.withOpacity(0.1),
+                        color: AppTheme.errorRed.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.shopping_bag_outlined, color: AppTheme.errorRed),
@@ -392,7 +392,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
+                  color: Colors.green.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.check_circle, color: Colors.green, size: 20),
@@ -462,17 +462,17 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Icon(Icons.map_outlined, size: 60, color: AppTheme.textLight.withOpacity(0.1)),
+                  Icon(Icons.map_outlined, size: 60, color: AppTheme.textLight.withValues(alpha: 0.1)),
                   Positioned(
                     bottom: 12,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
+                            color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 4,
                           ),
                         ],
@@ -536,7 +536,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: typeColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                 child: Text(type, style: TextStyle(color: typeColor, fontSize: 10, fontWeight: FontWeight.bold)),
               ),
               const SizedBox(width: 12),

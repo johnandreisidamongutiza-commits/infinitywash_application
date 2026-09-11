@@ -107,7 +107,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             width: 50,
             height: 50,
             decoration: BoxDecoration(
-              color: order.paymentStatus == PaymentStatus.paid ? Colors.green.withOpacity(0.1) : AppTheme.errorRed.withOpacity(0.1),
+              color: order.paymentStatus == PaymentStatus.paid ? Colors.green.withValues(alpha: 0.1) : AppTheme.errorRed.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(

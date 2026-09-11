@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/top_notification.dart';
 import '../delivery/delivery_tracking_screen.dart';
+import '../chats/customer_chat_detail_screen.dart';
 import 'customer_payment_screen.dart';
 import 'request_service_flow.dart';
 
@@ -19,7 +20,6 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   // Status of the order: 'processing' (approved by staff) vs 'pending_approval'
   String _orderStatus = 'processing';
   bool _isSpecsExpanded = false;
-  bool _isBillingExpanded = true;
   int _orderRating = 0; // 0 means not yet reviewed
   String _feedbackComment = '';
 
@@ -27,7 +27,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   bool _isWeighed = true;
   bool _isPaid = false;
   String _activePaymentMethod = 'GCash'; // 'GCash' or 'Cash on Delivery'
-  double _activeWeight = 5.5; // Within 8kg limit for regular clothes
+  final double _activeWeight = 5.5; // Within 8kg limit for regular clothes
   final double _fullServicePrice = 170.0; // FULL SERVICE: Wash, Dry & Fold (Detergent + Fab Con + Delivery included)
 
   double get _totalAmount => _fullServicePrice; // ₱170.00 Flat
@@ -57,6 +57,46 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
         elevation: 0,
         centerTitle: true,
         actions: [
+          if (_hasActiveOrder)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CustomerChatDetailScreen(
+                        recipientName: 'InfinityWash Support',
+                        recipientRole: 'Customer Support Helpdesk',
+                        recipientType: ChatRecipientType.support,
+                        orderId: 'IW-105',
+                        phoneNumber: '0912-345-6789',
+                      ),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.8)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.chat_bubble_outline, size: 13, color: AppTheme.accentBlue),
+                      SizedBox(width: 4),
+                      Text(
+                        'Need help?',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: AppTheme.textDark),
             tooltip: 'Demo: Change Status',
@@ -227,7 +267,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
+                    color: Colors.black.withValues(alpha: 0.06),
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),
@@ -250,8 +290,8 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? AppTheme.accentBlue.withOpacity(0.12)
-                    : AppTheme.borderGray.withOpacity(0.5),
+                    ? AppTheme.accentBlue.withValues(alpha: 0.12)
+                    : AppTheme.borderGray.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
@@ -276,7 +316,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.shopping_basket_outlined, size: 80, color: AppTheme.textLight.withOpacity(0.2)),
+          Icon(Icons.shopping_basket_outlined, size: 80, color: AppTheme.textLight.withValues(alpha: 0.2)),
           const SizedBox(height: 20),
           Text(
             'No active orders',
@@ -371,7 +411,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.12),
+                  color: Colors.green.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Row(
@@ -420,9 +460,9 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppTheme.teamMemberOrange.withOpacity(0.08),
+                color: AppTheme.teamMemberOrange.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.teamMemberIconOrange.withOpacity(0.3)),
+                border: Border.all(color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -452,7 +492,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.06),
+                color: Colors.green.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -523,145 +563,28 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     final bool isApproved = _orderStatus != 'pending_approval';
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Existing Status Step Card (Kept exactly as requested)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: AppStyles.cardDecoration,
-            child: Column(
-              children: [
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Order IW-105', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.accentBlue)),
-                    Text('Sept 04, 2026', style: TextStyle(fontSize: 12)),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                _buildStatusStep('Processing', Icons.sync, true),
-                _buildConnector(true),
-                _buildStatusStep('Ready', Icons.check_circle_outline, false),
-              ],
-            ),
-          ),
+          // 1. Hero Status & 5-Stage Journey Tracker (Immediate answers: where & when)
+          _buildHeroStatusCard(),
+          const SizedBox(height: 14),
+
+          // 2. Dynamic Action Banner (Only visible if action is required e.g. GCash Due)
+          _buildActionBanner(),
+
+          // 3. Rider & Live GPS Tracking (Compact & Actionable)
+          _buildRiderAndTrackingCard(),
+          const SizedBox(height: 14),
+
+          // 4. Consolidated Order & Billing Summary Card (Combined specs + pricing)
+          _buildConsolidatedOrderCard(),
+          const SizedBox(height: 20),
+
+          // 5. Contextual Footer (Cancellation if pending, or Support Hotline if processing)
+          _buildFooterActions(isApproved),
           const SizedBox(height: 16),
-
-          // 2. Assigned Rider & Delivery Card
-          _buildRiderInfoCard(),
-          const SizedBox(height: 16),
-
-          // 3. Expandable Laundry Specifications Card
-          _buildLaundryDetailsCard(),
-          const SizedBox(height: 16),
-
-          // 4. Per-Kilo Payment Callout Action Card
-          _buildPaymentActionCard(),
-          const SizedBox(height: 16),
-
-          // 5. Expandable Billing & Payment Breakdown Card
-          _buildBillingBreakdownCard(),
-          const SizedBox(height: 24),
-
-          // 5. Action Buttons
-          ElevatedButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const DeliveryTrackingScreen()),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 54),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.navigation_outlined, size: 20),
-                SizedBox(width: 8),
-                Text('Track Delivery on Map', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
-              );
-            },
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 54),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.add_shopping_cart, size: 20),
-                SizedBox(width: 8),
-                Text('Request New Service', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // 6. Cancellation Rule: Can ONLY cancel if staff has NOT approved yet
-          if (!isApproved)
-            OutlinedButton(
-              onPressed: _showCancelDialog,
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 54),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                foregroundColor: AppTheme.errorRed,
-                side: const BorderSide(color: AppTheme.errorRed),
-              ),
-              child: const Text('Cancel Active Request'),
-            )
-          else
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: AppTheme.softGray,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.borderGray),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.lock_outline, size: 18, color: AppTheme.textLight),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'Request approved by staff. Cannot be cancelled while processing.',
-                      style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      showTopNotification(
-                        context,
-                        message: 'Support Hotline: 0912-345-6789. We are here to help!',
-                        icon: Icons.support_agent,
-                        backgroundColor: AppTheme.accentBlue,
-                      );
-                    },
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: const Text(
-                      'Support',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 24),
         ],
       ),
     );
@@ -789,7 +712,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                     maxLines: 3,
                     decoration: InputDecoration(
                       hintText: 'Add a comment or special feedback (optional)...',
-                      hintStyle: TextStyle(fontSize: 12, color: AppTheme.textLight.withOpacity(0.6)),
+                      hintStyle: TextStyle(fontSize: 12, color: AppTheme.textLight.withValues(alpha: 0.6)),
                       filled: true,
                       fillColor: AppTheme.softGray,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -836,7 +759,314 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     );
   }
 
-  Widget _buildRiderInfoCard() {
+  Widget _buildHeroStatusCard() {
+    final bool isApproved = _orderStatus != 'pending_approval';
+
+    // 0: Placed, 1: Picked Up, 2: Washing, 3: Delivering, 4: Delivered
+    int activeStep = 0;
+    if (isApproved) {
+      if (!_isWeighed) {
+        activeStep = 1;
+      } else {
+        activeStep = 2;
+      }
+    }
+
+    String statusTitle;
+    String statusSubtitle;
+    IconData statusIcon;
+    Color statusColor;
+
+    if (!isApproved) {
+      statusTitle = 'Awaiting Confirmation';
+      statusSubtitle = 'Shop staff will verify and approve your booking.';
+      statusIcon = Icons.hourglass_top_rounded;
+      statusColor = Colors.orange;
+    } else if (!_isWeighed) {
+      statusTitle = 'In Transit to Hub';
+      statusSubtitle = 'Rider Michael is transporting clothes to the shop.';
+      statusIcon = Icons.local_shipping_outlined;
+      statusColor = AppTheme.accentBlue;
+    } else {
+      statusTitle = 'Washing & Drying';
+      statusSubtitle = 'Full cycle in progress • Clothes smelling fresh soon.';
+      statusIcon = Icons.local_laundry_service;
+      statusColor = AppTheme.accentBlue;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: AppStyles.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Order #IW-105',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.accentBlue),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.schedule, size: 13, color: Colors.green),
+                    SizedBox(width: 4),
+                    Text(
+                      'Est. Today, 4:00 PM',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(statusIcon, color: statusColor, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      statusTitle,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      statusSubtitle,
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textLight, height: 1.25),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _buildHorizontalJourneyStepper(activeStep),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHorizontalJourneyStepper(int activeStep) {
+    final steps = ['Booked', 'Picked Up', 'Washing', 'Delivering', 'Done'];
+
+    return Row(
+      children: List.generate(steps.length * 2 - 1, (index) {
+        if (index.isOdd) {
+          final lineIndex = index ~/ 2;
+          final isCompleted = lineIndex < activeStep;
+          return Expanded(
+            child: Container(
+              height: 3,
+              decoration: BoxDecoration(
+                color: isCompleted ? AppTheme.accentBlue : AppTheme.borderGray.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          );
+        }
+
+        final stepIndex = index ~/ 2;
+        final isCompleted = stepIndex < activeStep;
+        final isCurrent = stepIndex == activeStep;
+
+        Color dotColor;
+        Widget dotChild;
+
+        if (isCompleted) {
+          dotColor = AppTheme.accentBlue;
+          dotChild = const Icon(Icons.check, size: 11, color: Colors.white);
+        } else if (isCurrent) {
+          dotColor = AppTheme.accentBlue;
+          dotChild = Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+          );
+        } else {
+          dotColor = AppTheme.borderGray.withValues(alpha: 0.6);
+          dotChild = const SizedBox.shrink();
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+                border: isCurrent
+                    ? Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3), width: 3)
+                    : null,
+              ),
+              alignment: Alignment.center,
+              child: dotChild,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              steps[stepIndex],
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                color: isCurrent
+                    ? AppTheme.accentBlue
+                    : (isCompleted ? AppTheme.textDark : AppTheme.textLight.withValues(alpha: 0.7)),
+              ),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  Widget _buildActionBanner() {
+    if (!_isWeighed) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.amber.withValues(alpha: 0.09),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.amber.withValues(alpha: 0.35)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.scale_outlined, color: Colors.amber, size: 20),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Awaiting Store Weighing', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark)),
+                  SizedBox(height: 2),
+                  Text(
+                    'Bill will be confirmed upon scale verification at the hub.',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (!_isPaid && _activePaymentMethod == 'GCash') {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.accentBlue.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.4), width: 1.5),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentBlue,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.account_balance_wallet_outlined, color: Colors.white, size: 18),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Verified Bill Ready • GCash Due',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.accentBlue),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Total Due: ₱${_totalAmount.toStringAsFixed(2)} (${_activeWeight.toStringAsFixed(1)} kg)',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CustomerPaymentScreen(
+                      orderId: 'IW-105',
+                      weight: _activeWeight,
+                      servicePrice: _fullServicePrice,
+                      deliveryFee: 0.0,
+                      totalAmount: _totalAmount,
+                      onPaymentSuccess: () {
+                        setState(() {
+                          _isPaid = true;
+                        });
+                        showTopNotification(
+                          context,
+                          message: 'Payment of ₱${_totalAmount.toStringAsFixed(2)} confirmed via GCash!',
+                          icon: Icons.check_circle,
+                          backgroundColor: Colors.green,
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentBlue,
+                minimumSize: const Size(double.infinity, 44),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text(
+                'Pay ₱${_totalAmount.toStringAsFixed(2)} via GCash',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildRiderAndTrackingCard() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: AppStyles.cardDecoration,
@@ -846,8 +1076,8 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
           Row(
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: AppTheme.lightBlue,
                   borderRadius: BorderRadius.circular(12),
@@ -859,9 +1089,9 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Michael Rider', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    Text('Michael Rider', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark)),
                     SizedBox(height: 2),
-                    Text('Honda Click (ABC-1234)', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
+                    Text('Honda Click • ABC-1234', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
                   ],
                 ),
               ),
@@ -874,39 +1104,68 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                     backgroundColor: AppTheme.accentBlue,
                   );
                 },
-                icon: const Icon(Icons.phone, color: AppTheme.accentBlue),
+                icon: const Icon(Icons.phone_outlined, color: AppTheme.accentBlue, size: 18),
+                style: IconButton.styleFrom(
+                  backgroundColor: AppTheme.lightBlue,
+                  padding: const EdgeInsets.all(7),
+                  minimumSize: Size.zero,
+                ),
                 tooltip: 'Call Rider',
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CustomerChatDetailScreen(
+                        recipientName: 'Michael Rider',
+                        recipientRole: 'Assigned Delivery Rider',
+                        recipientType: ChatRecipientType.rider,
+                        orderId: 'IW-105',
+                        phoneNumber: '+63 912 345 6789',
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.chat_bubble_outline, color: AppTheme.accentBlue, size: 18),
+                style: IconButton.styleFrom(
+                  backgroundColor: AppTheme.lightBlue,
+                  padding: const EdgeInsets.all(7),
+                  minimumSize: Size.zero,
+                ),
+                tooltip: 'Chat with Rider',
+              ),
+              const SizedBox(width: 6),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const DeliveryTrackingScreen()),
+                  );
+                },
+                icon: const Icon(Icons.navigation_outlined, size: 14),
+                label: const Text('Track', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentBlue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  minimumSize: Size.zero,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
               ),
             ],
           ),
           const Divider(height: 20),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          const Row(
             children: [
-              const Icon(Icons.location_on_outlined, size: 18, color: AppTheme.errorRed),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '123 Laundry St, Clean City',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textDark),
-                    ),
-                    SizedBox(height: 2),
-                    Text('Landmark: Near the blue gate', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'Est. 4:00 PM',
-                  style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold),
+              Icon(Icons.location_on_outlined, size: 16, color: AppTheme.errorRed),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '123 Laundry St, Clean City (Near blue gate)',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -916,50 +1175,115 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     );
   }
 
-  Widget _buildLaundryDetailsCard() {
+  Widget _buildConsolidatedOrderCard() {
     return Container(
       decoration: AppStyles.cardDecoration,
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                setState(() => _isSpecsExpanded = !_isSpecsExpanded);
-              },
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.lightBlue,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.local_laundry_service_outlined, size: 20, color: AppTheme.accentBlue),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Laundry Specifications', style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 15)),
-                          const SizedBox(height: 2),
-                          Text(
-                            !_isWeighed
-                                ? 'Pending Weighing • Wash, Dry & Fold'
-                                : '${_activeWeight.toStringAsFixed(1)} kg • Wash, Dry & Fold',
-                            style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.lightBlue,
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                        ],
-                      ),
+                          child: const Icon(Icons.inventory_2_outlined, size: 18, color: AppTheme.accentBlue),
+                        ),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Wash, Dry & Fold',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
+                            ),
+                            Text(
+                              !_isWeighed ? 'Pending Weighing' : '${_activeWeight.toStringAsFixed(1)} kg • Regular Clothes',
+                              style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    _buildPaymentStatusBadge(),
+                  ],
+                ),
+                const Divider(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Total Amount', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
+                        const SizedBox(height: 2),
+                        Text(
+                          !_isWeighed ? '₱170.00 (Est.)' : '₱${_totalAmount.toStringAsFixed(2)}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.textDark),
+                        ),
+                      ],
+                    ),
+                    if (_isPaid)
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => CustomerPaymentScreen(
+                                orderId: 'IW-105',
+                                weight: _activeWeight,
+                                servicePrice: _fullServicePrice,
+                                deliveryFee: 0.0,
+                                totalAmount: _totalAmount,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.receipt_outlined, size: 16),
+                        label: const Text('Receipt', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.accentBlue,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          minimumSize: Size.zero,
+                        ),
+                      )
+                    else if (_activePaymentMethod == 'Cash on Delivery')
+                      const Text('Pay rider upon delivery', style: TextStyle(fontSize: 11, color: AppTheme.textLight))
+                    else
+                      const Text('GCash payment', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Material(
+            color: AppTheme.softGray.withValues(alpha: 0.5),
+            child: InkWell(
+              onTap: () => setState(() => _isSpecsExpanded = !_isSpecsExpanded),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _isSpecsExpanded ? 'Hide Details' : 'View Full Details & Inclusions',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.accentBlue),
                     ),
                     Icon(
                       _isSpecsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                      color: AppTheme.textLight,
+                      size: 18,
+                      color: AppTheme.accentBlue,
                     ),
                   ],
                 ),
@@ -967,26 +1291,18 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
             ),
           ),
           if (_isSpecsExpanded) ...[
-            const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               child: Column(
                 children: [
-                  _buildDetailRow('Service Type', 'Wash, Dry & Fold'),
-                  const Divider(height: 16),
-                  _buildDetailRow(
-                    'Measured Weight',
-                    !_isWeighed ? 'Pending Store Scale' : '${_activeWeight.toStringAsFixed(1)} kg (Within 8kg Regular Limit)',
-                  ),
-                  const Divider(height: 16),
-                  _buildDetailRow('Package Rate', '₱170.00 Full Service (Detergent + Fab Con Included)'),
-                  const Divider(height: 16),
-                  _buildDetailRow('RFID Tag', 'IW-RF-10234'),
-                  const Divider(height: 16),
-                  _buildDetailRow('Collection', 'Rider Pick-up'),
-                  const Divider(height: 16),
-                  _buildDetailRow('Return Method', 'Doorstep Delivery'),
-                  const Divider(height: 16),
+                  _buildDetailRow('Package Rate', '₱170.00 Flat Rate (Up to 8kg)'),
+                  const Divider(height: 14),
+                  _buildDetailRow('Detergent + Fab Con', 'Included (Free)'),
+                  const Divider(height: 14),
+                  _buildDetailRow('Pick Up & Delivery', 'Included (Free)'),
+                  const Divider(height: 14),
+                  _buildDetailRow('RFID Tracking Tag', 'IW-RF-10234'),
+                  const Divider(height: 14),
                   _buildDetailRow('Special Instructions', 'No fabric softener please.'),
                 ],
               ),
@@ -997,359 +1313,23 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     );
   }
 
-  Widget _buildPaymentActionCard() {
-    // 1. If clothes haven't been weighed yet by staff
+  Widget _buildPaymentStatusBadge() {
     if (!_isWeighed) {
       return Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.amber.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.amber.withValues(alpha: 0.35)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.scale_outlined, color: Colors.amber, size: 24),
-            ),
-            const SizedBox(width: 14),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Pending Store Verification', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark)),
-                  SizedBox(height: 2),
-                  Text(
-                    'Once clothes are verified on the shop scale, your ₱170.00 full service bill will appear here.',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textLight, height: 1.35),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // 2. Weighed and Paid via GCash
-    if (_isPaid) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.green.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.18),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Paid via GCash • ₱${_totalAmount.toStringAsFixed(2)}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green),
-                  ),
-                  const SizedBox(height: 2),
-                  const Text('Ref #902834195723 • Digital Receipt Issued', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
-                ],
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CustomerPaymentScreen(
-                      orderId: 'IW-105',
-                      weight: _activeWeight,
-                      servicePrice: _fullServicePrice,
-                      deliveryFee: 0.0,
-                      totalAmount: _totalAmount,
-                    ),
-                  ),
-                );
-              },
-              child: const Text('Receipt', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.accentBlue)),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // 3. Weighed and Cash on Delivery
-    if (_activePaymentMethod == 'Cash on Delivery') {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.teal.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.teal.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.payments_outlined, color: Colors.teal, size: 24),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Cash on Delivery (₱${_totalAmount.toStringAsFixed(2)})',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Verified weight: ${_activeWeight.toStringAsFixed(1)} kg (within 8kg limit). Please prepare exact cash for Michael Rider upon delivery.',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textLight, height: 1.35),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // 4. Weighed and GCash Payment is Due
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppTheme.accentBlue.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.35), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accentBlue,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.receipt_long, color: Colors.white, size: 16),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Verified Bill Ready',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.accentBlue),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text('PAYMENT DUE', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Total Due: ₱${_totalAmount.toStringAsFixed(2)}',
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-          ),
-          const SizedBox(height: 2),
-          const Text(
-            'Full Service (Wash, Dry & Fold): ₱170.00 • Detergent, Fab Con & Delivery included',
-            style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => CustomerPaymentScreen(
-                    orderId: 'IW-105',
-                    weight: _activeWeight,
-                    servicePrice: _fullServicePrice,
-                    deliveryFee: 0.0,
-                    totalAmount: _totalAmount,
-                    onPaymentSuccess: () {
-                      setState(() {
-                        _isPaid = true;
-                      });
-                      showTopNotification(
-                        context,
-                        message: 'Payment of ₱${_totalAmount.toStringAsFixed(2)} confirmed via GCash!',
-                        icon: Icons.check_circle,
-                        backgroundColor: Colors.green,
-                      );
-                    },
-                  ),
-                ),
-              );
-            },
-            icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
-            label: Text('Pay ₱${_totalAmount.toStringAsFixed(2)} via GCash'),
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 48),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBillingBreakdownCard() {
-    return Container(
-      decoration: AppStyles.cardDecoration,
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                setState(() => _isBillingExpanded = !_isBillingExpanded);
-              },
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.lightBlue,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.receipt_long_outlined, size: 20, color: AppTheme.accentBlue),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Billing & Payment', style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 15)),
-                          const SizedBox(height: 2),
-                          Text(
-                            !_isWeighed
-                                ? 'Store weighing required'
-                                : '₱${_totalAmount.toStringAsFixed(2)} • ${_isPaid ? 'Paid via GCash' : (_activePaymentMethod == 'GCash' ? 'Payment Due' : 'Cash on Delivery')}',
-                            style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                          ),
-                        ],
-                      ),
-                    ),
-                    _buildBillingStatusBadge(),
-                    Icon(
-                      _isBillingExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                      color: AppTheme.textLight,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (_isBillingExpanded) ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Column(
-                children: [
-                  if (!_isWeighed) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppTheme.softGray,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.scale_outlined, size: 20, color: AppTheme.accentBlue),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Laundry is awaiting store scale verification. Full service is ₱170.00 / load (Pickup & Delivery included).',
-                              style: TextStyle(fontSize: 12, color: AppTheme.textLight, height: 1.3),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ] else ...[
-                    _buildBillingRow(
-                      'Full Service: Wash, Dry & Fold (${_activeWeight.toStringAsFixed(1)} kg)',
-                      '₱${_fullServicePrice.toStringAsFixed(2)}',
-                    ),
-                    _buildBillingRow('Detergent + Fab Con', 'INCLUDED (FREE)'),
-                    _buildBillingRow('Pick Up & Delivery', 'INCLUDED (FREE)'),
-                    const Divider(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Total Amount', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                        Text(
-                          '₱${_totalAmount.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 17,
-                            color: AppTheme.accentBlue,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBillingStatusBadge() {
-    if (!_isWeighed) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        margin: const EdgeInsets.only(right: 4),
-        decoration: BoxDecoration(
-          color: Colors.amber.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(6),
+          color: Colors.amber.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: const Text('UNWEIGHED', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber)),
       );
     }
     if (_isPaid) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        margin: const EdgeInsets.only(right: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: Colors.green.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: const Row(
           mainAxisSize: MainAxisSize.min,
@@ -1363,37 +1343,40 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     }
     if (_activePaymentMethod == 'Cash on Delivery') {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        margin: const EdgeInsets.only(right: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: Colors.teal.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: const Text('COD', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal)),
       );
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      margin: const EdgeInsets.only(right: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: Colors.orange.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: const Text('DUE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
     );
   }
 
-  Widget _buildBillingRow(String label, String amount) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textLight)),
-          Text(amount, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textDark)),
-        ],
-      ),
-    );
+  Widget _buildFooterActions(bool isApproved) {
+    if (!isApproved) {
+      return OutlinedButton.icon(
+        onPressed: _showCancelDialog,
+        icon: const Icon(Icons.cancel_outlined, size: 16),
+        label: const Text('Cancel Active Request', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 46),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          foregroundColor: AppTheme.errorRed,
+          side: const BorderSide(color: AppTheme.errorRed),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   void _showCancelDialog() {
@@ -1423,44 +1406,6 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildStatusStep(String label, IconData icon, bool isActive) {
-    Color color = isActive ? AppTheme.accentBlue : AppTheme.textLight.withOpacity(0.3);
-    return Row(
-      children: [
-        Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
-            border: Border.all(color: color, width: 2),
-          ),
-          child: Icon(icon, color: color),
-        ),
-        const SizedBox(width: 16),
-        Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-            fontSize: 18,
-          ),
-        ),
-        const Spacer(),
-        if (isActive) const Icon(Icons.pending, color: AppTheme.accentBlue),
-      ],
-    );
-  }
-
-  Widget _buildConnector(bool isActive) {
-    return Container(
-      margin: const EdgeInsets.only(left: 24),
-      height: 30,
-      width: 2,
-      color: isActive ? AppTheme.accentBlue : AppTheme.borderGray,
     );
   }
 
