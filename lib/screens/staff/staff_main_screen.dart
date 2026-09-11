@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/chat_service.dart';
 import 'home/staff_home_screen.dart';
 import 'orders/orders_screen.dart';
+import 'chats/staff_chats_screen.dart';
 import 'payment/payment_screen.dart';
 import 'profile/staff_profile_screen.dart';
 
@@ -14,16 +16,20 @@ class StaffMainScreen extends StatefulWidget {
 
 class _StaffMainScreenState extends State<StaffMainScreen> {
   int _currentIndex = 0;
+  final ChatService _chatService = ChatService();
 
   final List<Widget> _screens = [
     const StaffHomeScreen(),
     const OrdersScreen(),
+    const StaffChatsScreen(),
     const PaymentScreen(),
     const StaffProfileScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final unreadCount = _chatService.getTotalUnreadCount();
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -48,23 +54,90 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
           unselectedItemColor: AppTheme.textLight.withValues(alpha: 0.5),
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
           unselectedLabelStyle: const TextStyle(fontSize: 12),
-          items: const [
-            BottomNavigationBarItem(
+          items: [
+            const BottomNavigationBarItem(
               icon: Icon(Icons.home_outlined),
               activeIcon: Icon(Icons.home),
               label: 'Home',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.assignment_outlined),
               activeIcon: Icon(Icons.assignment),
               label: 'Orders',
             ),
             BottomNavigationBarItem(
+              icon: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.chat_bubble_outline),
+                  if (unreadCount > 0)
+                    Positioned(
+                      right: -6,
+                      top: -4,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentBlue,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        child: Text(
+                          unreadCount > 9 ? '9+' : '$unreadCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              activeIcon: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.chat_bubble),
+                  if (unreadCount > 0)
+                    Positioned(
+                      right: -6,
+                      top: -4,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentBlue,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        child: Text(
+                          unreadCount > 9 ? '9+' : '$unreadCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              label: 'Chats',
+            ),
+            const BottomNavigationBarItem(
               icon: Icon(Icons.payments_outlined),
               activeIcon: Icon(Icons.payments),
               label: 'Payment',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),
               activeIcon: Icon(Icons.person),
               label: 'Profile',
