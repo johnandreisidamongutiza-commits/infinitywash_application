@@ -207,75 +207,121 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
   void _showApproveDialog(LaundryOrder request) {
     final weightController = TextEditingController();
     String? selectedRfidTag;
+    String selectedCategory = 'Regular Clothing';
     final availableTags = MockDataService().availableRfidTags;
+
+    final Map<String, Map<String, dynamic>> categories = {
+      'Regular Clothing': {'limit': 8.0, 'unit': 'kg', 'desc': 'T-shirts, shorts, sleeveless, socks, underwear'},
+      'Heavy Clothing': {'limit': 6.0, 'unit': 'kg', 'desc': 'Jeans, cargo, jackets, sweaters, corduroy'},
+      'Beddings & Towels': {'limit': 5.0, 'unit': 'kg', 'desc': 'Bedsheets, blankets, towels, curtains'},
+      'Heavyweight Beddings': {'limit': 1.0, 'unit': 'pc', 'desc': 'Comforter, heavy fleece blanket, duvet'},
+    };
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Accept Order'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Enter the weight and assign an RFID tag to proceed.'),
-              const SizedBox(height: 20),
-              TextField(
-                controller: weightController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Weight (kg)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (availableTags.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.errorRed.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 18),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'No RFID tags available',
-                          style: TextStyle(color: AppTheme.errorRed, fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
+          title: const Text('Accept Order', style: TextStyle(fontSize: 17)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Enter the weight, select category, and assign an RFID tag to proceed.'),
+                const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  initialValue: selectedRfidTag,
+                  initialValue: selectedCategory,
                   decoration: const InputDecoration(
-                    labelText: 'RFID Tag',
+                    labelText: 'Category',
                     border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.nfc_outlined),
                   ),
-                  items: availableTags.map((tag) {
+                  items: categories.entries.map((entry) {
                     return DropdownMenuItem<String>(
-                      value: tag,
-                      child: Text(tag),
+                      value: entry.key,
+                      child: Text('${entry.key} (≤${entry.value['limit']} ${entry.value['unit']})', style: const TextStyle(fontSize: 13)),
                     );
                   }).toList(),
-                  onChanged: (value) {
-                    setDialogState(() => selectedRfidTag = value);
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() => selectedCategory = val);
+                    }
                   },
                 ),
-            ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: weightController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Weight',
+                    border: OutlineInputBorder(),
+                    suffixText: 'kg/pc',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (availableTags.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorRed.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'No RFID tags available',
+                            style: TextStyle(color: AppTheme.errorRed, fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedRfidTag,
+                    decoration: const InputDecoration(
+                      labelText: 'RFID Tag',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.nfc_outlined),
+                    ),
+                    items: availableTags.map((tag) {
+                      return DropdownMenuItem<String>(
+                        value: tag,
+                        child: Text(tag),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setDialogState(() => selectedRfidTag = value);
+                    },
+                  ),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
             ElevatedButton(
               onPressed: (selectedRfidTag == null || availableTags.isEmpty) ? null : () {
                 final weight = double.tryParse(weightController.text) ?? 1.0;
+                final categoryData = categories[selectedCategory]!;
+                
+                // Create single load
+                final loads = [
+                  OrderLoad(
+                    loadNumber: 1,
+                    category: selectedCategory,
+                    weight: weight,
+                    categoryLimit: categoryData['limit'] as double,
+                    unit: categoryData['unit'] as String,
+                    description: categoryData['desc'] as String,
+                    isOverLimit: weight > (categoryData['limit'] as double),
+                    loadStatus: LoadStatus.queued,
+                  ),
+                ];
+                
                 setState(() {
-                  MockDataService().approveRequest(request.id, weight, selectedRfidTag!);
+                  MockDataService().approveRequest(request.id, loads, selectedRfidTag!);
                 });
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -341,7 +387,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
               children: [
                 const Icon(Icons.person_outline, size: 20, color: AppTheme.textLight),
                 const SizedBox(width: 8),
-                Text(order.customerName, style: AppTheme.lightTheme.textTheme.titleMedium),
+                Expanded(child: Text(order.customerName, style: AppTheme.lightTheme.textTheme.titleMedium)),
               ],
             ),
             const SizedBox(height: 8),
@@ -350,14 +396,28 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
               children: [
                 Row(
                   children: [
-                    Text('${order.weight} kg', style: AppTheme.lightTheme.textTheme.bodyMedium),
+                    Text(order.weightDisplay, style: AppTheme.lightTheme.textTheme.bodyMedium),
+                    if (order.hasMultipleLoads) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentBlue.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${order.totalLoads} loads',
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
+                        ),
+                      ),
+                    ],
                     if (order.rfidTag != null) ...[
                       const SizedBox(width: 12),
                       Icon(Icons.nfc_outlined, size: 14, color: AppTheme.accentBlue.withValues(alpha: 0.7)),
                       const SizedBox(width: 4),
                       Text(
                         order.rfidTag!,
-                        style: TextStyle(fontSize: 12, color: AppTheme.accentBlue, fontWeight: FontWeight.w500),
+                        style: const TextStyle(fontSize: 12, color: AppTheme.accentBlue, fontWeight: FontWeight.w500),
                       ),
                     ],
                   ],
@@ -372,6 +432,39 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                 ),
               ],
             ),
+            // Show load statuses for multi-load orders
+            if (order.hasMultipleLoads) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.softGray,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: order.loads.map((load) {
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Column(
+                          children: [
+                            Text(
+                              load.statusIcon,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'L${load.loadNumber}',
+                              style: const TextStyle(fontSize: 9, color: AppTheme.textLight, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -389,7 +482,18 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         channel: OrderChannel.walkIn,
         status: OrderStatus.completed,
         paymentStatus: PaymentStatus.paid,
-        weight: 4.0,
+        loads: [
+          OrderLoad(
+            loadNumber: 1,
+            category: 'Regular Clothing',
+            weight: 4.0,
+            categoryLimit: 8.0,
+            unit: 'kg',
+            description: 'T-shirts, shorts, sleeveless, socks, underwear',
+            isOverLimit: false,
+            loadStatus: LoadStatus.folded,
+          ),
+        ],
         rfidTag: 'RFID-002',
         createdAt: DateTime.now().subtract(const Duration(days: 1)),
       ),
@@ -401,7 +505,18 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         returnMethod: ReturnMethod.delivery,
         status: OrderStatus.completed,
         paymentStatus: PaymentStatus.paid,
-        weight: 7.2,
+        loads: [
+          OrderLoad(
+            loadNumber: 1,
+            category: 'Heavy Clothing',
+            weight: 7.2,
+            categoryLimit: 6.0,
+            unit: 'kg',
+            description: 'Jeans, cargo, jackets, sweaters, corduroy',
+            isOverLimit: true,
+            loadStatus: LoadStatus.folded,
+          ),
+        ],
         rfidTag: 'RFID-004',
         createdAt: DateTime.now().subtract(const Duration(days: 2)),
       ),
@@ -442,12 +557,12 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(order.customerName, style: AppTheme.lightTheme.textTheme.titleMedium),
-                    Text('Order ${order.id} • ${order.weight} kg', style: AppTheme.lightTheme.textTheme.bodyMedium),
+                    Text('Order ${order.id} • ${order.weightDisplay}', style: AppTheme.lightTheme.textTheme.bodyMedium),
                   ],
                 ),
               ),
               Text(
-                '₱${(order.weight * 50).toStringAsFixed(0)}',
+                '₱${order.basePrice.toStringAsFixed(0)}',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ],

@@ -30,8 +30,6 @@ class StaffHomeScreen extends StatelessWidget {
               _buildQuickActions(context),
               const SizedBox(height: 30),
               _buildCurrentlyProcessing(context),
-              const SizedBox(height: 30),
-              _buildSummarizationSection(),
             ],
           ),
         ),
@@ -454,7 +452,7 @@ class StaffHomeScreen extends StatelessWidget {
                             Icon(Icons.scale_outlined, size: 14, color: AppTheme.textLight.withValues(alpha: 0.7)),
                             const SizedBox(width: 4),
                             Text(
-                              '${order.weight} kg',
+                              order.weightDisplay,
                               style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(fontSize: 12),
                             ),
                           ],
@@ -499,39 +497,6 @@ class StaffHomeScreen extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSummarizationSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Daily Summary', style: AppTheme.lightTheme.textTheme.titleMedium),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(child: _buildSummaryStat('Earnings', '₱2,450', Icons.payments_outlined, Colors.green)),
-            const SizedBox(width: 16),
-            Expanded(child: _buildSummaryStat('Low Stock', '2 items', Icons.inventory_2_outlined, AppTheme.errorRed)),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSummaryStat(String title, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: AppStyles.cardDecoration,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 12),
-          Text(value, style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(fontSize: 22, color: color)),
-          Text(title, style: AppTheme.lightTheme.textTheme.bodyMedium),
-        ],
       ),
     );
   }

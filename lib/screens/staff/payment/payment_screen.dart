@@ -21,7 +21,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
       channel: OrderChannel.walkIn,
       status: OrderStatus.ready,
       paymentStatus: PaymentStatus.unpaid,
-      weight: 4.5,
+      loads: [
+        OrderLoad(
+          loadNumber: 1,
+          category: 'Regular Clothing',
+          weight: 4.5,
+          categoryLimit: 8.0,
+          unit: 'kg',
+          description: 'T-shirts, shorts, sleeveless, socks, underwear',
+          isOverLimit: false,
+          loadStatus: LoadStatus.folded,
+        ),
+      ],
       createdAt: DateTime.now(),
     ),
     LaundryOrder(
@@ -32,7 +43,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
       returnMethod: ReturnMethod.delivery,
       status: OrderStatus.completed,
       paymentStatus: PaymentStatus.paid,
-      weight: 6.0,
+      loads: [
+        OrderLoad(
+          loadNumber: 1,
+          category: 'Heavy Clothing',
+          weight: 6.0,
+          categoryLimit: 6.0,
+          unit: 'kg',
+          description: 'Jeans, cargo, jackets, sweaters, corduroy',
+          isOverLimit: false,
+          loadStatus: LoadStatus.folded,
+        ),
+      ],
       createdAt: DateTime.now(),
     ),
   ];

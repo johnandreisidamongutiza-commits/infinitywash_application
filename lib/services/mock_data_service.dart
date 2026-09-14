@@ -22,7 +22,18 @@ class MockDataService {
       returnMethod: ReturnMethod.shopPickup,
       status: OrderStatus.processing,
       paymentStatus: PaymentStatus.unpaid,
-      weight: 5.5,
+      loads: [
+        OrderLoad(
+          loadNumber: 1,
+          category: 'Regular Clothing',
+          weight: 5.5,
+          categoryLimit: 8.0,
+          unit: 'kg',
+          description: 'T-shirts, shorts, sleeveless, socks, underwear',
+          isOverLimit: false,
+          loadStatus: LoadStatus.washing,
+        ),
+      ],
       rfidTag: 'RFID-001',
       instructions: 'Heavy wash for denim | Fold neatly',
       createdAt: DateTime.now().subtract(const Duration(minutes: 45)),
@@ -38,7 +49,18 @@ class MockDataService {
       returnMethod: ReturnMethod.delivery,
       status: OrderStatus.processing,
       paymentStatus: PaymentStatus.unpaid,
-      weight: 3.0,
+      loads: [
+        OrderLoad(
+          loadNumber: 1,
+          category: 'Regular Clothing',
+          weight: 3.0,
+          categoryLimit: 8.0,
+          unit: 'kg',
+          description: 'T-shirts, shorts, sleeveless, socks, underwear',
+          isOverLimit: false,
+          loadStatus: LoadStatus.drying,
+        ),
+      ],
       rfidTag: 'RFID-003',
       instructions: 'Extra gentle cycle on shirts | Extra Fab Con (+₱20)',
       createdAt: DateTime.now().subtract(const Duration(minutes: 20)),
@@ -54,7 +76,28 @@ class MockDataService {
       returnMethod: ReturnMethod.delivery,
       status: OrderStatus.ready,
       paymentStatus: PaymentStatus.paid,
-      weight: 4.0,
+      loads: [
+        OrderLoad(
+          loadNumber: 1,
+          category: 'Regular Clothing',
+          weight: 7.5,
+          categoryLimit: 8.0,
+          unit: 'kg',
+          description: 'T-shirts, shorts, sleeveless, socks, underwear',
+          isOverLimit: false,
+          loadStatus: LoadStatus.folded,
+        ),
+        OrderLoad(
+          loadNumber: 2,
+          category: 'Heavy Clothing',
+          weight: 4.5,
+          categoryLimit: 6.0,
+          unit: 'kg',
+          description: 'Jeans, cargo, jackets, sweaters, corduroy',
+          isOverLimit: false,
+          loadStatus: LoadStatus.folded,
+        ),
+      ],
       rfidTag: 'RFID-005',
       instructions: 'Separate whites, delicate wash',
       createdAt: DateTime.now().subtract(const Duration(hours: 2)),
@@ -88,7 +131,7 @@ class MockDataService {
     _pendingRequests.add(order);
   }
 
-  void approveRequest(String id, double weight, String rfidTag) {
+  void approveRequest(String id, List<OrderLoad> loads, String rfidTag) {
     int index = _pendingRequests.indexWhere((o) => o.id == id);
     if (index != -1) {
       final request = _pendingRequests.removeAt(index);
@@ -103,7 +146,7 @@ class MockDataService {
         returnMethod: request.returnMethod,
         status: needsRiderPickup ? OrderStatus.pending_pickup : OrderStatus.processing,
         paymentStatus: request.paymentStatus,
-        weight: weight,
+        loads: loads,
         rfidTag: rfidTag,
         instructions: request.instructions,
         createdAt: DateTime.now(),
@@ -138,7 +181,7 @@ class MockDataService {
       final old = _orders[index];
       
       if (newStatus == OrderStatus.processing && old.status != OrderStatus.processing) {
-        useSupplies(old.weight);
+        useSupplies(old.totalWeight);
       }
 
       _orders[index] = LaundryOrder(
@@ -149,7 +192,44 @@ class MockDataService {
         returnMethod: old.returnMethod,
         status: newStatus,
         paymentStatus: old.paymentStatus,
-        weight: old.weight,
+        loads: old.loads,
+        rfidTag: old.rfidTag,
+        instructions: old.instructions,
+        createdAt: old.createdAt,
+      );
+    }
+  }
+
+  void updateLoadStatus(String orderId, int loadNumber, LoadStatus newStatus) {
+    int index = _orders.indexWhere((o) => o.id == orderId);
+    if (index != -1) {
+      final old = _orders[index];
+      final updatedLoads = old.loads.map((load) {
+        if (load.loadNumber == loadNumber) {
+          return load.copyWith(loadStatus: newStatus);
+        }
+        return load;
+      }).toList();
+
+      // Update order status based on all loads
+      OrderStatus orderStatus = old.status;
+      final allFolded = updatedLoads.every((load) => load.loadStatus == LoadStatus.folded);
+      if (allFolded && old.status == OrderStatus.processing) {
+        orderStatus = OrderStatus.ready;
+      }
+
+      _orders[index] = LaundryOrder(
+        id: old.id,
+        customerName: old.customerName,
+        customerPhone: old.customerPhone,
+        deliveryAddress: old.deliveryAddress,
+        deliveryLandmark: old.deliveryLandmark,
+        channel: old.channel,
+        collectionMethod: old.collectionMethod,
+        returnMethod: old.returnMethod,
+        status: orderStatus,
+        paymentStatus: old.paymentStatus,
+        loads: updatedLoads,
         rfidTag: old.rfidTag,
         instructions: old.instructions,
         createdAt: old.createdAt,

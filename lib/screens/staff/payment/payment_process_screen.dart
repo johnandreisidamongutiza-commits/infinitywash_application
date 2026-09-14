@@ -66,7 +66,7 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(widget.order.customerName, style: AppTheme.lightTheme.textTheme.titleMedium),
-                  Text('Order ${widget.order.id} • ${widget.order.weight.toStringAsFixed(1)} kg', style: AppTheme.lightTheme.textTheme.bodyMedium),
+                  Text('Order ${widget.order.id} • ${widget.order.weightDisplay}', style: AppTheme.lightTheme.textTheme.bodyMedium),
                 ],
               ),
               Text('₱${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: AppTheme.accentBlue)),
@@ -148,7 +148,7 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
           const SizedBox(height: 20),
           _receiptRow('Customer', widget.order.customerName),
           _receiptRow('Order ID', widget.order.id),
-          _receiptRow('Weight', '${widget.order.weight.toStringAsFixed(1)} kg'),
+          _receiptRow('Weight', widget.order.weightDisplay),
           _receiptRow('Package', 'Full Service (Wash, Dry & Fold)'),
           _receiptRow('Detergent & Fab Con', 'INCLUDED (FREE)'),
           _receiptRow('Pick-up & Delivery', 'INCLUDED (FREE)'),

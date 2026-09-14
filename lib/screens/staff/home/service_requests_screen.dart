@@ -123,11 +123,11 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
     String selectedCategory = 'Regular Clothing';
     final availableTags = MockDataService().availableRfidTags;
 
-    final Map<String, double> categoryLimits = {
-      'Regular Clothing': 8.0,
-      'Heavy Clothing': 6.0,
-      'Beddings & Towels': 5.0,
-      'Heavy Bedding': 1.0,
+    final Map<String, Map<String, dynamic>> categories = {
+      'Regular Clothing': {'limit': 8.0, 'unit': 'kg', 'desc': 'T-shirts, shorts, sleeveless, socks, underwear'},
+      'Heavy Clothing': {'limit': 6.0, 'unit': 'kg', 'desc': 'Jeans, cargo, jackets, sweaters, corduroy'},
+      'Beddings & Towels': {'limit': 5.0, 'unit': 'kg', 'desc': 'Bedsheets, blankets, towels, curtains'},
+      'Heavyweight Beddings': {'limit': 1.0, 'unit': 'pc', 'desc': 'Comforter, heavy fleece blanket, duvet'},
     };
 
     showDialog(
@@ -135,8 +135,14 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           final double weight = double.tryParse(weightController.text) ?? 0.0;
-          final double limit = categoryLimits[selectedCategory]!;
+          final categoryData = categories[selectedCategory]!;
+          final double limit = categoryData['limit'] as double;
+          final String unit = categoryData['unit'] as String;
           final bool isOver = weight > limit;
+          
+          // Calculate loads and pricing
+          final int numLoads = isOver ? (weight / limit).ceil() : 1;
+          final double totalPrice = 170.0 * numLoads;
 
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -158,10 +164,11 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
                       border: OutlineInputBorder(),
                       contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     ),
-                    items: categoryLimits.entries.map((e) {
+                    items: categories.entries.map((e) {
+                      final catData = e.value;
                       return DropdownMenuItem<String>(
                         value: e.key,
-                        child: Text('${e.key} (≤ ${e.value.toStringAsFixed(0)} ${e.key == 'Heavy Bedding' ? 'pc' : 'kg'})',
+                        child: Text('${e.key} (≤ ${catData['limit']} ${catData['unit']})',
                             style: const TextStyle(fontSize: 13)),
                       );
                     }).toList(),
@@ -179,7 +186,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
                     keyboardType: TextInputType.number,
                     onChanged: (v) => setDialogState(() {}),
                     decoration: InputDecoration(
-                      labelText: 'Scale Weight (kg)',
+                      labelText: 'Scale Weight ($unit)',
                       border: const OutlineInputBorder(),
                       suffixIcon: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -194,12 +201,41 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
                       ),
                     ),
                   ),
-                  if (isOver)
+                  if (isOver) ...[
                     Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text('Limit is $limit kg for this category.',
-                          style: const TextStyle(fontSize: 10, color: Colors.red)),
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.info_outline, size: 16, color: Colors.orange),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Exceeds $limit $unit limit by ${(weight - limit).toStringAsFixed(1)} $unit',
+                                    style: const TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Will be processed as $numLoads separate load${numLoads > 1 ? 's' : ''} (₱170 each)',
+                              style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
+                  ],
 
                   const SizedBox(height: 14),
 
@@ -228,7 +264,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
                     DropdownButtonFormField<String>(
                       initialValue: selectedRfidTag,
                       decoration: const InputDecoration(
-                        labelText: 'Assign RFID Tag',
+                        labelText: 'Assign RFID Tag (Shared for all loads)',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.nfc_outlined),
                         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -246,44 +282,67 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
 
                   const SizedBox(height: 18),
 
-                  // Official ₱170 Bill Card
+                  // Official Bill Card
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: AppTheme.softGray,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Column(
+                    child: Column(
                       children: [
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('Full Service (Wash, Dry, Fold):', style: TextStyle(fontSize: 12, color: AppTheme.textDark)),
-                            Text('₱170.00', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            Text(
+                              numLoads > 1 
+                                ? 'Full Service ($numLoads loads):'
+                                : 'Full Service (Wash, Dry, Fold):',
+                              style: const TextStyle(fontSize: 12, color: AppTheme.textDark),
+                            ),
+                            Text(
+                              '₱${totalPrice.toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
                           ],
                         ),
-                        SizedBox(height: 4),
-                        Row(
+                        if (numLoads > 1) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '  ₱170 × $numLoads loads',
+                                style: const TextStyle(fontSize: 11, color: AppTheme.textLight, fontStyle: FontStyle.italic),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 4),
+                        const Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text('Detergent + Fab Con:', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
                             Text('INCLUDED', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green)),
                           ],
                         ),
-                        SizedBox(height: 4),
-                        Row(
+                        const SizedBox(height: 4),
+                        const Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text('Pick Up & Delivery:', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
                             Text('INCLUDED', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green)),
                           ],
                         ),
-                        Divider(height: 14),
+                        const Divider(height: 14),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('Total Bill Sent to App:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                            Text('₱170.00', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.accentBlue)),
+                            const Text('Total Bill Sent to App:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            Text(
+                              '₱${totalPrice.toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
+                            ),
                           ],
                         ),
                       ],
@@ -299,18 +358,54 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
                     ? null
                     : () {
                         final double verifiedWeight = double.tryParse(weightController.text) ?? 1.0;
+                        
+                        // Create loads (auto-split if over limit)
+                        final List<OrderLoad> loads = [];
+                        if (numLoads > 1) {
+                          // Split into multiple loads
+                          final double weightPerLoad = verifiedWeight / numLoads;
+                          for (int i = 0; i < numLoads; i++) {
+                            loads.add(OrderLoad(
+                              loadNumber: i + 1,
+                              category: selectedCategory,
+                              weight: weightPerLoad,
+                              categoryLimit: limit,
+                              unit: unit,
+                              description: categoryData['desc'] as String,
+                              isOverLimit: false,
+                              loadStatus: LoadStatus.queued,
+                            ));
+                          }
+                        } else {
+                          // Single load
+                          loads.add(OrderLoad(
+                            loadNumber: 1,
+                            category: selectedCategory,
+                            weight: verifiedWeight,
+                            categoryLimit: limit,
+                            unit: unit,
+                            description: categoryData['desc'] as String,
+                            isOverLimit: false,
+                            loadStatus: LoadStatus.queued,
+                          ));
+                        }
+                        
                         setState(() {
-                          MockDataService().approveRequest(request.id, verifiedWeight, selectedRfidTag!);
+                          MockDataService().approveRequest(request.id, loads, selectedRfidTag!);
                         });
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Order #${request.id} accepted! ₱170.00 bill sent to customer.'),
+                            content: Text(
+                              numLoads > 1
+                                ? 'Order #${request.id} accepted! $numLoads loads, ₱${totalPrice.toStringAsFixed(0)} bill sent to customer.'
+                                : 'Order #${request.id} accepted! ₱${totalPrice.toStringAsFixed(0)} bill sent to customer.',
+                            ),
                             backgroundColor: Colors.green,
                           ),
                         );
                       },
-                child: const Text('Accept & Push Bill (₱170.00)'),
+                child: Text('Accept & Push Bill (₱${totalPrice.toStringAsFixed(0)})'),
               ),
             ],
           );

@@ -15,7 +15,18 @@ class OrderHistoryScreen extends StatelessWidget {
         channel: OrderChannel.walkIn,
         status: OrderStatus.completed,
         paymentStatus: PaymentStatus.paid,
-        weight: 4.0,
+        loads: [
+          OrderLoad(
+            loadNumber: 1,
+            category: 'Regular Clothing',
+            weight: 4.0,
+            categoryLimit: 8.0,
+            unit: 'kg',
+            description: 'T-shirts, shorts, sleeveless, socks, underwear',
+            isOverLimit: false,
+            loadStatus: LoadStatus.folded,
+          ),
+        ],
         createdAt: DateTime.now().subtract(const Duration(days: 1)),
       ),
       LaundryOrder(
@@ -26,7 +37,18 @@ class OrderHistoryScreen extends StatelessWidget {
         returnMethod: ReturnMethod.delivery,
         status: OrderStatus.completed,
         paymentStatus: PaymentStatus.paid,
-        weight: 7.2,
+        loads: [
+          OrderLoad(
+            loadNumber: 1,
+            category: 'Heavy Clothing',
+            weight: 7.2,
+            categoryLimit: 6.0,
+            unit: 'kg',
+            description: 'Jeans, cargo, jackets, sweaters, corduroy',
+            isOverLimit: true,
+            loadStatus: LoadStatus.folded,
+          ),
+        ],
         createdAt: DateTime.now().subtract(const Duration(days: 2)),
       ),
     ];
@@ -61,12 +83,12 @@ class OrderHistoryScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(order.customerName, style: AppTheme.lightTheme.textTheme.titleMedium),
-                      Text('Order ${order.id} • ${order.weight} kg', style: AppTheme.lightTheme.textTheme.bodyMedium),
+                      Text('Order ${order.id} • ${order.weightDisplay}', style: AppTheme.lightTheme.textTheme.bodyMedium),
                     ],
                   ),
                 ),
                 Text(
-                  '₱${(order.weight * 50).toStringAsFixed(0)}',
+                  '₱${order.basePrice.toStringAsFixed(0)}',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
               ],

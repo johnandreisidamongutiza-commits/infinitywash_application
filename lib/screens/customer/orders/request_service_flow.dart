@@ -587,7 +587,18 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   returnMethod: _selectedReturn,
                   status: OrderStatus.pending_approval,
                   paymentStatus: PaymentStatus.unpaid,
-                  weight: 0, // Staff will input weight when inspecting
+                  loads: [
+                    OrderLoad(
+                      loadNumber: 1,
+                      category: 'Regular Clothing',
+                      weight: 0, // Staff will input weight when inspecting
+                      categoryLimit: 8.0,
+                      unit: 'kg',
+                      description: 'T-shirts, shorts, sleeveless, socks, underwear',
+                      isOverLimit: false,
+                      loadStatus: LoadStatus.queued,
+                    ),
+                  ],
                   instructions: 'Pickup Address: $_pickupAddress${fullNote.isNotEmpty ? ' ($fullNote)' : ''}',
                   createdAt: DateTime.now(),
                 );

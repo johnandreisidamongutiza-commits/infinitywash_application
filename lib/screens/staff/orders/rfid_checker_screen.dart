@@ -82,6 +82,19 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
     });
   }
 
+  Color _getLoadStatusColor(LoadStatus status) {
+    switch (status) {
+      case LoadStatus.queued:
+        return Colors.grey;
+      case LoadStatus.washing:
+        return AppTheme.accentBlue;
+      case LoadStatus.drying:
+        return Colors.orange;
+      case LoadStatus.folded:
+        return Colors.green;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final availableTags = MockDataService().availableRfidTags;
@@ -693,11 +706,29 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                 Row(
                   children: [
                     const Expanded(
-                      child: Text('Measured Weight:', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
+                      child: Text('Total Weight:', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
                     ),
-                    Text('${order.weight.toStringAsFixed(1)} kg', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark)),
+                    Text(order.weightDisplay, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark)),
                   ],
                 ),
+                if (order.hasMultipleLoads) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Multiple Loads:', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentBlue.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text('${order.totalLoads} loads', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppTheme.accentBlue)),
+                      ),
+                    ],
+                  ),
+                ],
                 if (order.instructions != null && order.instructions!.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Row(
@@ -718,6 +749,91 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
           ),
 
           const SizedBox(height: 16),
+
+          // Load Breakdown (if multiple loads)
+          if (order.hasMultipleLoads) ...[
+            const Text('Load Breakdown', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textLight)),
+            const SizedBox(height: 6),
+            ...order.loads.asMap().entries.map((entry) {
+              final load = entry.value;
+              final loadIndex = entry.key;
+              return Container(
+                margin: EdgeInsets.only(bottom: loadIndex < order.loads.length - 1 ? 8 : 0),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: _getLoadStatusColor(load.loadStatus).withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          load.statusIcon,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Load ${load.loadNumber}: ${load.category}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textDark),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Text(
+                                '${load.weight.toStringAsFixed(1)} ${load.unit}',
+                                style: TextStyle(fontSize: 11, color: load.isOverLimit ? Colors.orange : AppTheme.textLight),
+                              ),
+                              const SizedBox(width: 4),
+                              const Text('•', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  load.statusText,
+                                  style: TextStyle(fontSize: 11, color: _getLoadStatusColor(load.loadStatus), fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (load.notes != null && load.notes!.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              load.notes!,
+                              style: const TextStyle(fontSize: 10, color: AppTheme.textLight, fontStyle: FontStyle.italic),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 16),
+          ],
 
           // 3. Fulfillment & Payment
           const Text('Fulfillment & Payment', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textLight)),
