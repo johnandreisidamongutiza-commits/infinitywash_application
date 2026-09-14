@@ -37,6 +37,19 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
     print('Order ID: ${widget.order.id}');
     print('Customer: ${widget.order.customerName}');
     print('Has TBD Loads: $_hasTBDLoads');
+    print('Loads count: ${widget.order.loads.length}');
+    print('Delivery address: ${widget.order.deliveryAddress}');
+    print('Customer phone: ${widget.order.customerPhone}');
+    
+    // Ensure we have valid data
+    if (widget.order.customerName.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Order Details')),
+        body: const Center(
+          child: Text('Error: Invalid order data'),
+        ),
+      );
+    }
     
     // Use actual order data
     String orderNumber = widget.order.id;
@@ -62,105 +75,107 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
         elevation: 0,
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header Card - Order Number and Type
-            _buildHeaderCard(orderNumber, date),
-            const SizedBox(height: 24),
+      body: widget.order.customerName.isEmpty 
+          ? const Center(child: Text('Error: Invalid order data'))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header Card - Order Number and Type
+                  _buildHeaderCard(orderNumber, date),
+                  const SizedBox(height: 24),
 
-            // Customer Information Section
-            Text('Customer Information', style: AppTheme.lightTheme.textTheme.titleMedium),
-            const SizedBox(height: 12),
-            _buildCustomerInfoCard(customerName, address, phoneNumber, rfidTag),
-            const SizedBox(height: 24),
+                  // Customer Information Section
+                  Text('Customer Information', style: AppTheme.lightTheme.textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  _buildCustomerInfoCard(customerName, address, phoneNumber, rfidTag),
+                  const SizedBox(height: 24),
 
-            // Order Details Section
-            Text('Order Details', style: AppTheme.lightTheme.textTheme.titleMedium),
-            const SizedBox(height: 12),
-            _buildOrderDetailsCard(serviceType, weight, instructions, total),
-            const SizedBox(height: 24),
+                  // Order Details Section
+                  Text('Order Details', style: AppTheme.lightTheme.textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  _buildOrderDetailsCard(serviceType, weight, instructions, total),
+                  const SizedBox(height: 24),
 
-            // RFID Scanning Section (only for TBD loads)
-            if (_hasTBDLoads && widget.isPickup) ...[
-              _buildRfidScanningSection(),
-              const SizedBox(height: 24),
-            ],
-
-            // Order Status Section
-            if (!_isScanning) ...[
-              Text('Order Status', style: AppTheme.lightTheme.textTheme.titleMedium),
-              const SizedBox(height: 12),
-              _buildOrderStatusCard(),
-              const SizedBox(height: 32),
-            ],
-
-            // Action Buttons
-            if (!_isScanning) ...[
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const RiderRouteScreen()),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 56),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.navigation),
-                    SizedBox(width: 8),
-                    Text('Navigate to Location'),
+                  // RFID Scanning Section (only for TBD loads)
+                  if (_hasTBDLoads && widget.isPickup) ...[
+                    _buildRfidScanningSection(),
+                    const SizedBox(height: 24),
                   ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: () {
-                  _showContactOptions(context, phoneNumber, customerName, orderNumber);
-                },
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 56),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.phone),
-                    SizedBox(width: 8),
-                    Text('Contact Customer'),
+
+                  // Order Status Section
+                  if (!_isScanning) ...[
+                    Text('Order Status', style: AppTheme.lightTheme.textTheme.titleMedium),
+                    const SizedBox(height: 12),
+                    _buildOrderStatusCard(),
+                    const SizedBox(height: 32),
                   ],
-                ),
-              ),
-              if (_hasTBDLoads && widget.isPickup) ...[
-                const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _isScanning = true;
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.accentBlue,
-                    minimumSize: const Size(double.infinity, 56),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.qr_code_scanner),
-                      SizedBox(width: 8),
-                      Text('Scan RFID Tags & Confirm Pickup'),
+
+                  // Action Buttons
+                  if (!_isScanning) ...[
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const RiderRouteScreen()),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 56),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.navigation),
+                          SizedBox(width: 8),
+                          Text('Navigate to Location'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: () {
+                        _showContactOptions(context, phoneNumber, customerName, orderNumber);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 56),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.phone),
+                          SizedBox(width: 8),
+                          Text('Contact Customer'),
+                        ],
+                      ),
+                    ),
+                    if (_hasTBDLoads && widget.isPickup) ...[
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _isScanning = true;
+                          });
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.accentBlue,
+                          minimumSize: const Size(double.infinity, 56),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.qr_code_scanner),
+                            SizedBox(width: 8),
+                            Text('Scan RFID Tags & Confirm Pickup'),
+                          ],
+                        ),
+                      ),
                     ],
-                  ),
-                ),
-              ],
-            ],
-          ],
-        ),
-      ),
+                  ],
+                ],
+              ),
+            ),
     );
   }
 
@@ -214,7 +229,6 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
     double totalAmount = loadCount * 170.0;
 
     return Container(
-      width: double.infinity, // Add width constraint
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration.copyWith(
         border: Border.all(color: AppTheme.accentBlue, width: 2),

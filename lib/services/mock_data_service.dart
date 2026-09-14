@@ -157,9 +157,136 @@ class MockDataService {
       instructions: 'Customer called to request pickup',
       createdAt: DateTime.now().subtract(const Duration(minutes: 30)),
     ),
+    // Test customer orders for 3-tab display
+    LaundryOrder(
+      id: 'IW-1002',
+      customerName: 'Test Customer',
+      customerPhone: '0915-111-2222',
+      deliveryAddress: '100 Test St, Cebu City',
+      deliveryLandmark: 'Near mall',
+      channel: OrderChannel.online,
+      collectionMethod: CollectionMethod.riderPickup,
+      returnMethod: ReturnMethod.delivery,
+      status: OrderStatus.rejected,
+      paymentStatus: PaymentStatus.unpaid,
+      loads: [],
+      instructions: null,
+      rfidTag: null,
+      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
+      laundryPhotoUrls: ['assets/images/laundry1.jpg'],
+      customerDescription: 'Test rejected order',
+      rejectionReason: 'out_of_service_area',
+      staffMessage: 'Sorry, we currently don\'t service this area.',
+      reviewedAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 50)),
+      reviewedBy: 'Staff User',
+    ),
+    LaundryOrder(
+      id: 'IW-1003',
+      customerName: 'Test Customer',
+      customerPhone: '0915-111-2222',
+      deliveryAddress: '100 Test St, Cebu City',
+      deliveryLandmark: 'Near mall',
+      channel: OrderChannel.online,
+      collectionMethod: CollectionMethod.riderPickup,
+      returnMethod: ReturnMethod.delivery,
+      status: OrderStatus.processing,
+      paymentStatus: PaymentStatus.unpaid,
+      loads: [
+        OrderLoad(
+          loadNumber: 1,
+          category: 'Regular Clothing',
+          weight: 6.0,
+          categoryLimit: 8.0,
+          unit: 'kg',
+          description: 'T-shirts, shorts, socks',
+          isOverLimit: false,
+          loadStatus: LoadStatus.washing,
+        ),
+      ],
+      rfidTag: 'RFID-008',
+      instructions: 'Handle with care',
+      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
+    ),
+    LaundryOrder(
+      id: 'IW-1004',
+      customerName: 'Test Customer',
+      customerPhone: '0915-111-2222',
+      deliveryAddress: '100 Test St, Cebu City',
+      deliveryLandmark: 'Near mall',
+      channel: OrderChannel.online,
+      collectionMethod: CollectionMethod.riderPickup,
+      returnMethod: ReturnMethod.delivery,
+      status: OrderStatus.out_for_delivery,
+      paymentStatus: PaymentStatus.unpaid,
+      loads: [
+        OrderLoad(
+          loadNumber: 1,
+          category: 'Regular Clothing',
+          weight: 5.0,
+          categoryLimit: 8.0,
+          unit: 'kg',
+          description: 'Mixed clothing',
+          isOverLimit: false,
+          loadStatus: LoadStatus.folded,
+        ),
+      ],
+      rfidTag: 'RFID-009',
+      instructions: 'Call before delivery',
+      createdAt: DateTime.now().subtract(const Duration(hours: 3)),
+    ),
+    LaundryOrder(
+      id: 'IW-1005',
+      customerName: 'Test Customer',
+      customerPhone: '0915-111-2222',
+      deliveryAddress: '100 Test St, Cebu City',
+      deliveryLandmark: 'Near mall',
+      channel: OrderChannel.online,
+      collectionMethod: CollectionMethod.riderPickup,
+      returnMethod: ReturnMethod.delivery,
+      status: OrderStatus.completed,
+      paymentStatus: PaymentStatus.paid,
+      loads: [
+        OrderLoad(
+          loadNumber: 1,
+          category: 'Regular Clothing',
+          weight: 4.5,
+          categoryLimit: 8.0,
+          unit: 'kg',
+          description: 'Mixed clothing',
+          isOverLimit: false,
+          loadStatus: LoadStatus.folded,
+        ),
+      ],
+      rfidTag: 'RFID-010',
+      instructions: null,
+      createdAt: DateTime.now().subtract(const Duration(days: 2)),
+      paymentMethod: 'GCash',
+      paidAt: DateTime.now().subtract(const Duration(days: 1)),
+    ),
   ];
 
-  final List<LaundryOrder> _pendingRequests = [];
+  final List<LaundryOrder> _pendingRequests = [
+    // Test: Pending approval photo request
+    LaundryOrder(
+      id: 'IW-1001',
+      customerName: 'Test Customer',
+      customerPhone: '0915-111-2222',
+      deliveryAddress: '100 Test St, Cebu City',
+      deliveryLandmark: 'Near mall',
+      channel: OrderChannel.online,
+      collectionMethod: CollectionMethod.riderPickup,
+      returnMethod: ReturnMethod.delivery,
+      status: OrderStatus.pending_approval,
+      paymentStatus: PaymentStatus.unpaid,
+      loads: [],
+      instructions: null,
+      rfidTag: null,
+      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
+      laundryPhotoUrls: ['assets/images/laundry1.jpg', 'assets/images/laundry2.jpg', 'assets/images/laundry3.jpg'],
+      customerDescription: 'Mixed colors and whites. Please handle gently.',
+      expiresAt: DateTime.now().add(const Duration(hours: 23)),
+    ),
+  ];
   
   final List<Supply> _supplies = [
     Supply(id: '1', name: 'Liquid Detergent', currentAmount: 8.5, maxAmount: 10.0, unit: 'L'),
@@ -496,5 +623,33 @@ class MockDataService {
       o.rfidTag == tag && 
       o.status != OrderStatus.completed
     );
+  }
+
+  // Customer Order Methods
+  List<LaundryOrder> getCustomerRequests(String customerPhone) {
+    return _pendingRequests.where((o) => 
+      o.customerPhone == customerPhone &&
+      (o.status == OrderStatus.pending_approval || o.status == OrderStatus.rejected)
+    ).toList() + _orders.where((o) => 
+      o.customerPhone == customerPhone &&
+      (o.status == OrderStatus.pending_approval || o.status == OrderStatus.rejected)
+    ).toList();
+  }
+
+  List<LaundryOrder> getCustomerActiveOrders(String customerPhone) {
+    return _orders.where((o) => 
+      o.customerPhone == customerPhone &&
+      (o.status == OrderStatus.pending_pickup ||
+       o.status == OrderStatus.processing ||
+       o.status == OrderStatus.ready ||
+       o.status == OrderStatus.out_for_delivery)
+    ).toList();
+  }
+
+  List<LaundryOrder> getCustomerHistory(String customerPhone) {
+    return _orders.where((o) => 
+      o.customerPhone == customerPhone &&
+      o.status == OrderStatus.completed
+    ).toList();
   }
 }
