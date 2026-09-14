@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../models/order.dart';
+import '../../../services/mock_data_service.dart';
 import '../orders/rider_order_details_screen.dart';
 
 class RiderChatDetailScreen extends StatefulWidget {
@@ -353,12 +355,25 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
   void _viewOrderDetails() {
     if (widget.orderId != null) {
       // Extract order index from orderId (e.g., "IW-105" -> 0)
-      final orderIndex = int.tryParse(widget.orderId!.split('-').last) ?? 105;
+      // Try to find a real order, or create a dummy one
+      final orders = MockDataService().getRiderPickups();
+      final order = orders.isNotEmpty ? orders.first : LaundryOrder(
+        id: widget.orderId ?? 'IW-000',
+        customerName: widget.customerName,
+        channel: OrderChannel.online,
+        collectionMethod: CollectionMethod.riderPickup,
+        returnMethod: ReturnMethod.delivery,
+        status: OrderStatus.pending_pickup,
+        paymentStatus: PaymentStatus.unpaid,
+        loads: [],
+        createdAt: DateTime.now(),
+      );
+      
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => RiderOrderDetailsScreen(
-            orderIndex: orderIndex - 105,
+            order: order,
             isPickup: true,
           ),
         ),

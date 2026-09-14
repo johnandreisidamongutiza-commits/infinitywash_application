@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_text_field.dart';
 import '../../../models/order.dart';
@@ -16,6 +18,11 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   final CollectionMethod _selectedCollection = CollectionMethod.riderPickup;
   ReturnMethod _selectedReturn = ReturnMethod.delivery;
   String _selectedPaymentPreference = 'GCash';
+  
+  // Photo upload state
+  final List<File> _laundryPhotos = [];
+  final ImagePicker _imagePicker = ImagePicker();
+  final int _maxPhotos = 3;
 
   // Profile default data
   static const String _defaultName = 'John Customer';
@@ -31,11 +38,118 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   bool _isUsingCustomDetails = false;
 
   final TextEditingController _instructionsController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
 
   @override
   void dispose() {
     _instructionsController.dispose();
+    _descriptionController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImageFromCamera() async {
+    if (_laundryPhotos.length >= _maxPhotos) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Maximum $_maxPhotos photos allowed')),
+      );
+      return;
+    }
+
+    try {
+      final XFile? photo = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 85,
+      );
+
+      if (photo != null) {
+        setState(() {
+          _laundryPhotos.add(File(photo.path));
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error taking photo. Please try again.')),
+      );
+    }
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    if (_laundryPhotos.length >= _maxPhotos) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Maximum $_maxPhotos photos allowed')),
+      );
+      return;
+    }
+
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        setState(() {
+          _laundryPhotos.add(File(image.path));
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error selecting photo. Please try again.')),
+      );
+    }
+  }
+
+  void _removePhoto(int index) {
+    setState(() {
+      _laundryPhotos.removeAt(index);
+    });
+  }
+
+  void _showPhotoSourceSelector() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: AppTheme.accentBlue),
+                title: const Text('Take Photo'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImageFromCamera();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: AppTheme.accentBlue),
+                title: const Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImageFromGallery();
+                },
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _resetToProfileAddress() {
@@ -173,14 +287,14 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(_currentStep == 3 ? 'Request Status' : 'Request Service'),
+        title: Text(_currentStep == 4 ? 'Request Status' : 'Request Service'),
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(_currentStep == 2 ? Icons.arrow_back : Icons.close, color: AppTheme.textDark),
+          icon: Icon(_currentStep > 1 && _currentStep < 4 ? Icons.arrow_back : Icons.close, color: AppTheme.textDark),
           onPressed: () {
-            if (_currentStep == 2) {
-              setState(() => _currentStep = 1);
+            if (_currentStep > 1 && _currentStep < 4) {
+              setState(() => _currentStep = _currentStep - 1);
             } else {
               Navigator.pop(context);
             }
@@ -196,8 +310,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
       case 1:
         return _buildServiceSelection();
       case 2:
-        return _buildDetailsForm();
+        return _buildPhotoUpload();
       case 3:
+        return _buildDetailsForm();
+      case 4:
         return _buildWaitingApproval();
       default:
         return const SizedBox.shrink();
@@ -219,6 +335,31 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             Text(
               'A rider will be dispatched to your address for laundry collection.',
               style: AppTheme.lightTheme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: AppTheme.teamMemberIconOrange, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'MINIMUM 2 LOADS REQUIRED (Approx. 16kg or more) for pickup/delivery service.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange.shade800,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             _buildSelectableCard(
@@ -254,12 +395,257 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               _selectedReturn == ReturnMethod.shopPickup,
               () => setState(() => _selectedReturn = ReturnMethod.shopPickup),
             ),
+            if (_selectedReturn == ReturnMethod.delivery) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: AppTheme.teamMemberIconOrange, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Delivery also requires minimum 2 loads.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange.shade800,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () => setState(() => _currentStep = 2),
               child: const Text('Continue'),
             ),
             const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhotoUpload() {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Show Us Your Laundry 📸',
+              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(fontSize: 22),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Take 1-3 photos of your laundry pile so our staff can estimate the volume and confirm it meets the 2-load minimum.',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 20),
+            
+            // Tips Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.accentBlue.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.lightbulb_outline, color: AppTheme.accentBlue, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Tips for best results:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: Colors.blue.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _buildTip('Show all laundry in one pile'),
+                  _buildTip('Include any bulky items separately'),
+                  _buildTip('Make sure lighting is good'),
+                  _buildTip('Use a reference object for scale'),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 24),
+            
+            // Photo Grid
+            Text(
+              'Photos (${_laundryPhotos.length}/$_maxPhotos)',
+              style: AppTheme.lightTheme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1,
+              ),
+              itemCount: _laundryPhotos.length + (_laundryPhotos.length < _maxPhotos ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index < _laundryPhotos.length) {
+                  // Show existing photo
+                  return _buildPhotoCard(index);
+                } else {
+                  // Show add button
+                  return _buildAddPhotoButton();
+                }
+              },
+            ),
+            
+            const SizedBox(height: 24),
+            
+            // Description field
+            Text(
+              'Description (Optional)',
+              style: AppTheme.lightTheme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _descriptionController,
+              maxLines: 3,
+              maxLength: 200,
+              decoration: InputDecoration(
+                hintText: 'e.g., Mostly regular clothes, 2 bed sheets, and 1 comforter',
+                hintStyle: TextStyle(color: AppTheme.textLight.withValues(alpha: 0.5)),
+                filled: true,
+                fillColor: AppTheme.softGray,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Info note
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Staff will review your photos and confirm if it meets the 2-load minimum requirement.',
+                      style: TextStyle(fontSize: 12, color: Colors.blue.shade900),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 32),
+            
+            // Continue button
+            ElevatedButton(
+              onPressed: _laundryPhotos.isEmpty ? null : () => setState(() => _currentStep = 3),
+              child: const Text('Continue'),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTip(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('• ', style: TextStyle(fontSize: 14, color: AppTheme.accentBlue)),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 12, color: Colors.blue.shade900),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhotoCard(int index) {
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.file(
+            _laundryPhotos[index],
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.cover,
+          ),
+        ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: GestureDetector(
+            onTap: () => _removePhoto(index),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close, color: Colors.white, size: 16),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAddPhotoButton() {
+    return GestureDetector(
+      onTap: _showPhotoSourceSelector,
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.softGray,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.borderGray, width: 2, style: BorderStyle.solid),
+        ),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_photo_alternate, color: AppTheme.accentBlue, size: 32),
+            SizedBox(height: 4),
+            Text(
+              'Add Photo',
+              style: TextStyle(fontSize: 11, color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
       ),
@@ -342,7 +728,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                           style: TextStyle(fontSize: 11, color: AppTheme.textLight),
                         ),
                         Text(
-                          'Rider Pick-up  •  ${_selectedReturn == ReturnMethod.delivery ? 'Rider Delivery' : 'Shop Pickup'}',
+                          'Rider Pick-up  •  ${_selectedReturn == ReturnMethod.delivery ? 'Rider Delivery' : 'Shop Pickup'}  •  ${_laundryPhotos.length} photo${_laundryPhotos.length != 1 ? 's' : ''}',
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
@@ -352,12 +738,25 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                       ],
                     ),
                   ),
-                  TextButton(
-                    onPressed: () => setState(() => _currentStep = 1),
-                    child: const Text(
-                      'Change',
-                      style: TextStyle(color: AppTheme.accentBlue, fontSize: 12, fontWeight: FontWeight.bold),
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: () => setState(() => _currentStep = 2),
+                        child: const Text(
+                          'View Photos',
+                          style: TextStyle(color: AppTheme.accentBlue, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const Text('•', style: TextStyle(color: AppTheme.textLight)),
+                      TextButton(
+                        onPressed: () => setState(() => _currentStep = 1),
+                        child: const Text(
+                          'Change',
+                          style: TextStyle(color: AppTheme.accentBlue, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -579,33 +978,31 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   'Payment: $_selectedPaymentPreference',
                 ].join(' | ');
 
+                // Convert File paths to strings for storage
+                final List<String> photoPaths = _laundryPhotos.map((file) => file.path).toList();
+                
                 final newRequest = LaundryOrder(
-                  id: 'IW-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
+                  id: 'IW-REQ-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
                   customerName: _customerName,
+                  customerPhone: _phoneNumber,
+                  deliveryAddress: _selectedReturn == ReturnMethod.delivery ? _pickupAddress : null,
+                  deliveryLandmark: _selectedReturn == ReturnMethod.delivery && _landmark.isNotEmpty ? _landmark : null,
                   channel: OrderChannel.online,
                   collectionMethod: _selectedCollection,
                   returnMethod: _selectedReturn,
                   status: OrderStatus.pending_approval,
                   paymentStatus: PaymentStatus.unpaid,
-                  loads: [
-                    OrderLoad(
-                      loadNumber: 1,
-                      category: 'Regular Clothing',
-                      weight: 0, // Staff will input weight when inspecting
-                      categoryLimit: 8.0,
-                      unit: 'kg',
-                      description: 'T-shirts, shorts, sleeveless, socks, underwear',
-                      isOverLimit: false,
-                      loadStatus: LoadStatus.queued,
-                    ),
-                  ],
+                  loads: [], // Empty - staff will fill when laundry arrives
                   instructions: 'Pickup Address: $_pickupAddress${fullNote.isNotEmpty ? ' ($fullNote)' : ''}',
                   createdAt: DateTime.now(),
+                  laundryPhotoUrls: photoPaths,
+                  customerDescription: _descriptionController.text.trim().isNotEmpty ? _descriptionController.text.trim() : null,
+                  expiresAt: DateTime.now().add(const Duration(hours: 24)), // Auto-reject after 24 hours
                 );
 
                 MockDataService().addRequest(newRequest);
 
-                setState(() => _currentStep = 3);
+                setState(() => _currentStep = 4);
               },
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,

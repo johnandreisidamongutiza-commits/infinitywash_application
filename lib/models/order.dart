@@ -1,4 +1,4 @@
-enum OrderStatus { pending_approval, pending_pickup, processing, ready, out_for_delivery, completed }
+enum OrderStatus { pending_approval, rejected, pending_pickup, processing, ready, out_for_delivery, completed }
 enum CollectionMethod { dropOff, riderPickup }
 enum ReturnMethod { shopPickup, delivery }
 enum OrderChannel { walkIn, online }
@@ -88,6 +88,17 @@ class LaundryOrder {
   final DateTime createdAt;
   final String? paymentMethod; // 'Cash', 'GCash', null
   final DateTime? paidAt; // When payment was received
+  
+  // Photo request fields
+  final List<String>? laundryPhotoUrls; // URLs/paths to uploaded images
+  final String? customerDescription; // Customer's text description of laundry
+  final int? estimatedLoads; // Staff's estimate from photos (2, 3, 4, 5+)
+  final String? rejectionReason; // Why request was rejected
+  final String? staffMessage; // Message from staff to customer
+  final DateTime? reviewedAt; // When staff approved/rejected
+  final String? reviewedBy; // Which staff member reviewed
+  final DateTime? expiresAt; // Auto-reject after 24 hours if not reviewed
+  final String? underReviewBy; // Staff member currently reviewing (lock)
 
   LaundryOrder({
     required this.id,
@@ -106,6 +117,15 @@ class LaundryOrder {
     required this.createdAt,
     this.paymentMethod,
     this.paidAt,
+    this.laundryPhotoUrls,
+    this.customerDescription,
+    this.estimatedLoads,
+    this.rejectionReason,
+    this.staffMessage,
+    this.reviewedAt,
+    this.reviewedBy,
+    this.expiresAt,
+    this.underReviewBy,
   });
 
   // Computed properties
@@ -138,6 +158,7 @@ class LaundryOrder {
   String get statusText {
     switch (status) {
       case OrderStatus.pending_approval: return 'Pending Approval';
+      case OrderStatus.rejected: return 'Rejected';
       case OrderStatus.pending_pickup: return 'Waiting for Rider';
       case OrderStatus.processing: return 'Processing';
       case OrderStatus.ready: return 'Ready for Pickup';

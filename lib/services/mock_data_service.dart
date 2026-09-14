@@ -102,6 +102,61 @@ class MockDataService {
       instructions: 'Separate whites, delicate wash',
       createdAt: DateTime.now().subtract(const Duration(hours: 2)),
     ),
+    // Test order: Photo request pending pickup (TBD loads)
+    LaundryOrder(
+      id: 'IW-999',
+      customerName: 'Test Customer (Photo Request)',
+      customerPhone: '0915-123-4567',
+      deliveryAddress: '789 IT Park, Cebu City',
+      deliveryLandmark: 'Near Starbucks',
+      channel: OrderChannel.online,
+      collectionMethod: CollectionMethod.riderPickup,
+      returnMethod: ReturnMethod.delivery,
+      status: OrderStatus.pending_pickup,
+      paymentStatus: PaymentStatus.unpaid,
+      loads: [], // Empty - TBD at pickup
+      instructions: null,
+      rfidTag: null,
+      createdAt: DateTime.now().subtract(const Duration(minutes: 10)),
+      laundryPhotoUrls: ['assets/images/laundry1.jpg', 'assets/images/laundry2.jpg'],
+      customerDescription: 'Please separate whites from colors. Handle with care.',
+    ),
+    // Test order: Walk-in pickup with known loads
+    LaundryOrder(
+      id: 'IW-998',
+      customerName: 'Alice Green',
+      customerPhone: '0917-888-5555',
+      deliveryAddress: '321 Escario St, Cebu City',
+      deliveryLandmark: 'Blue building near church',
+      channel: OrderChannel.walkIn,
+      collectionMethod: CollectionMethod.riderPickup,
+      returnMethod: ReturnMethod.delivery,
+      status: OrderStatus.pending_pickup,
+      paymentStatus: PaymentStatus.unpaid,
+      loads: [
+        OrderLoad(
+          loadNumber: 1,
+          category: 'Regular Clothing',
+          weight: 7.0,
+          categoryLimit: 8.0,
+          unit: 'kg',
+          description: 'Mixed clothing',
+          isOverLimit: false,
+        ),
+        OrderLoad(
+          loadNumber: 2,
+          category: 'Regular Clothing',
+          weight: 6.5,
+          categoryLimit: 8.0,
+          unit: 'kg',
+          description: 'Mixed clothing',
+          isOverLimit: false,
+        ),
+      ],
+      rfidTag: 'RFID-007',
+      instructions: 'Customer called to request pickup',
+      createdAt: DateTime.now().subtract(const Duration(minutes: 30)),
+    ),
   ];
 
   final List<LaundryOrder> _pendingRequests = [];
@@ -156,6 +211,144 @@ class MockDataService {
 
   void declineRequest(String id) {
     _pendingRequests.removeWhere((o) => o.id == id);
+  }
+  
+  void lockRequestForReview(String id, String staffName) {
+    final index = _pendingRequests.indexWhere((o) => o.id == id);
+    if (index != -1) {
+      final request = _pendingRequests[index];
+      _pendingRequests[index] = LaundryOrder(
+        id: request.id,
+        customerName: request.customerName,
+        customerPhone: request.customerPhone,
+        deliveryAddress: request.deliveryAddress,
+        deliveryLandmark: request.deliveryLandmark,
+        channel: request.channel,
+        collectionMethod: request.collectionMethod,
+        returnMethod: request.returnMethod,
+        status: request.status,
+        paymentStatus: request.paymentStatus,
+        loads: request.loads,
+        instructions: request.instructions,
+        rfidTag: request.rfidTag,
+        createdAt: request.createdAt,
+        paymentMethod: request.paymentMethod,
+        paidAt: request.paidAt,
+        laundryPhotoUrls: request.laundryPhotoUrls,
+        customerDescription: request.customerDescription,
+        estimatedLoads: request.estimatedLoads,
+        rejectionReason: request.rejectionReason,
+        staffMessage: request.staffMessage,
+        reviewedAt: request.reviewedAt,
+        reviewedBy: request.reviewedBy,
+        expiresAt: request.expiresAt,
+        underReviewBy: staffName, // Lock it
+      );
+    }
+  }
+  
+  void unlockRequest(String id) {
+    final index = _pendingRequests.indexWhere((o) => o.id == id);
+    if (index != -1) {
+      final request = _pendingRequests[index];
+      _pendingRequests[index] = LaundryOrder(
+        id: request.id,
+        customerName: request.customerName,
+        customerPhone: request.customerPhone,
+        deliveryAddress: request.deliveryAddress,
+        deliveryLandmark: request.deliveryLandmark,
+        channel: request.channel,
+        collectionMethod: request.collectionMethod,
+        returnMethod: request.returnMethod,
+        status: request.status,
+        paymentStatus: request.paymentStatus,
+        loads: request.loads,
+        instructions: request.instructions,
+        rfidTag: request.rfidTag,
+        createdAt: request.createdAt,
+        paymentMethod: request.paymentMethod,
+        paidAt: request.paidAt,
+        laundryPhotoUrls: request.laundryPhotoUrls,
+        customerDescription: request.customerDescription,
+        estimatedLoads: request.estimatedLoads,
+        rejectionReason: request.rejectionReason,
+        staffMessage: request.staffMessage,
+        reviewedAt: request.reviewedAt,
+        reviewedBy: request.reviewedBy,
+        expiresAt: request.expiresAt,
+        underReviewBy: null, // Unlock it
+      );
+    }
+  }
+  
+  void approvePhotoRequest(String id, int estimatedLoads, String? message) {
+    final index = _pendingRequests.indexWhere((o) => o.id == id);
+    if (index != -1) {
+      final request = _pendingRequests.removeAt(index);
+      // Move to orders list with pending_pickup status
+      _orders.add(LaundryOrder(
+        id: request.id,
+        customerName: request.customerName,
+        customerPhone: request.customerPhone,
+        deliveryAddress: request.deliveryAddress,
+        deliveryLandmark: request.deliveryLandmark,
+        channel: request.channel,
+        collectionMethod: request.collectionMethod,
+        returnMethod: request.returnMethod,
+        status: OrderStatus.pending_pickup, // Changed status
+        paymentStatus: request.paymentStatus,
+        loads: request.loads,
+        instructions: request.instructions,
+        rfidTag: request.rfidTag,
+        createdAt: request.createdAt,
+        paymentMethod: request.paymentMethod,
+        paidAt: request.paidAt,
+        laundryPhotoUrls: request.laundryPhotoUrls,
+        customerDescription: request.customerDescription,
+        estimatedLoads: estimatedLoads,
+        rejectionReason: null,
+        staffMessage: message,
+        reviewedAt: DateTime.now(),
+        reviewedBy: 'Staff User', // TODO: Get from auth
+        expiresAt: request.expiresAt,
+        underReviewBy: null,
+      ));
+    }
+  }
+  
+  void rejectRequest(String id, String reason, String message) {
+    final index = _pendingRequests.indexWhere((o) => o.id == id);
+    if (index != -1) {
+      final request = _pendingRequests.removeAt(index);
+      // Move to orders list with rejected status
+      _orders.add(LaundryOrder(
+        id: request.id,
+        customerName: request.customerName,
+        customerPhone: request.customerPhone,
+        deliveryAddress: request.deliveryAddress,
+        deliveryLandmark: request.deliveryLandmark,
+        channel: request.channel,
+        collectionMethod: request.collectionMethod,
+        returnMethod: request.returnMethod,
+        status: OrderStatus.rejected, // Rejected status
+        paymentStatus: request.paymentStatus,
+        loads: request.loads,
+        instructions: request.instructions,
+        rfidTag: request.rfidTag,
+        createdAt: request.createdAt,
+        paymentMethod: request.paymentMethod,
+        paidAt: request.paidAt,
+        laundryPhotoUrls: request.laundryPhotoUrls,
+        customerDescription: request.customerDescription,
+        estimatedLoads: request.estimatedLoads,
+        rejectionReason: reason,
+        staffMessage: message,
+        reviewedAt: DateTime.now(),
+        reviewedBy: 'Staff User', // TODO: Get from auth
+        expiresAt: request.expiresAt,
+        underReviewBy: null,
+      ));
+    }
   }
 
   void addOrder(LaundryOrder order) {
@@ -246,5 +439,62 @@ class MockDataService {
 
   void resetRiderRoute() {
     isRiderRouteCompleted = false;
+  }
+
+  // Rider Pickup Methods
+  List<LaundryOrder> getRiderPickups() {
+    return _orders.where((o) => 
+      o.status == OrderStatus.pending_pickup &&
+      o.collectionMethod == CollectionMethod.riderPickup
+    ).toList();
+  }
+
+  List<LaundryOrder> getRiderDeliveries() {
+    return _orders.where((o) => 
+      (o.status == OrderStatus.ready || o.status == OrderStatus.out_for_delivery) &&
+      o.returnMethod == ReturnMethod.delivery
+    ).toList();
+  }
+
+  void confirmPickupWithLoads(String orderId, List<OrderLoad> loads) {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index != -1) {
+      final old = _orders[index];
+      _orders[index] = LaundryOrder(
+        id: old.id,
+        customerName: old.customerName,
+        customerPhone: old.customerPhone,
+        deliveryAddress: old.deliveryAddress,
+        deliveryLandmark: old.deliveryLandmark,
+        channel: old.channel,
+        collectionMethod: old.collectionMethod,
+        returnMethod: old.returnMethod,
+        status: OrderStatus.processing, // Move to processing after pickup
+        paymentStatus: old.paymentStatus,
+        loads: loads, // Update with scanned loads
+        rfidTag: old.rfidTag,
+        instructions: old.instructions,
+        createdAt: old.createdAt,
+        paymentMethod: old.paymentMethod,
+        paidAt: old.paidAt,
+        laundryPhotoUrls: old.laundryPhotoUrls,
+        customerDescription: old.customerDescription,
+        estimatedLoads: old.estimatedLoads,
+        rejectionReason: old.rejectionReason,
+        staffMessage: old.staffMessage,
+        reviewedAt: old.reviewedAt,
+        reviewedBy: old.reviewedBy,
+        expiresAt: old.expiresAt,
+        underReviewBy: old.underReviewBy,
+      );
+    }
+  }
+
+  bool isRfidAvailable(String tag) {
+    // Check if tag is not already assigned to an active order
+    return !_orders.any((o) => 
+      o.rfidTag == tag && 
+      o.status != OrderStatus.completed
+    );
   }
 }
