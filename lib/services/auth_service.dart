@@ -188,6 +188,18 @@ class AuthService {
     }
   }
 
+  // Update password (requires current session)
+  Future<UserResponse> updatePassword(String newPassword) async {
+    try {
+      final response = await _auth.updateUser(
+        UserAttributes(password: newPassword),
+      );
+      return response;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   // Update user metadata
   Future<UserResponse> updateUserMetadata(Map<String, dynamic> metadata) async {
     try {
