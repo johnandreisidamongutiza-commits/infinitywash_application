@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1048960336599",
+    "project_id": "infinitywash0",
+    "storage_bucket": "infinitywash0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1048960336599:android:ca4a298e959a62a3476692",
+        "android_client_info": {
+          "package_name": "com.example.infinitywash"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1048960336599-78af8f5j2qpmsfmol1d465k3t6if34kg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB5UoR5DB5JFvJSCq8LontI3hzRPscn-bE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1048960336599-78af8f5j2qpmsfmol1d465k3t6if34kg.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
