@@ -57,7 +57,7 @@ class AuthService {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    final metadata = user.userMetadata;
+    final metadata = user.userMetadata ?? <String, dynamic>{};
     if (metadata['role'] != 'customer') return;
 
     await _saveCustomerProfile(user, user.email ?? '', metadata);
