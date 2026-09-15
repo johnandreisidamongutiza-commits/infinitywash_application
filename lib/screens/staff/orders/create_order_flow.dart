@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_text_field.dart';
 import '../../../models/order.dart';
-import '../../../services/mock_data_service.dart';
 import '../../../services/customer_service.dart';
 import '../../../services/service_catalog_service.dart';
 import '../../../services/order_service.dart';
+import '../../../services/rfid_service.dart';
 import '../../../services/supabase_service.dart';
 
 class _CustomerProfile {
@@ -54,6 +54,8 @@ class _LoadEntry {
 class _CreateOrderFlowState extends State<CreateOrderFlow> {
   final CollectionMethod _selectedCollection = CollectionMethod.dropOff;
   ReturnMethod _selectedReturn = ReturnMethod.shopPickup;
+  List<String> _availableRfidTags = [];
+  bool _loadingRfidTags = false;
   String? _selectedRfidTag;
   bool _addExtraFabCon = false;
   bool _addExtraDetergent = false;
@@ -63,6 +65,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   final CustomerService _customerService = CustomerService();
   final ServiceCatalogService _catalogService = ServiceCatalogService();
   final OrderService _orderService = OrderService();
+  final RfidService _rfidService = RfidService();
   
   // Section expansion state - only one can be expanded at a time (accordion behavior)
   int? _expandedStep = 1;  // null = all collapsed, 1/2/3 = that step expanded
@@ -76,10 +79,45 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   @override
   void initState() {
     super.initState();
+    
+    // Load available RFID tags
+    _loadAvailableRfidTags();
+    
     // Start with one load
     _loads.add(_LoadEntry(initialWeight: '5.0'));
     _firstNameController.addListener(_checkForCustomerSuggestion);
     _lastNameController.addListener(_checkForCustomerSuggestion);
+  }
+
+  /// Load available RFID tags from database (excluding assigned ones)
+  Future<void> _loadAvailableRfidTags() async {
+    setState(() {
+      _loadingRfidTags = true;
+    });
+
+    try {
+      final tags = await _rfidService.getAvailableRfidTags();
+      setState(() {
+        _availableRfidTags = tags;
+        _loadingRfidTags = false;
+      });
+      print('✅ Loaded ${tags.length} available RFID tags: $tags');
+    } catch (e) {
+      print('❌ Error loading RFID tags: $e');
+      setState(() {
+        _availableRfidTags = []; // Empty list on error
+        _loadingRfidTags = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading RFID tags: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   static const List<_CustomerProfile> _knownCustomers = [
@@ -491,14 +529,31 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     if (_isSubmitting) return;
     
     // Validation 1: RFID Tag
-    final availableTags = MockDataService().availableRfidTags;
-    if (_selectedRfidTag == null || availableTags.isEmpty) {
+    if (_selectedRfidTag == null || _availableRfidTags.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select an RFID tag before confirming.'),
           backgroundColor: Colors.orange,
         ),
       );
+      return;
+    }
+
+    // Validation 2: Double-check RFID availability (real-time check)
+    final isRfidStillAvailable = await _rfidService.isRfidTagAvailable(_selectedRfidTag!);
+    if (!isRfidStillAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('RFID tag "$_selectedRfidTag" is no longer available. Please select another tag.'),
+          duration: const Duration(seconds: 4),
+          backgroundColor: Colors.red,
+        ),
+      );
+      // Refresh available tags and clear selection
+      await _loadAvailableRfidTags();
+      setState(() {
+        _selectedRfidTag = null;
+      });
       return;
     }
 
@@ -960,7 +1015,6 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   @override
   Widget build(BuildContext context) {
-    final availableTags = MockDataService().availableRfidTags;
     final bool hasRfidSelected = _selectedRfidTag != null;
 
     return Scaffold(
@@ -979,7 +1033,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             margin: const EdgeInsets.only(right: 16, top: 12, bottom: 12),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: availableTags.isEmpty
+              color: _availableRfidTags.isEmpty
                   ? AppTheme.errorRed.withValues(alpha: 0.1)
                   : AppTheme.accentBlue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
@@ -990,15 +1044,15 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 Icon(
                   Icons.nfc_outlined,
                   size: 14,
-                  color: availableTags.isEmpty ? AppTheme.errorRed : AppTheme.accentBlue,
+                  color: _availableRfidTags.isEmpty ? AppTheme.errorRed : AppTheme.accentBlue,
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  '${availableTags.length} Tags Available',
+                  '${_availableRfidTags.length} Tags Available',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: availableTags.isEmpty ? AppTheme.errorRed : AppTheme.accentBlue,
+                    color: _availableRfidTags.isEmpty ? AppTheme.errorRed : AppTheme.accentBlue,
                   ),
                 ),
               ],
@@ -1006,7 +1060,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           ),
         ],
       ),
-      bottomNavigationBar: _buildStickyBottomBar(availableTags),
+      bottomNavigationBar: _buildStickyBottomBar(),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         child: Column(
@@ -1021,7 +1075,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             const SizedBox(height: 14),
 
             // 2. Laundry & Intake Section (Step 2)
-            _buildLaundryIntakeSection(availableTags, hasRfidSelected),
+            _buildLaundryIntakeSection(hasRfidSelected),
             const SizedBox(height: 14),
             
             // 3. Add-ons & Notes Section (Step 3)
@@ -1269,7 +1323,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     );
   }
 
-  Widget _buildLaundryIntakeSection(List<String> availableTags, bool hasRfidSelected) {
+  Widget _buildLaundryIntakeSection(bool hasRfidSelected) {
     final isExpanded = _expandedStep == 2;
     
     // Always accessible - no locked state
@@ -1418,17 +1472,17 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: availableTags.isEmpty
+                          color: _availableRfidTags.isEmpty
                               ? AppTheme.errorRed.withValues(alpha: 0.1)
                               : AppTheme.accentBlue.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          '${availableTags.length} Available',
+                          '${_availableRfidTags.length} Available',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
-                            color: availableTags.isEmpty ? AppTheme.errorRed : AppTheme.accentBlue,
+                            color: _availableRfidTags.isEmpty ? AppTheme.errorRed : AppTheme.accentBlue,
                           ),
                         ),
                       ),
@@ -1437,7 +1491,14 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
                     initialValue: _selectedRfidTag,
-                    hint: const Text('Select RFID Tag', style: TextStyle(fontSize: 13)),
+                    hint: Text(
+                      _loadingRfidTags 
+                        ? 'Loading RFID tags...' 
+                        : _availableRfidTags.isEmpty 
+                          ? 'No RFID tags available'
+                          : 'Select RFID Tag',
+                      style: TextStyle(fontSize: 13),
+                    ),
                     decoration: InputDecoration(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       border: OutlineInputBorder(
@@ -1449,10 +1510,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                         borderSide: const BorderSide(color: AppTheme.accentBlue, width: 2),
                       ),
                     ),
-                    items: availableTags.map((tag) {
+                    items: _loadingRfidTags ? [] : _availableRfidTags.map((tag) {
                       return DropdownMenuItem(value: tag, child: Text(tag, style: const TextStyle(fontSize: 13)));
                     }).toList(),
-                    onChanged: availableTags.isEmpty ? null : (value) => setState(() => _selectedRfidTag = value),
+                    onChanged: (_loadingRfidTags || _availableRfidTags.isEmpty) ? null : (value) => setState(() => _selectedRfidTag = value),
                   ),
 
                   const Divider(height: 24),
@@ -1992,7 +2053,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     );
   }
 
-  Widget _buildStickyBottomBar(List<String> availableTags) {
+  Widget _buildStickyBottomBar() {
     final bool canSubmit = _isStep1Complete && _isStep2Complete;
 
     // Only show submit options when all requirements are met

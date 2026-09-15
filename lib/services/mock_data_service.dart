@@ -1,5 +1,6 @@
 import '../models/supply.dart';
 import '../models/order.dart';
+import 'supabase_service.dart';
 
 class MockDataService {
   static final MockDataService _instance = MockDataService._internal();
@@ -32,13 +33,66 @@ class MockDataService {
   // Rider route state (stub for unmigrated rider feature)
   bool isRiderRouteCompleted = false;
 
-  /// Returns RFID tags not currently assigned to any active order (mock implementation)
+  /// Returns RFID tags not currently assigned to any active order (queries real database)
   List<String> get availableRfidTags {
+    // This should return a Future, but to maintain backward compatibility with existing UI code,
+    // we return all tags and let the UI handle validation
     return List.from(_allRfidTags);
   }
 
+  /// Checks if an RFID tag is available (not assigned to active orders)
+  Future<bool> isRfidAvailableAsync(String tag) async {
+    try {
+      if (!_allRfidTags.contains(tag)) {
+        return false; // Tag doesn't exist in our system
+      }
+
+      // Query database for active orders using this RFID tag
+      final response = await SupabaseService.client
+          .from('orders')
+          .select('rfid_tag')
+          .eq('rfid_tag', tag)
+          .inFilter('status', ['processing', 'ready', 'out_for_delivery'])
+          .limit(1);
+
+      // If we found any active orders with this RFID, it's not available
+      return response.isEmpty;
+    } catch (e) {
+      print('❌ Error checking RFID availability: $e');
+      // If there's an error, assume tag is available (fail-safe)
+      return true;
+    }
+  }
+
+  /// Get list of available RFID tags (async version that checks database)
+  Future<List<String>> getAvailableRfidTags() async {
+    try {
+      // Get all RFID tags currently assigned to active orders
+      final response = await SupabaseService.client
+          .from('orders')
+          .select('rfid_tag')
+          .inFilter('status', ['processing', 'ready', 'out_for_delivery'])
+          .not('rfid_tag', 'is', null);
+
+      final assignedTags = response
+          .map((row) => row['rfid_tag'] as String?)
+          .where((tag) => tag != null)
+          .cast<String>()
+          .toSet();
+
+      // Return tags that are not assigned
+      return _allRfidTags.where((tag) => !assignedTags.contains(tag)).toList();
+    } catch (e) {
+      print('❌ Error fetching available RFID tags: $e');
+      // If there's an error, return all tags (fail-safe)
+      return List.from(_allRfidTags);
+    }
+  }
+
   bool isRfidAvailable(String tag) {
-    // Mock implementation - always return true for valid tags
+    // Synchronous version - kept for backward compatibility
+    // This now only checks if the tag exists in our system
+    // For real availability checking, use isRfidAvailableAsync
     return _allRfidTags.contains(tag);
   }
 

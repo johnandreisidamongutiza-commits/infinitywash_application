@@ -1,9 +1,11 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
 import 'supabase_service.dart';
+import 'rfid_service.dart';
 
 class OrderService {
   final SupabaseClient _client = SupabaseService.client;
+  final RfidService _rfidService = RfidService();
 
   /// Generate next sequential order number for today (ORD-YYYYMMDD-00001)
   Future<String> generateOrderNumber() async {
@@ -99,7 +101,15 @@ class OrderService {
     String? paymentMethod,
   }) async {
     try {
-      // Validation
+      // Validation for RFID tag
+      if (rfidTag != null) {
+        final isRfidAvailable = await _rfidService.isRfidTagAvailable(rfidTag);
+        if (!isRfidAvailable) {
+          throw Exception('RFID tag "$rfidTag" is not available');
+        }
+      }
+
+      // Other validations
       if (customerId.isEmpty) {
         throw Exception('Customer ID is required');
       }
@@ -225,16 +235,19 @@ class OrderService {
         print('✅ Payment recorded: $transactionNumber ($paymentMethod)');
       }
 
-      // Step 5: Update RFID tag (if provided - currently mock, so skip database update)
-      // TODO: Update rfid_tags table when RFID integration is implemented
+      // Step 5: Assign RFID tag (if provided)
+      if (rfidTag != null) {
+        await _rfidService.assignRfidTagToOrder(orderId, rfidTag);
+        print('✅ RFID tag assigned: $rfidTag');
+      }
 
       print('🎉 Order creation complete: $orderNumber');
       return orderId;
-    } on PostgrestException catch (e) {
-      print('❌ Database error creating order: ${e.message}');
-      throw Exception('Database error: ${e.message}');
     } catch (e) {
       print('❌ Error creating order: $e');
+      if (e.toString().contains('violates')) {
+        throw Exception('Database constraint error: ${e.toString()}');
+      }
       rethrow;
     }
   }
@@ -246,13 +259,14 @@ class OrderService {
     int limit = 50,
   }) async {
     try {
-      // Build base query with customer information
+      // Build base query with customer information and RFID tags
       var query = _client
           .from('orders')
           .select('''
             *,
             order_loads(*),
-            customers!inner(first_name, last_name, customer_code, phone)
+            customers!inner(first_name, last_name, customer_code, phone),
+            rfid_tags(tag_code)
           ''');
 
       // Apply status filter if provided
@@ -290,6 +304,12 @@ class OrderService {
         final customerName = lastName.isNotEmpty ? '$firstName $lastName' : firstName.isNotEmpty ? firstName : 'Unknown';
         final customerPhone = customerData?['phone'] as String?;
         
+        // Extract RFID tag information from joined data
+        final rfidTagData = orderData['rfid_tags'] as List?;
+        final rfidTag = rfidTagData?.isNotEmpty == true 
+            ? (rfidTagData!.first as Map<String, dynamic>)['tag_code'] as String?
+            : null;
+        
         // Since fromJson doesn't handle loads (they come from join), we need to create new order with loads
         final orderWithLoads = LaundryOrder(
           id: order.id,
@@ -305,7 +325,7 @@ class OrderService {
           paymentStatus: order.paymentStatus,
           loads: loads,
           instructions: order.instructions,
-          rfidTag: order.rfidTag,
+          rfidTag: rfidTag, // Use RFID tag from rfid_tags table
           createdAt: order.createdAt,
           paymentMethod: order.paymentMethod,
           paidAt: order.paidAt,
@@ -343,6 +363,12 @@ class OrderService {
           break;
         case 'completed':
           updates['completed_at'] = DateTime.now().toIso8601String();
+          // Release RFID tag when order is completed
+          await _rfidService.releaseRfidTag(orderId);
+          break;
+        case 'cancelled':
+          // Release RFID tag when order is cancelled
+          await _rfidService.releaseRfidTag(orderId);
           break;
       }
 
@@ -365,7 +391,8 @@ class OrderService {
           .from('orders')
           .select('''
             *,
-            order_loads(*)
+            order_loads(*),
+            rfid_tags(tag_code)
           ''')
           .eq('id', orderId)
           .maybeSingle();
@@ -377,6 +404,12 @@ class OrderService {
       final loads = loadsData?.map((loadJson) {
         return OrderLoad.fromJson(loadJson as Map<String, dynamic>);
       }).toList() ?? [];
+
+      // Extract RFID tag information
+      final rfidTagData = response['rfid_tags'] as List?;
+      final rfidTag = rfidTagData?.isNotEmpty == true 
+          ? (rfidTagData!.first as Map<String, dynamic>)['tag_code'] as String?
+          : null;
 
       final order = LaundryOrder.fromJson(response);
 
@@ -394,7 +427,7 @@ class OrderService {
         paymentStatus: order.paymentStatus,
         loads: loads,
         instructions: order.instructions,
-        rfidTag: order.rfidTag,
+        rfidTag: rfidTag, // Use RFID tag from rfid_tags table
         createdAt: order.createdAt,
         paymentMethod: order.paymentMethod,
         paidAt: order.paidAt,
