@@ -6,31 +6,91 @@ import '../orders/create_order_flow.dart';
 import '../orders/order_status_screen.dart';
 import '../orders/rfid_checker_screen.dart';
 import '../notifications/staff_notifications_screen.dart';
-import '../../../services/mock_data_service.dart';
+import '../../../services/order_service.dart';
 
-class StaffHomeScreen extends StatelessWidget {
+class StaffHomeScreen extends StatefulWidget {
   const StaffHomeScreen({super.key});
+
+  @override
+  State<StaffHomeScreen> createState() => _StaffHomeScreenState();
+}
+
+class _StaffHomeScreenState extends State<StaffHomeScreen> {
+  final OrderService _orderService = OrderService();
+  List<LaundryOrder> _allOrders = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrders();
+  }
+
+  Future<void> _loadOrders() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final orders = await _orderService.fetchOrders(
+        statuses: ['pending_approval', 'pending_pickup', 'processing', 'ready', 'out_for_delivery'],
+        limit: 50,
+      );
+      
+      setState(() {
+        _allOrders = orders;
+        _isLoading = false;
+      });
+      
+      print('✅ Loaded ${orders.length} orders');
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+      
+      print('❌ Error loading orders: $e');
+    }
+  }
+
+  List<LaundryOrder> get _pendingRequests => 
+      _allOrders.where((o) => o.status == OrderStatus.pending_approval).toList();
+  
+  List<LaundryOrder> get _processingOrders => 
+      _allOrders.where((o) => o.status == OrderStatus.processing).toList();
+  
+  List<LaundryOrder> get _readyOrders => 
+      _allOrders.where((o) => o.status == OrderStatus.ready).toList();
+  
+  List<LaundryOrder> get _completedOrders => 
+      _allOrders.where((o) => o.status == OrderStatus.completed).toList();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(context),
-              const SizedBox(height: 30),
-              _buildServiceRequestsButton(context),
-              const SizedBox(height: 20),
-              _buildTodayQueue(),
-              const SizedBox(height: 30),
-              _buildQuickActions(context),
-              const SizedBox(height: 30),
-              _buildCurrentlyProcessing(context),
-            ],
+        child: RefreshIndicator(
+          onRefresh: _loadOrders,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(context),
+                const SizedBox(height: 30),
+                _buildServiceRequestsButton(context),
+                const SizedBox(height: 20),
+                _buildTodayQueue(),
+                const SizedBox(height: 30),
+                _buildQuickActions(context),
+                const SizedBox(height: 30),
+                _buildCurrentlyProcessing(context),
+              ],
+            ),
           ),
         ),
       ),
@@ -38,7 +98,7 @@ class StaffHomeScreen extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final pendingCount = MockDataService().pendingRequests.length;
+    final pendingCount = _pendingRequests.length;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -120,7 +180,7 @@ class StaffHomeScreen extends StatelessWidget {
   }
 
   Widget _buildServiceRequestsButton(BuildContext context) {
-    final pendingCount = MockDataService().pendingRequests.length;
+    final pendingCount = _pendingRequests.length;
     if (pendingCount == 0) return const SizedBox.shrink();
 
     return GestureDetector(
@@ -155,11 +215,48 @@ class StaffHomeScreen extends StatelessWidget {
   }
 
   Widget _buildTodayQueue() {
-    final service = MockDataService();
-    final requestCount = service.pendingRequests.length;
-    final processingCount = service.processingOrders.length;
-    final readyCount = service.readyOrders.length;
-    final completedCount = service.completedOrders.length;
+    final requestCount = _pendingRequests.length;
+    final processingCount = _processingOrders.length;
+    final readyCount = _readyOrders.length;
+    final completedCount = _completedOrders.length;
+
+    if (_isLoading) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: AppStyles.cardDecoration,
+        child: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_error != null) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: AppStyles.cardDecoration,
+        child: Column(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              'Error loading orders',
+              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: _loadOrders,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -321,7 +418,7 @@ class StaffHomeScreen extends StatelessWidget {
   }
 
   Widget _buildCurrentlyProcessing(BuildContext context) {
-    final processingOrders = MockDataService().processingOrders;
+    final processingOrders = _processingOrders;
 
     return Column(
       children: [
@@ -417,12 +514,15 @@ class StaffHomeScreen extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          order.id,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.accentBlue,
-                            fontSize: 13,
+                        Flexible(
+                          child: Text(
+                            order.orderNumber ?? order.id,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.accentBlue,
+                              fontSize: 13,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 8),

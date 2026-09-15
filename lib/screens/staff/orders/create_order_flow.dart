@@ -3,6 +3,10 @@ import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_text_field.dart';
 import '../../../models/order.dart';
 import '../../../services/mock_data_service.dart';
+import '../../../services/customer_service.dart';
+import '../../../services/service_catalog_service.dart';
+import '../../../services/order_service.dart';
+import '../../../services/supabase_service.dart';
 
 class _CustomerProfile {
   final String firstName;
@@ -53,6 +57,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   String? _selectedRfidTag;
   bool _addExtraFabCon = false;
   bool _addExtraDetergent = false;
+  bool _isSubmitting = false; // Loading state for order creation
+  
+  // Services
+  final CustomerService _customerService = CustomerService();
+  final ServiceCatalogService _catalogService = ServiceCatalogService();
+  final OrderService _orderService = OrderService();
   
   // Section expansion state - only one can be expanded at a time (accordion behavior)
   int? _expandedStep = 1;  // null = all collapsed, 1/2/3 = that step expanded
@@ -368,7 +378,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       color = AppTheme.textLight.withValues(alpha: 0.3);
     }
 
-    return Container(
+    return SizedBox(
       width: 60,
       child: Column(
         children: [
@@ -476,98 +486,320 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     super.dispose();
   }
 
-  void _submitOrder({required bool isPaidImmediately, String? paymentMethod}) {
+  Future<void> _submitOrder({required bool isPaidImmediately, String? paymentMethod}) async {
+    // Prevent duplicate submissions
+    if (_isSubmitting) return;
+    
+    // Validation 1: RFID Tag
     final availableTags = MockDataService().availableRfidTags;
     if (_selectedRfidTag == null || availableTags.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select an RFID tag before confirming.')),
+        const SnackBar(
+          content: Text('Please select an RFID tag before confirming.'),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
 
+    // Validation 2: Customer name
+    if (_customerFullName.trim().isEmpty || _customerFullName == 'Walk-in Customer') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter customer name (first and/or last name).'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Validation 3: Delivery address for delivery orders
     if (_selectedReturn == ReturnMethod.delivery && _addressController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a delivery address for rider delivery.')),
+        const SnackBar(
+          content: Text('Please enter a delivery address for delivery orders.'),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
 
-    // Validate all loads have weight
+    // Validation 4: At least one load
+    if (_loads.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please add at least one load.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Validation 5: All loads must have valid weight
     for (int i = 0; i < _loads.length; i++) {
-      if (_getLoadWeight(i) <= 0) {
+      final weight = _getLoadWeight(i);
+      if (weight <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Load ${i + 1} must have a weight greater than 0')),
+          SnackBar(
+            content: Text('Load ${i + 1} must have a weight greater than 0.'),
+            backgroundColor: Colors.orange,
+          ),
         );
         return;
       }
-    }
-
-    // Create OrderLoad objects
-    final List<OrderLoad> orderLoads = [];
-    for (int i = 0; i < _loads.length; i++) {
-      final load = _loads[i];
-      final category = load.category;
-      final weight = _getLoadWeight(i);
-      final limit = _categories[category]!['limit'] as double;
-      final unit = _categories[category]!['unit'] as String;
-      final desc = _categories[category]!['desc'] as String;
       
-      orderLoads.add(OrderLoad(
-        loadNumber: i + 1,
-        category: category,
-        weight: weight,
-        categoryLimit: limit,
-        unit: unit,
-        description: desc,
-        isOverLimit: weight > limit,
-        loadStatus: LoadStatus.queued,
-        notes: null, // Per-load notes removed, use order-level notes instead
-      ));
+      // Warning for very high weights (possible typo)
+      if (weight > 50) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Confirm Weight'),
+            content: Text('Load ${i + 1} has ${weight}kg. Is this correct? This seems unusually high.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+        );
+        
+        if (confirmed != true) return;
+      }
     }
 
-    final String fullInstructions = [
-      if (_loads.length > 1) '${_loads.length} loads: ${orderLoads.map((l) => '${l.weight}${l.unit} ${l.category}').join(', ')}',
-      if (_loads.length == 1) 'Load: ${orderLoads[0].weight}${orderLoads[0].unit} ${orderLoads[0].category}',
-      if (_selectedReturn == ReturnMethod.delivery && _addressController.text.trim().isNotEmpty)
-        'Delivery Address: ${_addressController.text.trim()}${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
-      if (_addExtraFabCon) 'Extra Fab Con (+₱20)',
-      if (_addExtraDetergent) 'Extra Detergent (+₱20)',
-      if (_instructionsController.text.trim().isNotEmpty) _instructionsController.text.trim(),
-    ].join(' | ');
+    // Start loading
+    setState(() {
+      _isSubmitting = true;
+    });
 
-    final newOrder = LaundryOrder(
-      id: 'IW-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
-      customerName: _customerFullName,
-      customerPhone: _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null,
-      deliveryAddress: _selectedReturn == ReturnMethod.delivery && _addressController.text.trim().isNotEmpty ? _addressController.text.trim() : null,
-      deliveryLandmark: _selectedReturn == ReturnMethod.delivery && _landmarkController.text.trim().isNotEmpty ? _landmarkController.text.trim() : null,
-      channel: OrderChannel.walkIn,
-      collectionMethod: _selectedCollection,
-      returnMethod: _selectedReturn,
-      status: OrderStatus.processing,
-      paymentStatus: isPaidImmediately ? PaymentStatus.paid : PaymentStatus.unpaid,
-      loads: orderLoads,
-      rfidTag: _selectedRfidTag,
-      instructions: fullInstructions,
-      createdAt: DateTime.now(),
-      paymentMethod: isPaidImmediately ? paymentMethod : null,
-      paidAt: isPaidImmediately ? DateTime.now() : null,
-    );
+    try {
+      // Step 1: Create customer
+      print('🔄 Creating customer...');
+      
+      // Split customer name into first and last name
+      final nameParts = _customerFullName.trim().split(' ');
+      final firstName = nameParts.first;
+      final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : null;
+      
+      final customerId = await _customerService.createCustomer(
+        firstName: firstName,
+        lastName: lastName,
+        phone: _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null,
+        email: null, // Email not collected in walk-in flow
+        address: _selectedReturn == ReturnMethod.delivery ? _addressController.text.trim() : null,
+        landmark: _selectedReturn == ReturnMethod.delivery ? _landmarkController.text.trim() : null,
+      );
+      
+      print('✅ Customer created: $customerId');
 
-    MockDataService().addOrder(newOrder);
-    MockDataService().useSupplies(newOrder.totalWeight);
+      // Step 2: Get service and pricing information
+      print('🔄 Loading service catalog...');
+      
+      // Debug: Test connection first
+      await _catalogService.testConnection();
+      
+      final service = await _catalogService.getFullService();
+      final serviceId = service['id'] as String;
+      final serviceName = service['service_name'] as String;
+      final basePrice = (service['base_price'] as num).toDouble();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isPaidImmediately
-              ? 'Order Created! ₱${_finalTotal.toStringAsFixed(2)} paid via $paymentMethod.'
-              : 'Order Created! Saved as UNPAID (to pay on claiming).',
+      // Step 3: Get add-ons if selected
+      final List<Map<String, dynamic>> addons = [];
+      
+      if (_addExtraFabCon) {
+        final fabConAddon = await _catalogService.getAddonByName('Extra Fab Con');
+        addons.add({
+          'addon_id': fabConAddon['id'],
+          'addon_name': fabConAddon['addon_name'],
+          'quantity': 1,
+          'unit_price': (fabConAddon['price'] as num).toDouble(),
+          'line_total': (fabConAddon['price'] as num).toDouble(),
+        });
+      }
+      
+      if (_addExtraDetergent) {
+        final detergentAddon = await _catalogService.getAddonByName('Extra Detergent');
+        addons.add({
+          'addon_id': detergentAddon['id'],
+          'addon_name': detergentAddon['addon_name'],
+          'quantity': 1,
+          'unit_price': (detergentAddon['price'] as num).toDouble(),
+          'line_total': (detergentAddon['price'] as num).toDouble(),
+        });
+      }
+
+      // Step 4: Create OrderLoad objects
+      final List<OrderLoad> orderLoads = [];
+      for (int i = 0; i < _loads.length; i++) {
+        final load = _loads[i];
+        final category = load.category;
+        final weight = _getLoadWeight(i);
+        final limit = _categories[category]!['limit'] as double;
+        final unit = _categories[category]!['unit'] as String;
+        final desc = _categories[category]!['desc'] as String;
+        
+        orderLoads.add(OrderLoad(
+          loadNumber: i + 1,
+          category: category,
+          weight: weight,
+          categoryLimit: limit,
+          unit: unit,
+          description: desc,
+          isOverLimit: weight > limit,
+          notes: null,
+        ));
+      }
+
+      // Step 5: Calculate totals
+      final subtotal = (basePrice * _loads.length) + addons.fold(0.0, (sum, addon) => sum + (addon['line_total'] as double));
+      final totalAmount = subtotal; // delivery_fee is always 0
+
+      // Step 6: Build customer notes
+      final String? customerNotes = _instructionsController.text.trim().isNotEmpty 
+          ? _instructionsController.text.trim() 
+          : null;
+
+      // Step 7: Build staff notes with order details
+      final String staffNotes = [
+        if (_loads.length > 1) '${_loads.length} loads: ${orderLoads.map((l) => '${l.weight}${l.unit} ${l.category}').join(', ')}',
+        if (_loads.length == 1) 'Load: ${orderLoads[0].weight}${orderLoads[0].unit} ${orderLoads[0].category}',
+        if (_selectedReturn == ReturnMethod.delivery && _addressController.text.trim().isNotEmpty)
+          'Delivery Address: ${_addressController.text.trim()}${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
+        if (_addExtraFabCon) 'Extra Fab Con (+₱20)',
+        if (_addExtraDetergent) 'Extra Detergent (+₱20)',
+      ].join(' | ');
+
+      // Step 8: Generate order number
+      print('🔄 Generating order number...');
+      final orderNumber = await _orderService.generateOrderNumber();
+      print('✅ Order number: $orderNumber');
+
+      // Step 9: Get current staff ID from auth
+      final currentUser = SupabaseService.currentUser;
+      String? assignedStaffId;
+      
+      if (currentUser != null) {
+        // Get staff profile_id from profiles table
+        final profile = await SupabaseService.client
+            .from('profiles')
+            .select('id')
+            .eq('supabase_user_id', currentUser.id)
+            .maybeSingle();
+        
+        if (profile != null) {
+          // Get employee record
+          final employee = await SupabaseService.client
+              .from('employees')
+              .select('id')
+              .eq('profile_id', profile['id'])
+              .maybeSingle();
+          
+          if (employee != null) {
+            assignedStaffId = employee['id'] as String;
+          }
+        }
+      }
+
+      // Step 10: Create order in database
+      print('🔄 Creating order in database...');
+      final orderId = await _orderService.createOrder(
+        customerId: customerId,
+        orderNumber: orderNumber,
+        serviceId: serviceId,
+        serviceName: serviceName,
+        loads: orderLoads,
+        subtotal: subtotal,
+        totalAmount: totalAmount,
+        assignedStaffId: assignedStaffId,
+        pickupRequested: false, // Walk-in orders don't need pickup
+        deliveryRequested: _selectedReturn == ReturnMethod.delivery,
+        deliveryAddress: _selectedReturn == ReturnMethod.delivery ? _addressController.text.trim() : null,
+        deliveryLandmark: _selectedReturn == ReturnMethod.delivery ? _landmarkController.text.trim() : null,
+        customerNotes: customerNotes,
+        staffNotes: staffNotes.isNotEmpty ? staffNotes : null,
+        rfidTag: _selectedRfidTag,
+        addons: addons,
+        isPaid: isPaidImmediately,
+        paymentMethod: paymentMethod,
+      );
+      
+      print('✅ Order created: $orderId');
+
+      print('✅ Order created: $orderId');
+
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isPaidImmediately
+                ? 'Order $orderNumber Created! ₱${totalAmount.toStringAsFixed(2)} paid via $paymentMethod.'
+                : 'Order $orderNumber Created! Saved as UNPAID (to pay on claiming).',
+          ),
+          backgroundColor: isPaidImmediately ? Colors.green : AppTheme.accentBlue,
+          duration: const Duration(seconds: 3),
         ),
-        backgroundColor: isPaidImmediately ? Colors.green : AppTheme.accentBlue,
-      ),
-    );
-    Navigator.pop(context);
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      if (!mounted) return;
+
+      print('❌ Error creating order: $e');
+      
+      // Parse error for user-friendly messages
+      String errorMessage = 'Error creating order';
+      
+      if (e.toString().contains('connection')) {
+        errorMessage = 'Connection error. Please check your internet and try again.';
+      } else if (e.toString().contains('permission') || e.toString().contains('denied')) {
+        errorMessage = 'Access denied. Please contact your administrator.';
+      } else if (e.toString().contains('service_catalog') || e.toString().contains('service not found')) {
+        errorMessage = 'Service configuration error. Please contact support.';
+      } else if (e.toString().contains('addon')) {
+        errorMessage = 'Add-on configuration error. Please try without add-ons or contact support.';
+      } else if (e.toString().contains('duplicate') || e.toString().contains('unique')) {
+        errorMessage = 'Duplicate order detected. Please refresh and try again.';
+      } else {
+        // Show partial error details for debugging
+        final errorStr = e.toString();
+        if (errorStr.length > 100) {
+          errorMessage = 'Error: ${errorStr.substring(0, 100)}...';
+        } else {
+          errorMessage = 'Error: $errorStr';
+        }
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Retry',
+            textColor: Colors.white,
+            onPressed: () {
+              _submitOrder(
+                isPaidImmediately: isPaidImmediately,
+                paymentMethod: paymentMethod,
+              );
+            },
+          ),
+        ),
+      );
+    }
   }
 
   void _showPaymentMethodModal() {
@@ -685,7 +917,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {
+                  onPressed: _isSubmitting ? null : () {
                     Navigator.pop(ctx);
                     _submitOrder(isPaidImmediately: true, paymentMethod: method);
                   },
@@ -696,10 +928,19 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
-                  child: Text(
-                    'Confirm Payment',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                  child: _isSubmitting 
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          'Confirm Payment',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1836,24 +2077,33 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 // Pay Later Button
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _submitOrder(isPaidImmediately: false, paymentMethod: null),
+                    onPressed: _isSubmitting ? null : () => _submitOrder(isPaidImmediately: false, paymentMethod: null),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTheme.accentBlue,
                       side: const BorderSide(color: AppTheme.accentBlue, width: 2),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text(
-                      'Pay Later',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: AppTheme.accentBlue,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'Pay Later',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 // Pay Now Button
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: _showPaymentMethodModal,
+                    onPressed: _isSubmitting ? null : _showPaymentMethodModal,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,

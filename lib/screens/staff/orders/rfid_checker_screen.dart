@@ -82,7 +82,8 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
     });
   }
 
-  Color _getLoadStatusColor(LoadStatus status) {
+  Color _getLoadStatusColor(LoadStatus? status) {
+    if (status == null) return Colors.grey;
     switch (status) {
       case LoadStatus.queued:
         return Colors.grey;

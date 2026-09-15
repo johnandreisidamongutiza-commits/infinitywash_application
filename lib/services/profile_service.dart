@@ -41,9 +41,9 @@ class ProfileService {
           'first_name': firstName,
           'last_name': lastName,
           'phone': phone,
-          if (email != null) 'email': email,
-          if (address != null) 'address': address,
-          if (landmark != null) 'landmark': landmark,
+          'email': ?email,
+          'address': ?address,
+          'landmark': ?landmark,
           'updated_at': DateTime.now().toIso8601String(),
         })
         .eq('supabase_user_id', user.id);
@@ -61,8 +61,8 @@ class ProfileService {
         .update({
           'name': name,
           'phone': phone,
-          if (vehicleDetails != null) 'vehicle_details': vehicleDetails,
-          if (deliveryZones != null) 'delivery_zones': deliveryZones,
+          'vehicle_details': ?vehicleDetails,
+          'delivery_zones': ?deliveryZones,
           'updated_at': DateTime.now().toIso8601String(),
         })
         .eq('profile_id', profileId);
