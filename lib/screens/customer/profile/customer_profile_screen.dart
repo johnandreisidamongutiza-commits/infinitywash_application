@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
-import '../../../widgets/custom_text_field.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/auth_service.dart';
 import '../../role_selection_screen.dart';
+import 'options/account_details_screen.dart';
+import 'options/change_password_screen.dart';
+import 'options/help_support_screen.dart';
 
 class CustomerProfileScreen extends StatefulWidget {
   const CustomerProfileScreen({super.key});
@@ -19,11 +21,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _landmarkController = TextEditingController();
   bool _isLoading = true;
-  bool _isSaving = false;
-  String _displayName = 'Customer';
 
   @override
   void initState() {
@@ -37,8 +35,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     _lastNameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
-    _addressController.dispose();
-    _landmarkController.dispose();
     super.dispose();
   }
 
@@ -49,35 +45,10 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       _lastNameController.text = profile['last_name'] ?? '';
       _phoneController.text = profile['phone'] ?? '';
       _emailController.text = profile['email'] ?? '';
-      _addressController.text = profile['address'] ?? '';
-      _landmarkController.text = profile['landmark'] ?? '';
-      _displayName = '${_firstNameController.text} ${_lastNameController.text}'.trim();
     } catch (error) {
       _showMessage('Could not load profile: $error');
     } finally {
       if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _saveProfile() async {
-    setState(() => _isSaving = true);
-    try {
-      await _profileService.updateProfile(
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        phone: _phoneController.text.trim(),
-        email: _emailController.text.trim(),
-        address: _addressController.text.trim(),
-        landmark: _landmarkController.text.trim(),
-      );
-      setState(() {
-        _displayName = '${_firstNameController.text} ${_lastNameController.text}'.trim();
-      });
-      _showMessage('Information updated.', isError: false);
-    } catch (error) {
-      _showMessage('Could not update profile: $error');
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -103,60 +74,67 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            _buildProfileHeader(),
+            Center(
+              child: Stack(
+                children: [
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: AppTheme.softGray,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppTheme.accentBlue, width: 2),
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/images/logo.jpg',
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, size: 60),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: AppTheme.accentBlue, shape: BoxShape.circle),
+                      child: const Icon(Icons.edit, color: Colors.white, size: 20),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '${_firstNameController.text} ${_lastNameController.text}'.trim().isEmpty 
+                ? 'Customer' 
+                : '${_firstNameController.text} ${_lastNameController.text}'.trim(),
+              style: AppTheme.lightTheme.textTheme.headlineMedium,
+            ),
+            Text(_emailController.text, style: AppTheme.lightTheme.textTheme.bodyMedium),
             const SizedBox(height: 40),
-            Row(
-              children: [
-                Expanded(child: CustomTextField(
-                    label: 'First Name',
-                    hint: 'John',
-                    prefixIcon: Icons.person_outline,
-                    controller: _firstNameController,
-                  )),
-                SizedBox(width: 16),
-                Expanded(child: CustomTextField(
-                    label: 'Last Name',
-                    hint: 'Customer',
-                    prefixIcon: Icons.person_outline,
-                    controller: _lastNameController,
-                  )),
-              ],
+            _buildProfileOption(
+              context,
+              Icons.person_outline,
+              'Account Details',
+              const CustomerAccountDetailsScreen(),
             ),
-            const SizedBox(height: 20),
-            CustomTextField(
-              label: 'Phone Number',
-              hint: '0912-345-6789',
-              prefixIcon: Icons.phone_android,
-              controller: _phoneController,
+            _buildProfileOption(
+              context,
+              Icons.lock_outline,
+              'Change Password',
+              const CustomerChangePasswordScreen(),
             ),
-            const SizedBox(height: 20),
-            CustomTextField(
-              label: 'Email Address',
-              hint: 'john.customer@email.com',
-              prefixIcon: Icons.email_outlined,
-              controller: _emailController,
-            ),
-            const SizedBox(height: 20),
-            CustomTextField(
-              label: 'Default Address',
-              hint: '123 Laundry St, Clean City',
-              prefixIcon: Icons.location_on_outlined,
-              controller: _addressController,
-            ),
-            const SizedBox(height: 20),
-            CustomTextField(
-              label: 'Landmark (Optional)',
-              hint: 'Near the blue gate',
-              prefixIcon: Icons.assistant_navigation,
-              controller: _landmarkController,
+            _buildProfileOption(
+              context,
+              Icons.auto_awesome,
+              'Infinity AI Assistant',
+              const CustomerHelpSupportScreen(),
             ),
             const SizedBox(height: 40),
             ElevatedButton(
-              onPressed: _isSaving ? null : _saveProfile,
-              child: _isSaving ? const CircularProgressIndicator() : const Text('Confirm New Information'),
-            ),
-            const SizedBox(height: 20),
-            TextButton(
               onPressed: () {
                 _authService.signOut();
                 Navigator.pushAndRemoveUntil(
@@ -165,27 +143,49 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                   (route) => false,
                 );
               },
-              child: const Text('Logout', style: TextStyle(color: AppTheme.errorRed, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: AppTheme.errorRed,
+                side: const BorderSide(color: AppTheme.errorRed),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.logout),
+                  SizedBox(width: 8),
+                  Text('Logout'),
+                ],
+              ),
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProfileHeader() {
-    return Column(
-      children: [
-        Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(color: AppTheme.softGray, shape: BoxShape.circle, border: Border.all(color: AppTheme.accentBlue, width: 2)),
-          child: const Icon(Icons.person, size: 60, color: AppTheme.accentBlue),
+  Widget _buildProfileOption(BuildContext context, IconData icon, String label, Widget destination) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => destination),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: AppStyles.cardDecoration,
+        child: Row(
+          children: [
+            Icon(icon, color: AppTheme.textDark),
+            const SizedBox(width: 16),
+            Text(label, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 16)),
+            const Spacer(),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
+          ],
         ),
-        const SizedBox(height: 16),
-        Text(_displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-        const Text('Member since 2026', style: TextStyle(color: AppTheme.textLight, fontSize: 12)),
-      ],
+      ),
     );
   }
 }

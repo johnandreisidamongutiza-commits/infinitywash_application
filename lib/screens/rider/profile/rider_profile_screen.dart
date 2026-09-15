@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
-import '../../../widgets/custom_text_field.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/auth_service.dart';
 import '../../role_selection_screen.dart';
+import 'options/account_details_screen.dart';
+import 'options/change_password_screen.dart';
+import 'options/help_support_screen.dart';
 
 class RiderProfileScreen extends StatefulWidget {
   const RiderProfileScreen({super.key});
@@ -20,10 +22,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _nameController = TextEditingController();
-  final _vehicleController = TextEditingController();
-  final _zonesController = TextEditingController();
   bool _isLoading = true;
-  bool _isSaving = false;
 
   @override
   void initState() {
@@ -38,8 +37,6 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
     _phoneController.dispose();
     _emailController.dispose();
     _nameController.dispose();
-    _vehicleController.dispose();
-    _zonesController.dispose();
     super.dispose();
   }
 
@@ -52,37 +49,10 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
       _phoneController.text = profile['phone'] ?? employee['phone'] ?? '';
       _emailController.text = profile['email'] ?? employee['email'] ?? '';
       _nameController.text = employee['name'] ?? '';
-      _vehicleController.text = employee['vehicle_details'] ?? '';
-      _zonesController.text = employee['delivery_zones'] ?? '';
     } catch (error) {
       _showMessage('Could not load profile: $error');
     } finally {
       if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _saveProfile() async {
-    setState(() => _isSaving = true);
-    try {
-      final profile = await _profileService.getProfile();
-      await _profileService.updateProfile(
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        phone: _phoneController.text.trim(),
-        email: _emailController.text.trim(),
-      );
-      await _profileService.updateEmployee(
-        profileId: profile['id'],
-        name: _nameController.text.trim(),
-        phone: _phoneController.text.trim(),
-        vehicleDetails: _vehicleController.text.trim(),
-        deliveryZones: _zonesController.text.trim(),
-      );
-      _showMessage('Information updated.', isError: false);
-    } catch (error) {
-      _showMessage('Could not update profile: $error');
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -108,28 +78,62 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            _buildProfileHeader(),
+            Center(
+              child: Stack(
+                children: [
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: AppTheme.softGray,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppTheme.accentBlue, width: 2),
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/images/logo.jpg',
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, size: 60),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: AppTheme.accentBlue, shape: BoxShape.circle),
+                      child: const Icon(Icons.edit, color: Colors.white, size: 20),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(_nameController.text, style: AppTheme.lightTheme.textTheme.headlineMedium),
+            Text(_emailController.text, style: AppTheme.lightTheme.textTheme.bodyMedium),
             const SizedBox(height: 40),
-            CustomTextField(label: 'First Name', hint: 'First name', prefixIcon: Icons.person_outline, controller: _firstNameController),
-            const SizedBox(height: 20),
-            CustomTextField(label: 'Last Name', hint: 'Last name', prefixIcon: Icons.person_outline, controller: _lastNameController),
-            const SizedBox(height: 20),
-            CustomTextField(label: 'Full Name', hint: 'John Rider', prefixIcon: Icons.person_outline, controller: _nameController),
-            const SizedBox(height: 20),
-            CustomTextField(label: 'Phone Number', hint: '0912-345-6789', prefixIcon: Icons.phone_android, controller: _phoneController),
-            const SizedBox(height: 20),
-            CustomTextField(label: 'Email Address', hint: 'Email address', prefixIcon: Icons.email_outlined, controller: _emailController),
-            const SizedBox(height: 20),
-            CustomTextField(label: 'Vehicle Details', hint: 'Vehicle plate or details', prefixIcon: Icons.moped_outlined, controller: _vehicleController),
-            const SizedBox(height: 20),
-            CustomTextField(label: 'Delivery Zones', hint: 'Assigned delivery zones', prefixIcon: Icons.map_outlined, controller: _zonesController),
+            _buildProfileOption(
+              context,
+              Icons.person_outline,
+              'Account Details',
+              const RiderAccountDetailsScreen(),
+            ),
+            _buildProfileOption(
+              context,
+              Icons.lock_outline,
+              'Change Password',
+              const RiderChangePasswordScreen(),
+            ),
+            _buildProfileOption(
+              context,
+              Icons.auto_awesome,
+              'Infinity AI Assistant',
+              const RiderHelpSupportScreen(),
+            ),
             const SizedBox(height: 40),
             ElevatedButton(
-              onPressed: _isSaving ? null : _saveProfile,
-              child: _isSaving ? const CircularProgressIndicator() : const Text('Confirm New Information'),
-            ),
-            const SizedBox(height: 20),
-            TextButton(
               onPressed: () {
                 _authService.signOut();
                 Navigator.pushAndRemoveUntil(
@@ -138,27 +142,49 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                   (route) => false,
                 );
               },
-              child: const Text('Logout', style: TextStyle(color: AppTheme.errorRed, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: AppTheme.errorRed,
+                side: const BorderSide(color: AppTheme.errorRed),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.logout),
+                  SizedBox(width: 8),
+                  Text('Logout'),
+                ],
+              ),
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProfileHeader() {
-    return Column(
-      children: [
-        Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(color: AppTheme.softGray, shape: BoxShape.circle, border: Border.all(color: AppTheme.accentBlue, width: 2)),
-          child: const Icon(Icons.person, size: 60, color: AppTheme.accentBlue),
+  Widget _buildProfileOption(BuildContext context, IconData icon, String label, Widget destination) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => destination),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: AppStyles.cardDecoration,
+        child: Row(
+          children: [
+            Icon(icon, color: AppTheme.textDark),
+            const SizedBox(width: 16),
+            Text(label, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 16)),
+            const Spacer(),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
+          ],
         ),
-        const SizedBox(height: 16),
-        Text(_nameController.text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-        const Text('Infinity Rider since 2026', style: TextStyle(color: AppTheme.textLight, fontSize: 12)),
-      ],
+      ),
     );
   }
 }
