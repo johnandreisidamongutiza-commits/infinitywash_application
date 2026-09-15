@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
 import 'theme/app_theme.dart';
 import 'screens/role_selection_screen.dart';
-import 'screens/test_login_screen.dart'; // For testing Supabase auth
+// For testing Supabase auth
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
