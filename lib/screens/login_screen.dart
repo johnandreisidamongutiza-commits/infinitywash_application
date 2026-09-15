@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
+import '../services/auth_service.dart';
 import 'staff/staff_main_screen.dart';
 import 'customer/customer_main_screen.dart';
 import 'rider/rider_main_screen.dart';
@@ -18,6 +19,71 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool rememberMe = false;
+  bool _isLoading = false;
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _authService = AuthService();
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signIn() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showMessage('Enter your email and password.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      await _authService.signIn(email: email, password: password);
+      if (widget.role == 'Customer') {
+        await _authService.ensureCustomerProfileFromMetadata();
+      }
+      final hasRole = await _authService.hasActiveRole(widget.role);
+      if (!hasRole) {
+        await _authService.signOut();
+        throw Exception('This account is not authorized for the ${widget.role} role.');
+      }
+
+      if (!mounted) return;
+
+      final destination = switch (widget.role) {
+        'Staff' => const StaffMainScreen(),
+        'Customer' => const CustomerMainScreen(),
+        'Rider' => const RiderMainScreen(),
+        _ => null,
+      };
+
+      if (destination != null) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => destination),
+          (route) => false,
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        _showMessage('Login failed: ${error.toString()}');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -98,6 +164,7 @@ class _LoginScreenState extends State<LoginScreen> {
               label: 'Work Email',
               hint: 'Enter your work email',
               prefixIcon: Icons.email_outlined,
+              controller: _emailController,
             ),
             const SizedBox(height: 20),
             CustomTextField(
@@ -105,6 +172,7 @@ class _LoginScreenState extends State<LoginScreen> {
               hint: 'Enter your password',
               prefixIcon: Icons.lock_outline,
               isPassword: true,
+              controller: _passwordController,
             ),
             const SizedBox(height: 12),
             Row(
@@ -133,34 +201,19 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 30),
             ElevatedButton(
-              onPressed: () {
-                print('Sign In clicked for ${widget.role}');
-                if (widget.role == 'Staff') {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (context) => const StaffMainScreen()),
-                    (route) => false,
-                  );
-                } else if (widget.role == 'Customer') {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (context) => const CustomerMainScreen()),
-                    (route) => false,
-                  );
-                } else if (widget.role == 'Rider') {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (context) => const RiderMainScreen()),
-                    (route) => false,
-                  );
-                }
-              },
+              onPressed: _isLoading ? null : _signIn,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.login),
+                  _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.login),
                   const SizedBox(width: 8),
-                  const Text('Sign In'),
+                  Text(_isLoading ? 'Signing In...' : 'Sign In'),
                 ],
               ),
             ),

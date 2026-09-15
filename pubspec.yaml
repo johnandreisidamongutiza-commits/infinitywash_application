@@ -34,7 +34,10 @@ dependencies:
   image_picker: ^1.0.7
   path_provider: ^2.1.2
   
-  # Firebase
+  # Supabase
+  supabase_flutter: ^2.8.0
+  
+  # Firebase (keeping for reference, you may want to remove these if fully migrating to Supabase)
   firebase_core: ^3.8.1
   firebase_auth: ^5.3.4
   cloud_firestore: ^5.5.2

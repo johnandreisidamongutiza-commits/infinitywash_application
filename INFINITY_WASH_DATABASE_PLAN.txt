@@ -1,0 +1,591 @@
+INFINITY WASH - FINAL MERGED DATABASE PLAN
+==========================================
+
+Purpose
+-------
+This plan combines the web management system and the separate application side.
+It keeps Supabase as the permanent source of truth and Firebase as the source
+of continuously changing data.
+
+SYSTEM SIDES
+------------
+
+Web management system:
+- Admin
+- SuperAdmin
+
+Separate application side:
+- Customer
+- Staff
+- Rider
+
+The two sides may use different frontends and login screens, but they share the
+same permanent business records through the backend.
+
+DATA OWNERSHIP RULE
+-------------------
+
+Supabase stores what happened and must be retained:
+- Profiles and role assignments
+- Customers, staff, and riders
+- Orders and payments
+- Services and pricing
+- RFID registration and scan history
+- Dispatch jobs
+- Inventory and inventory movement history
+- Feedback
+- Audit logs
+- Backup metadata
+
+Firebase stores what is happening right now:
+- Rider online status and location
+- Live order progress
+- Current RFID/device state
+- Device heartbeats
+- Live notifications
+- Chat messages
+- Push notification tokens
+
+Firebase must not be the permanent source of truth for orders, payments,
+feedback, inventory history, or customer history.
+
+============================================================
+1. SUPABASE AUTHENTICATION
+============================================================
+
+Supabase Auth is the single authentication provider for Admin, SuperAdmin,
+Customer, Staff, and Rider. Credentials and sessions are managed by Supabase
+Auth, not by tables. The separate web and application interfaces are selected
+after login using the role stored in the permanent profile.
+
+No password columns are stored in Supabase or Firestore.
+
+============================================================
+2. SUPABASE - PERMANENT TABLES
+============================================================
+
+profiles
+--------
+One permanent identity/profile record for any authenticated person. This is
+the shared identity link between the web system and application side.
+
+id                 UUID PRIMARY KEY
+supabase_user_id   UUID UNIQUE NOT NULL -- Supabase Auth user ID
+first_name         VARCHAR(80) NULL
+last_name          VARCHAR(80) NULL
+username           VARCHAR(80) UNIQUE NULL
+email              VARCHAR(254) NULL
+phone              VARCHAR(40) NULL
+avatar_url         TEXT NULL
+role               VARCHAR(30) NOT NULL -- admin, superadmin, customer, staff, rider
+status             VARCHAR(20) NOT NULL -- active, archived, deactivated
+created_at         TIMESTAMPTZ NOT NULL
+updated_at         TIMESTAMPTZ NOT NULL
+
+admin_accounts
+--------------
+Web-system account management records for Admin and SuperAdmin accounts.
+Authentication credentials remain in Supabase Auth.
+
+id                 UUID PRIMARY KEY
+profile_id         UUID REFERENCES profiles(id) UNIQUE NOT NULL
+status             VARCHAR(20) NOT NULL -- active, archived
+archive_reason     TEXT NULL
+archived_at        TIMESTAMPTZ NULL
+created_at         TIMESTAMPTZ NOT NULL
+updated_at         TIMESTAMPTZ NOT NULL
+
+customers
+---------
+Permanent customer records for walk-in customers and application customers.
+full_name remains here because walk-in customers may not have a profile.
+
+id                 UUID PRIMARY KEY
+profile_id         UUID REFERENCES profiles(id) UNIQUE NULL
+customer_code      VARCHAR(30) UNIQUE NOT NULL
+full_name          VARCHAR(160) NOT NULL
+phone              VARCHAR(40) NULL
+email              VARCHAR(254) NULL
+customer_type      VARCHAR(20) NOT NULL -- walk_in, mobile_app, both
+address            TEXT NULL
+landmark           TEXT NULL
+status             VARCHAR(20) NOT NULL -- active, deactivated
+deactivation_reason TEXT NULL
+joined_at          TIMESTAMPTZ NOT NULL
+created_at         TIMESTAMPTZ NOT NULL
+updated_at         TIMESTAMPTZ NOT NULL
+
+employees
+---------
+Permanent Staff and Rider records used by the web system and application side.
+There are no employee shift columns because the store does not use shifts.
+name remains here for staff or riders before a profile is linked.
+
+id                 UUID PRIMARY KEY
+profile_id         UUID REFERENCES profiles(id) UNIQUE NULL
+employee_code      VARCHAR(30) UNIQUE NOT NULL
+name               VARCHAR(160) NOT NULL
+role               VARCHAR(20) NOT NULL -- staff, rider
+phone              VARCHAR(40) NULL
+email              VARCHAR(254) NULL
+vehicle_details    VARCHAR(160) NULL -- riders only
+delivery_zones     TEXT NULL         -- riders only
+status             VARCHAR(20) NOT NULL -- active, archived
+archive_reason     TEXT NULL
+created_at         TIMESTAMPTZ NOT NULL
+updated_at         TIMESTAMPTZ NOT NULL
+
+service_catalog
+---------------
+Permanent services used by order intake and pricing.
+
+id                 UUID PRIMARY KEY
+service_code       VARCHAR(40) UNIQUE NOT NULL
+service_name       VARCHAR(120) NOT NULL
+base_price         NUMERIC(12,2) NOT NULL
+status             VARCHAR(20) NOT NULL -- active, inactive
+
+service_addons
+--------------
+Permanent paid add-ons used by order intake and pricing.
+
+id                 UUID PRIMARY KEY
+addon_code         VARCHAR(40) UNIQUE NOT NULL
+addon_name         VARCHAR(120) NOT NULL
+price              NUMERIC(12,2) NOT NULL
+status             VARCHAR(20) NOT NULL -- active, inactive
+
+laundry_types
+-------------
+Permanent laundry categories and load limits used by the price calculator.
+
+id                 UUID PRIMARY KEY
+laundry_type_code  VARCHAR(40) UNIQUE NOT NULL
+laundry_type_name  VARCHAR(120) NOT NULL
+unit_type          VARCHAR(20) NOT NULL -- kg, piece
+limit_per_load     NUMERIC(10,2) NOT NULL
+status             VARCHAR(20) NOT NULL -- active, inactive
+
+orders
+------
+Permanent authoritative order record shared by all system sides.
+
+id                 UUID PRIMARY KEY
+order_number       VARCHAR(30) UNIQUE NOT NULL
+customer_id        UUID REFERENCES customers(id) NULL
+source             VARCHAR(20) NOT NULL -- walk_in, online, mobile_app
+service_id         UUID REFERENCES service_catalog(id) NULL
+service_name       VARCHAR(120) NOT NULL -- historical service-name snapshot
+laundry_type       VARCHAR(40) NULL
+weight_kg          NUMERIC(10,2) NULL
+loads_count        INTEGER NOT NULL DEFAULT 1
+customer_notes     TEXT NULL
+staff_notes        TEXT NULL
+assigned_staff_id  UUID REFERENCES employees(id) NULL
+assigned_rider_id  UUID REFERENCES employees(id) NULL
+pickup_requested   BOOLEAN NOT NULL DEFAULT FALSE
+delivery_requested BOOLEAN NOT NULL DEFAULT FALSE
+pickup_address     TEXT NULL
+delivery_address   TEXT NULL
+landmark           TEXT NULL
+subtotal           NUMERIC(12,2) NOT NULL
+delivery_fee       NUMERIC(12,2) NOT NULL DEFAULT 0
+total_amount       NUMERIC(12,2) NOT NULL
+payment_status     VARCHAR(20) NOT NULL -- pending, paid, refunded, failed
+status             VARCHAR(30) NOT NULL -- pending_intake, processing, ready,
+                                      -- out_for_delivery, completed, cancelled
+received_at        TIMESTAMPTZ NULL
+processing_at      TIMESTAMPTZ NULL
+ready_at           TIMESTAMPTZ NULL
+out_for_delivery_at TIMESTAMPTZ NULL
+completed_at       TIMESTAMPTZ NULL
+created_at         TIMESTAMPTZ NOT NULL
+updated_at         TIMESTAMPTZ NOT NULL
+
+order_addons
+------------
+Normalized add-ons selected for an order. One row represents one add-on,
+instead of storing multiple add-ons in a text field.
+
+id                 UUID PRIMARY KEY
+order_id           UUID REFERENCES orders(id) NOT NULL
+addon_id           UUID REFERENCES service_addons(id) NOT NULL
+addon_name         VARCHAR(120) NOT NULL -- historical name snapshot
+quantity           NUMERIC(10,2) NOT NULL DEFAULT 1
+unit_price         NUMERIC(12,2) NOT NULL -- price snapshot
+line_total         NUMERIC(12,2) NOT NULL
+created_at         TIMESTAMPTZ NOT NULL
+
+payments
+--------
+Permanent payment and transaction records.
+
+id                 UUID PRIMARY KEY
+transaction_number VARCHAR(30) UNIQUE NOT NULL
+order_id           UUID REFERENCES orders(id) NOT NULL
+amount             NUMERIC(12,2) NOT NULL
+payment_method     VARCHAR(30) NOT NULL -- cash, gcash, in_app
+status             VARCHAR(20) NOT NULL -- pending, paid, failed, refunded
+reference_number   VARCHAR(120) NULL
+processed_by       UUID REFERENCES profiles(id) NULL
+paid_at            TIMESTAMPTZ NULL
+created_at         TIMESTAMPTZ NOT NULL
+
+rfid_tags
+---------
+Permanent RFID tag registry. The current assignment is a pointer to the
+permanent order; historical scans are stored separately.
+
+id                 UUID PRIMARY KEY
+tag_code           VARCHAR(30) UNIQUE NOT NULL
+uid                VARCHAR(100) UNIQUE NOT NULL
+status             VARCHAR(20) NOT NULL -- available, in_use, retired
+active_order_id    UUID REFERENCES orders(id) NULL
+last_scanned_at    TIMESTAMPTZ NULL
+created_at         TIMESTAMPTZ NOT NULL
+updated_at         TIMESTAMPTZ NOT NULL
+
+rfid_scans
+----------
+Permanent RFID scan history copied from live Firebase/device events.
+
+id                 UUID PRIMARY KEY
+tag_id              UUID REFERENCES rfid_tags(id) NOT NULL
+order_id            UUID REFERENCES orders(id) NULL
+device_id           UUID REFERENCES iot_devices(id) NULL
+station_name       VARCHAR(120) NULL
+scan_type           VARCHAR(30) NOT NULL -- intake, return, manual
+scanned_at          TIMESTAMPTZ NOT NULL
+metadata            JSONB NULL
+
+iot_devices
+-----------
+Permanent registry for ESP32/RC522 devices.
+
+id                 UUID PRIMARY KEY
+device_code        VARCHAR(40) UNIQUE NOT NULL
+device_name        VARCHAR(120) NOT NULL
+device_type        VARCHAR(30) NOT NULL -- counter, return_bin
+ip_address         VARCHAR(45) NULL
+firmware_version   VARCHAR(40) NULL
+status             VARCHAR(20) NOT NULL -- online, offline, disabled
+last_heartbeat_at  TIMESTAMPTZ NULL
+created_at         TIMESTAMPTZ NOT NULL
+updated_at         TIMESTAMPTZ NOT NULL
+
+dispatch_jobs
+-------------
+Permanent pickup and delivery job records.
+
+id                 UUID PRIMARY KEY
+job_number         VARCHAR(30) UNIQUE NOT NULL
+order_id           UUID REFERENCES orders(id) NOT NULL
+rider_id           UUID REFERENCES employees(id) NULL
+job_type           VARCHAR(20) NOT NULL -- pickup, delivery
+status             VARCHAR(20) NOT NULL -- pending, assigned, in_progress,
+                                      -- done, cancelled
+address            TEXT NOT NULL
+landmark           TEXT NULL
+scheduled_at       TIMESTAMPTZ NULL
+assigned_at        TIMESTAMPTZ NULL
+started_at         TIMESTAMPTZ NULL
+completed_at       TIMESTAMPTZ NULL
+proof_url          TEXT NULL
+notes              TEXT NULL
+created_at         TIMESTAMPTZ NOT NULL
+updated_at         TIMESTAMPTZ NOT NULL
+
+inventory_items
+---------------
+Permanent inventory balances for laundry supplies.
+
+id                 UUID PRIMARY KEY
+item_code          VARCHAR(40) UNIQUE NOT NULL
+item_name          VARCHAR(120) NOT NULL
+item_type          VARCHAR(20) NOT NULL -- liquid, gas, other
+unit               VARCHAR(30) NOT NULL
+quantity           NUMERIC(12,3) NOT NULL
+maximum_quantity   NUMERIC(12,3) NULL
+minimum_quantity   NUMERIC(12,3) NOT NULL
+usage_rule         VARCHAR(120) NULL
+status             VARCHAR(20) NOT NULL -- active, inactive
+created_at         TIMESTAMPTZ NOT NULL
+updated_at         TIMESTAMPTZ NOT NULL
+
+inventory_movements
+-------------------
+Permanent inventory restock and consumption history.
+
+id                 UUID PRIMARY KEY
+inventory_item_id  UUID REFERENCES inventory_items(id) NOT NULL
+movement_type      VARCHAR(20) NOT NULL -- restock, consume, adjustment
+quantity           NUMERIC(12,3) NOT NULL
+previous_quantity  NUMERIC(12,3) NOT NULL
+new_quantity       NUMERIC(12,3) NOT NULL
+order_id           UUID REFERENCES orders(id) NULL
+performed_by       UUID REFERENCES profiles(id) NULL
+created_at         TIMESTAMPTZ NOT NULL
+
+system_settings
+---------------
+Permanent settings edited by the Web system and used by order pricing.
+
+id                 UUID PRIMARY KEY
+setting_key        VARCHAR(100) UNIQUE NOT NULL
+setting_value      TEXT NOT NULL
+description        TEXT NULL
+updated_by         UUID REFERENCES profiles(id) NULL
+updated_at         TIMESTAMPTZ NOT NULL
+
+Required setting keys:
+- full_service_price_per_load
+- addon_fabcon_price
+- addon_detergent_price
+- express_surcharge
+- delivery_fee
+- regular_limit_kg
+- heavy_limit_kg
+- beddings_limit_kg
+- heavyweight_limit_pieces
+- ready_auto_timeout_hours
+- rfid_debounce_seconds
+- stale_order_days
+- store_name
+- store_address
+- contact_hotline
+- facebook_page
+
+feedback
+--------
+Permanent customer feedback records.
+
+id                 UUID PRIMARY KEY
+customer_id        UUID REFERENCES customers(id) NULL
+order_id           UUID REFERENCES orders(id) NULL
+customer_name      VARCHAR(160) NOT NULL
+rating             SMALLINT NOT NULL -- 1 through 5
+comment            TEXT NULL
+created_at         TIMESTAMPTZ NOT NULL
+
+audit_logs
+----------
+Permanent security and operational history.
+
+id                 UUID PRIMARY KEY
+log_number         VARCHAR(30) UNIQUE NOT NULL
+actor_profile_id   UUID REFERENCES profiles(id) NULL
+action             VARCHAR(80) NOT NULL
+entity_type        VARCHAR(80) NULL
+entity_id          UUID NULL
+details            TEXT NULL
+ip_address         VARCHAR(45) NULL
+metadata           JSONB NULL
+created_at         TIMESTAMPTZ NOT NULL
+
+backup_snapshots
+----------------
+Permanent backup metadata. Actual backup files live in object storage.
+
+id                 UUID PRIMARY KEY
+backup_number      VARCHAR(30) UNIQUE NOT NULL
+label              VARCHAR(160) NOT NULL
+backup_type        VARCHAR(20) NOT NULL -- auto, manual
+status             VARCHAR(20) NOT NULL -- pending, success, failed
+storage_path       TEXT NULL
+size_bytes         BIGINT NULL
+notes              TEXT NULL
+created_by         UUID REFERENCES profiles(id) NULL
+created_at         TIMESTAMPTZ NOT NULL
+completed_at       TIMESTAMPTZ NULL
+
+============================================================
+3. FILE STORAGE AND FREE-TIER RULES
+============================================================
+
+Use Supabase Storage for permanent files:
+- profile pictures
+- delivery proof files
+- receipt files
+- backup files
+
+Store only the file path or URL in the related Supabase table. Do not store
+binary files inside PostgreSQL rows or upload the same file to both services.
+
+Firebase Firestore stores small realtime documents only. Chat attachments
+should use one selected storage provider, preferably Supabase Storage, with
+only the file URL and message metadata kept in Firebase.
+
+Exact free-tier quotas can change, so verify the current Supabase and Firebase
+limits before deployment. The design reduces usage by keeping files small,
+compressing images, limiting upload sizes, expiring temporary notifications,
+removing stale live-state documents, and retaining only the required backup
+history.
+
+Do not use Firebase for permanent file archives or duplicate Supabase files.
+Do not use realtime listeners for historical lists that can be read from
+Supabase when the screen opens.
+
+============================================================
+4. FIREBASE - REALTIME DATA
+============================================================
+
+Firebase collections contain live state only. Each document uses a Supabase
+ID where it refers to a permanent record.
+
+live_users/{profile_id}
+-------------------------
+Live presence and notification state. Permanent names, roles, and contact data
+remain in Supabase.
+
+profile_id             String -- Supabase profiles.id
+role                   String -- customer, staff, rider, admin, superadmin
+fcm_token              String NULL
+is_online              Boolean
+last_seen_at           Timestamp
+
+live_orders/{order_id}
+----------------------
+Current order state for application tracking and live dashboards. The complete
+order and its history remain in Supabase `orders`.
+
+order_id               String -- Supabase orders.id
+status                 String
+current_station        String NULL
+progress_percent       Number NULL
+estimated_ready_at     Timestamp
+assigned_rider_id      String NULL -- Supabase employees.id
+updated_at             Timestamp
+
+rider_tracking/{rider_profile_id}
+---------------------------------
+Current rider location and online state.
+
+rider_id               String -- Supabase employees.id
+geopoint               GeoPoint
+heading                Number NULL
+is_online              Boolean
+last_ping              Timestamp
+
+live_rfid/{tag_id}
+------------------
+Current RFID activity only. Permanent scans are copied to Supabase `rfid_scans`.
+
+tag_id                 String -- Supabase rfid_tags.id
+order_id               String NULL -- Supabase orders.id
+current_station        String NULL
+scan_type              String NULL
+last_scan_at           Timestamp
+updated_at             Timestamp
+
+live_devices/{device_id}
+------------------------
+Current device heartbeat and connection state. Permanent registration remains
+in Supabase `iot_devices`.
+
+device_id              String -- Supabase iot_devices.id
+is_online              Boolean
+connection_status      String
+last_heartbeat_at      Timestamp
+updated_at             Timestamp
+
+notifications/{notification_id}
+--------------------------------
+Live/unread notifications. Permanent audit events remain in Supabase.
+
+recipient_profile_id   String -- Supabase profiles.id
+title                  String
+body                   String
+type                   String -- order_update, low_stock, new_message
+related_order_id       String NULL -- Supabase orders.id
+is_read                Boolean
+created_at             Timestamp
+
+chats/{chat_id}
+---------------
+Realtime conversation metadata. Messages remain in the chat subcollection.
+
+participants           Array of String -- Supabase profiles.id values
+last_message           String
+last_timestamp         Timestamp
+
+chats/{chat_id}/messages/{message_id}
+-------------------------------------
+
+author_profile_id      String -- Supabase profiles.id
+text                   String
+type                   String -- text, image
+timestamp              Timestamp
+
+============================================================
+5. DUPLICATE DATA DECISIONS
+============================================================
+
+The Firebase `users` collection is not a second permanent user table. Supabase
+Auth owns login identity, while Supabase `profiles`, `customers`, and
+`employees` own permanent identity and business data. Only live application
+state such as online status and FCM token belongs in Firebase.
+
+The Firebase `orders` collection becomes `live_orders`. It contains only live
+status/progress and references the permanent Supabase order.
+
+The Firebase `inventory` collection is removed as a permanent collection.
+Current inventory quantity and movement history belong in Supabase. A live
+inventory alert may be delivered through Firebase notifications.
+
+The Firebase `rfid_tags` collection becomes `live_rfid`. Tag registration and
+permanent scan history belong in Supabase.
+
+The Firebase `feedback` collection is removed. Feedback belongs permanently in
+Supabase.
+
+The Firebase `notifications` collection remains realtime and references
+permanent Supabase records where needed.
+
+The Firebase `chats` and `rider_tracking` collections remain Firebase-only
+realtime features.
+
+============================================================
+6. RELATIONSHIPS
+============================================================
+
+profiles 1-to-0/1 admin_accounts
+profiles 1-to-0/1 customers
+profiles 1-to-0/1 employees
+customers 1-to-many orders, payments, and feedback
+employees 1-to-many assigned orders and dispatch_jobs
+orders 1-to-many payments, dispatch_jobs, inventory_movements, and feedback
+orders 1-to-many order_addons
+orders 1-to-0/1 active RFID tag
+rfid_tags 1-to-many rfid_scans
+inventory_items 1-to-many inventory_movements
+
+============================================================
+7. RULES
+============================================================
+
+1. Supabase is authoritative for permanent data.
+2. Supabase Auth is the only authentication provider for all five roles.
+3. Firebase is authoritative only for continuously changing data.
+4. Every Firebase live document that represents a Supabase record stores the
+   corresponding Supabase ID.
+5. Keep permanent core tables normalized, but allow explicit historical
+   snapshots and current-value caches where they reduce reads or preserve past
+   values.
+6. `orders.service_name`, `order_addons.addon_name`, and order address fields
+   are historical snapshots; they must not be treated as live catalog data.
+7. `inventory_items.quantity` is the current balance; `inventory_movements`
+   remains the permanent movement history.
+8. `rfid_tags.active_order_id` is the single permanent current-assignment
+   pointer; RFID scans hold historical events.
+9. Do not store passwords in either database.
+10. Do not store raw API keys in either database.
+11. Do not create a branches table or branch foreign keys.
+12. Do not create employee shift columns; this store does not use shifts.
+13. Do not duplicate permanent orders, payments, feedback, or inventory history
+   in Firebase.
+14. Important completed Firebase events, especially RFID scans and dispatch
+   completion, are written to Supabase through the backend.
+15. Do not create separate KPI or analytics tables. Calculate summaries from
+    permanent orders, payments, inventory movements, and feedback.
+16. Keep actual backup files in object storage and store only their metadata in
+    Supabase.
