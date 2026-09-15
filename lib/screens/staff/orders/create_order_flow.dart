@@ -1847,29 +1847,35 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                         const SizedBox(height: 8),
 
                         // Extra Fabric Conditioner
-                        CheckboxListTile(
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
-                          value: _addExtraFabCon,
-                          onChanged: (value) => setState(() => _addExtraFabCon = value ?? false),
-                          title: const Text('Extra Fabric Conditioner', style: TextStyle(fontSize: 13)),
-                          subtitle: const Text('+₱20.00',
-                              style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold)),
-                          controlAffinity: ListTileControlAffinity.leading,
-                          activeColor: AppTheme.accentBlue,
+                        Material(
+                          color: Colors.transparent,
+                          child: CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            value: _addExtraFabCon,
+                            onChanged: (value) => setState(() => _addExtraFabCon = value ?? false),
+                            title: const Text('Extra Fabric Conditioner', style: TextStyle(fontSize: 13)),
+                            subtitle: const Text('+₱20.00',
+                                style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold)),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            activeColor: AppTheme.accentBlue,
+                          ),
                         ),
 
                         // Extra Detergent
-                        CheckboxListTile(
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
-                          value: _addExtraDetergent,
-                          onChanged: (value) => setState(() => _addExtraDetergent = value ?? false),
-                          title: const Text('Extra Detergent', style: TextStyle(fontSize: 13)),
-                          subtitle: const Text('+₱20.00',
-                              style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold)),
-                          controlAffinity: ListTileControlAffinity.leading,
-                          activeColor: AppTheme.accentBlue,
+                        Material(
+                          color: Colors.transparent,
+                          child: CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            value: _addExtraDetergent,
+                            onChanged: (value) => setState(() => _addExtraDetergent = value ?? false),
+                            title: const Text('Extra Detergent', style: TextStyle(fontSize: 13)),
+                            subtitle: const Text('+₱20.00',
+                                style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold)),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            activeColor: AppTheme.accentBlue,
+                          ),
                         ),
                       ],
                     ),

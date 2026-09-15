@@ -419,6 +419,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
 
   Widget _buildCurrentlyProcessing(BuildContext context) {
     final processingOrders = _processingOrders;
+    final displayOrders = processingOrders.take(3).toList(); // Show only first 3 orders
 
     return Column(
       children: [
@@ -464,7 +465,8 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
             ),
           )
         else
-          ...processingOrders.map((order) => Padding(
+          // Show only the first 3 orders
+          ...displayOrders.map((order) => Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: _buildProcessingCard(context, order),
           )),
