@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../models/notification_model.dart';
+import '../../../services/notification_service.dart';
 import '../orders/customer_orders_screen.dart';
 import '../delivery/delivery_tracking_screen.dart';
 
@@ -13,65 +15,91 @@ class CustomerNotificationsScreen extends StatefulWidget {
 }
 
 class _CustomerNotificationsScreenState extends State<CustomerNotificationsScreen> {
-  final List<Map<String, dynamic>> _notifications = [
-    {
-      'id': '1',
-      'title': 'Order In Processing',
-      'desc': 'Your laundry for Order #IW-105 is currently being washed and dried.',
-      'time': '30 mins ago',
-      'type': 'order',
-      'isRead': false,
-    },
-    {
-      'id': '2',
-      'title': 'Rider Assigned',
-      'desc': 'Michael Rider (Honda Click - ABC-1234) has been assigned for your doorstep delivery.',
-      'time': '1 hour ago',
-      'type': 'delivery',
-      'isRead': false,
-    },
-    {
-      'id': '3',
-      'title': 'Payment Verified',
-      'desc': 'Payment of ₱170.00 via GCash was successfully confirmed for Order #IW-105.',
-      'time': '2 hours ago',
-      'type': 'payment',
-      'isRead': true,
-    },
-    {
-      'id': '4',
-      'title': 'Order Delivered',
-      'desc': 'Order #IW-102 was delivered to your address. Thank you for washing with InfinityWash!',
-      'time': 'Aug 28, 2026',
-      'type': 'completed',
-      'isRead': true,
-    },
-  ];
+  final NotificationService _notificationService = NotificationService();
+  List<NotificationModel> _notifications = [];
+  bool _isLoading = true;
+  String? _errorMessage;
 
-  int get _unreadCount => _notifications.where((n) => !n['isRead']).length;
-
-  void _markAllAsRead() {
-    setState(() {
-      for (var n in _notifications) {
-        n['isRead'] = true;
-      }
-    });
-    widget.onNotificationsCleared?.call();
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
   }
 
-  void _onNotificationTap(Map<String, dynamic> notif) {
+  Future<void> _loadNotifications() async {
     setState(() {
-      notif['isRead'] = true;
+      _isLoading = true;
+      _errorMessage = null;
     });
-    widget.onNotificationsCleared?.call();
 
-    final type = notif['type'];
+    try {
+      final notifications = await _notificationService.getNotifications();
+      if (mounted) {
+        setState(() {
+          _notifications = notifications;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load notifications';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  int get _unreadCount => _notifications.where((n) => !n.isRead).length;
+
+  Future<void> _markAllAsRead() async {
+    final unreadIds = _notifications
+        .where((n) => !n.isRead)
+        .map((n) => n.id)
+        .toList();
+
+    if (unreadIds.isEmpty) return;
+
+    try {
+      await _notificationService.markAllAsRead(unreadIds);
+      setState(() {
+        for (var n in _notifications) {
+          n.isRead = true;
+        }
+      });
+      widget.onNotificationsCleared?.call(); // Notify parent
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to mark all as read: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _onNotificationTap(NotificationModel notif) async {
+    if (!notif.isRead) {
+      try {
+        await _notificationService.markAsRead(notif.id);
+        setState(() {
+          notif.isRead = true;
+        });
+        widget.onNotificationsCleared?.call(); // Notify parent
+      } catch (e) {
+        print('Error marking notification as read: $e');
+      }
+    }
+
+    // Navigate based on notification type
+    if (!mounted) return;
+    
+    final type = notif.type;
     if (type == 'delivery') {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const DeliveryTrackingScreen()),
       );
-    } else {
+    } else if (type == 'order' || type == 'order_update') {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const CustomerOrdersScreen()),
@@ -103,17 +131,59 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
             ),
         ],
       ),
-      body: _notifications.isEmpty
-          ? _buildEmptyState()
-          : ListView.separated(
-              padding: const EdgeInsets.all(24),
-              itemCount: _notifications.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 14),
-              itemBuilder: (context, index) {
-                final notif = _notifications[index];
-                return _buildNotificationCard(notif);
-              },
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return _buildErrorState();
+    }
+
+    if (_notifications.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadNotifications,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(24),
+        itemCount: _notifications.length,
+        separatorBuilder: (context, index) => const SizedBox(height: 14),
+        itemBuilder: (context, index) {
+          final notif = _notifications[index];
+          return _buildNotificationCard(notif);
+        },
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 80, color: AppTheme.errorRed.withValues(alpha: 0.5)),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage ?? 'Something went wrong',
+              style: const TextStyle(fontSize: 16, color: AppTheme.textDark),
+              textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadNotifications,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -142,13 +212,13 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
     );
   }
 
-  Widget _buildNotificationCard(Map<String, dynamic> notif) {
-    final bool isRead = notif['isRead'];
+  Widget _buildNotificationCard(NotificationModel notif) {
+    final bool isRead = notif.isRead;
     Color iconColor;
     Color iconBgColor;
     IconData icon;
 
-    switch (notif['type']) {
+    switch (notif.type) {
       case 'delivery':
         iconColor = AppTheme.teamMemberIconOrange;
         iconBgColor = AppTheme.teamMemberOrange;
@@ -163,6 +233,16 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
         iconColor = Colors.green;
         iconBgColor = Colors.green.withValues(alpha: 0.12);
         icon = Icons.check_circle_outline;
+        break;
+      case 'alert':
+        iconColor = AppTheme.errorRed;
+        iconBgColor = AppTheme.errorRed.withValues(alpha: 0.12);
+        icon = Icons.warning_amber_rounded;
+        break;
+      case 'announcement':
+        iconColor = AppTheme.accentBlue;
+        iconBgColor = AppTheme.lightBlue;
+        icon = Icons.campaign;
         break;
       default:
         iconColor = AppTheme.accentBlue;
@@ -213,7 +293,7 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
                       children: [
                         Expanded(
                           child: Text(
-                            notif['title'],
+                            notif.title,
                             style: TextStyle(
                               fontWeight: isRead ? FontWeight.w600 : FontWeight.bold,
                               fontSize: 15,
@@ -234,7 +314,7 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      notif['desc'],
+                      notif.message,
                       style: TextStyle(
                         fontSize: 12,
                         color: isRead ? AppTheme.textLight : AppTheme.textDark.withValues(alpha: 0.8),
@@ -243,7 +323,7 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      notif['time'],
+                      notif.timeAgo,
                       style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
                     ),
                   ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../services/notification_service.dart';
 
 import '../orders/request_service_flow.dart';
 import '../delivery/delivery_tracking_screen.dart';
@@ -14,7 +15,21 @@ class CustomerHomeScreen extends StatefulWidget {
 }
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
-  int _unreadNotificationsCount = 2;
+  final NotificationService _notificationService = NotificationService();
+  int _unreadNotificationsCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    final count = await _notificationService.getUnreadCount();
+    if (mounted) {
+      setState(() => _unreadNotificationsCount = count);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -79,14 +94,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     MaterialPageRoute(
                       builder: (context) => CustomerNotificationsScreen(
                         onNotificationsCleared: () {
-                          setState(() => _unreadNotificationsCount = 0);
+                          _loadUnreadCount(); // Reload count after clearing
                         },
                       ),
                     ),
                   );
+                  _loadUnreadCount(); // Reload count when returning
                 },
                 padding: EdgeInsets.zero,
-                icon: const Icon(Icons.notifications_none_rounded, color: AppTheme.textDark, size: 22),
+                icon: Icon(
+                  Icons.notifications_none_rounded, 
+                  color: _unreadNotificationsCount > 0 ? AppTheme.errorRed : AppTheme.textDark, 
+                  size: 22
+                ),
                 tooltip: 'Notifications',
               ),
             ),

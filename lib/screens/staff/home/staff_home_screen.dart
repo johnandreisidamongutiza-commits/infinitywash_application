@@ -7,6 +7,7 @@ import '../orders/order_status_screen.dart';
 import '../orders/rfid_checker_screen.dart';
 import '../notifications/staff_notifications_screen.dart';
 import '../../../services/order_service.dart';
+import '../../../services/notification_service.dart';
 
 class StaffHomeScreen extends StatefulWidget {
   const StaffHomeScreen({super.key});
@@ -17,7 +18,9 @@ class StaffHomeScreen extends StatefulWidget {
 
 class _StaffHomeScreenState extends State<StaffHomeScreen> {
   final OrderService _orderService = OrderService();
+  final NotificationService _notificationService = NotificationService();
   List<LaundryOrder> _allOrders = [];
+  int _unreadNotificationCount = 0;
   bool _isLoading = true;
   String? _error;
 
@@ -25,6 +28,14 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   void initState() {
     super.initState();
     _loadOrders();
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    final count = await _notificationService.getUnreadCount();
+    if (mounted) {
+      setState(() => _unreadNotificationCount = count);
+    }
   }
 
   Future<void> _loadOrders() async {
@@ -152,11 +163,15 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const StaffNotificationsScreen()),
-                );
+                ).then((_) => _loadUnreadCount()); // Reload count when returning
               },
-              icon: const Icon(Icons.notifications_none, size: 28),
+              icon: Icon(
+                Icons.notifications_none, 
+                size: 28,
+                color: _unreadNotificationCount > 0 ? AppTheme.errorRed : AppTheme.textDark,
+              ),
             ),
-            if (pendingCount > 0)
+            if (_unreadNotificationCount > 0)
               Positioned(
                 right: 12,
                 top: 12,
@@ -167,8 +182,10 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white, width: 1.5),
                   ),
+                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
                   child: Text(
-                    '$pendingCount',
+                    _unreadNotificationCount > 9 ? '9+' : '$_unreadNotificationCount',
+                    textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
                   ),
                 ),
