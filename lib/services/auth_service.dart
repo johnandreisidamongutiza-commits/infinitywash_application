@@ -8,12 +8,14 @@ class AuthService {
   Future<AuthResponse> signUp({
     required String email,
     required String password,
+    String? phone,
     Map<String, dynamic>? metadata,
   }) async {
     try {
       final response = await _auth.signUp(
         email: email,
         password: password,
+        phone: phone,
         data: metadata,
       );
       return response;
@@ -43,6 +45,7 @@ class AuthService {
     final response = await signUp(
       email: email,
       password: password,
+      phone: phone,
       metadata: metadata,
     );
 
@@ -69,22 +72,35 @@ class AuthService {
     Map<String, dynamic> metadata,
   ) async {
     final now = DateTime.now().toIso8601String();
-    await SupabaseService.client.from('profiles').upsert(
-      {
-        'supabase_user_id': user.id,
-        'first_name': metadata['first_name'],
-        'last_name': metadata['last_name'],
-        'email': email,
-        'phone': metadata['phone'],
-        'address': metadata['address'],
-        'landmark': metadata['landmark'],
-        'role': 'customer',
-        'status': 'active',
+    final client = SupabaseService.client;
+    final profile = await client
+        .from('profiles')
+        .select('id')
+        .eq('supabase_user_id', user.id)
+        .maybeSingle();
+
+    final profileData = {
+      'supabase_user_id': user.id,
+      'first_name': metadata['first_name'],
+      'last_name': metadata['last_name'],
+      'email': email,
+      'phone': metadata['phone'],
+      'address': metadata['address'],
+      'landmark': metadata['landmark'],
+      'role': 'customer',
+      'status': 'active',
+      'updated_at': now,
+    };
+
+    if (profile == null) {
+      await client.from('profiles').insert({
+        'id': user.id,
+        ...profileData,
         'created_at': now,
-        'updated_at': now,
-      },
-      onConflict: 'supabase_user_id',
-    );
+      });
+    } else {
+      await client.from('profiles').update(profileData).eq('id', profile['id']);
+    }
   }
 
   // Sign in with email and password
@@ -118,6 +134,35 @@ class AuthService {
     final profileRole = (profile['role'] as String?)?.toLowerCase();
     final profileStatus = (profile['status'] as String?)?.toLowerCase();
     return profileRole == role.toLowerCase() && profileStatus == 'active';
+  }
+
+  Future<bool> hasActiveEmployeeRole(String role) async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    final client = SupabaseService.client;
+    final profile = await client
+        .from('profiles')
+        .select('id, role, status')
+        .eq('supabase_user_id', user.id)
+        .maybeSingle();
+
+    if (profile == null ||
+        (profile['role'] as String?)?.toLowerCase() != role.toLowerCase() ||
+        (profile['status'] as String?)?.toLowerCase() != 'active') {
+      return false;
+    }
+
+    final employee = await client
+        .from('employees')
+        .select('role, status, profile_id')
+        .eq('profile_id', profile['id'])
+        .maybeSingle();
+
+    if (employee == null) return false;
+
+    return (employee['role'] as String?)?.toLowerCase() == role.toLowerCase() &&
+        (employee['status'] as String?)?.toLowerCase() == 'active';
   }
 
   // Sign out

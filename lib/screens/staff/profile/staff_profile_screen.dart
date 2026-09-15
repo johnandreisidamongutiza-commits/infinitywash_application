@@ -1,13 +1,95 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/custom_text_field.dart';
+import '../../../services/profile_service.dart';
+import '../../../services/auth_service.dart';
 import '../../role_selection_screen.dart';
 import 'options/account_details_screen.dart';
 import 'options/change_password_screen.dart';
 import 'options/notification_settings_screen.dart';
 import 'options/help_support_screen.dart';
 
-class StaffProfileScreen extends StatelessWidget {
+class StaffProfileScreen extends StatefulWidget {
   const StaffProfileScreen({super.key});
+
+  @override
+  State<StaffProfileScreen> createState() => _StaffProfileScreenState();
+}
+
+class _StaffProfileScreenState extends State<StaffProfileScreen> {
+  final _profileService = ProfileService();
+  final _authService = AuthService();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _employeeCodeController = TextEditingController();
+  bool _isLoading = true;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _nameController.dispose();
+    _employeeCodeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final profile = await _profileService.getProfile();
+      final employee = await _profileService.getEmployee(profile['id']);
+      _firstNameController.text = profile['first_name'] ?? '';
+      _lastNameController.text = profile['last_name'] ?? '';
+      _phoneController.text = profile['phone'] ?? employee['phone'] ?? '';
+      _emailController.text = profile['email'] ?? employee['email'] ?? '';
+      _nameController.text = employee['name'] ?? '';
+      _employeeCodeController.text = employee['employee_code'] ?? '';
+    } catch (error) {
+      _showMessage('Could not load profile: $error');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    setState(() => _isSaving = true);
+    try {
+      final profile = await _profileService.getProfile();
+      await _profileService.updateProfile(
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        phone: _phoneController.text.trim(),
+        email: _emailController.text.trim(),
+      );
+      await _profileService.updateEmployee(
+        profileId: profile['id'],
+        name: _nameController.text.trim(),
+        phone: _phoneController.text.trim(),
+      );
+      _showMessage('Information updated.', isError: false);
+    } catch (error) {
+      _showMessage('Could not update profile: $error');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  void _showMessage(String message, {bool isError = true}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: isError ? Colors.red : Colors.green),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +101,9 @@ class StaffProfileScreen extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
+        body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
@@ -56,9 +140,23 @@ class StaffProfileScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            Text('Staff Member', style: AppTheme.lightTheme.textTheme.headlineMedium),
-            Text('staff@infinitywash.com', style: AppTheme.lightTheme.textTheme.bodyMedium),
+            Text(_nameController.text, style: AppTheme.lightTheme.textTheme.headlineMedium),
+            Text(_emailController.text, style: AppTheme.lightTheme.textTheme.bodyMedium),
             const SizedBox(height: 40),
+            CustomTextField(label: 'First Name', hint: 'First name', prefixIcon: Icons.person_outline, controller: _firstNameController),
+            const SizedBox(height: 16),
+            CustomTextField(label: 'Last Name', hint: 'Last name', prefixIcon: Icons.person_outline, controller: _lastNameController),
+            const SizedBox(height: 16),
+            CustomTextField(label: 'Employee Name', hint: 'Full name', prefixIcon: Icons.badge_outlined, controller: _nameController),
+            const SizedBox(height: 16),
+            CustomTextField(label: 'Employee Code', hint: 'Employee code', prefixIcon: Icons.numbers, controller: _employeeCodeController),
+            const SizedBox(height: 16),
+            CustomTextField(label: 'Phone Number', hint: 'Phone number', prefixIcon: Icons.phone, controller: _phoneController),
+            const SizedBox(height: 16),
+            CustomTextField(label: 'Email Address', hint: 'Email address', prefixIcon: Icons.email_outlined, controller: _emailController),
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: _isSaving ? null : _saveProfile, child: _isSaving ? const CircularProgressIndicator() : const Text('Save Information')),
+            const SizedBox(height: 24),
             _buildProfileOption(
               context,
               Icons.person_outline,
@@ -86,6 +184,7 @@ class StaffProfileScreen extends StatelessWidget {
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () {
+                _authService.signOut();
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),

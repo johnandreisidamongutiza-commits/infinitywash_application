@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/auth_service.dart';
@@ -46,7 +47,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (widget.role == 'Customer') {
         await _authService.ensureCustomerProfileFromMetadata();
       }
-      final hasRole = await _authService.hasActiveRole(widget.role);
+      final hasRole = widget.role == 'Customer'
+          ? await _authService.hasActiveRole(widget.role)
+          : await _authService.hasActiveEmployeeRole(widget.role);
       if (!hasRole) {
         await _authService.signOut();
         throw Exception('This account is not authorized for the ${widget.role} role.');
@@ -70,7 +73,10 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (error) {
       if (mounted) {
-        _showMessage('Login failed: ${error.toString()}');
+        final message = error is AuthApiException && error.code == 'email_not_confirmed'
+            ? 'Email not confirmed. Check your inbox or confirm this user in Supabase Authentication.'
+            : 'Login failed: ${error.toString()}';
+        _showMessage(message);
       }
     } finally {
       if (mounted) {

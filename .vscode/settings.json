@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^\"C:/Users/eksonmel/develop/flutter/bin/flutter\\.bat\" --no-color analyze lib/services/auth_service\\.dart$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
