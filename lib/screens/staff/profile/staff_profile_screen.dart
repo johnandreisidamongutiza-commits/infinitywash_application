@@ -25,7 +25,6 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
   final _nameController = TextEditingController();
   final _employeeCodeController = TextEditingController();
   bool _isLoading = true;
-  bool _isSaving = false;
 
   @override
   void initState() {
@@ -58,29 +57,6 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
       _showMessage('Could not load profile: $error');
     } finally {
       if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _saveProfile() async {
-    setState(() => _isSaving = true);
-    try {
-      final profile = await _profileService.getProfile();
-      await _profileService.updateProfile(
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        phone: _phoneController.text.trim(),
-        email: _emailController.text.trim(),
-      );
-      await _profileService.updateEmployee(
-        profileId: profile['id'],
-        name: _nameController.text.trim(),
-        phone: _phoneController.text.trim(),
-      );
-      _showMessage('Information updated.', isError: false);
-    } catch (error) {
-      _showMessage('Could not update profile: $error');
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
     }
   }
 

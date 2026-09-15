@@ -3,6 +3,10 @@
         "/^\"C:/Users/eksonmel/develop/flutter/bin/flutter\\.bat\" --no-color analyze lib/services/auth_service\\.dart$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^flutter analyze lib/screens/staff/profile/staff_profile_screen\\.dart lib/screens/customer/profile/customer_profile_screen\\.dart lib/screens/rider/profile/rider_profile_screen\\.dart$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }
