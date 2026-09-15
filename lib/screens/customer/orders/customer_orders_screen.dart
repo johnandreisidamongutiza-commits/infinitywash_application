@@ -1463,7 +1463,8 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     }
   }
 
-  Color _getLoadStatusColor(LoadStatus status) {
+  Color _getLoadStatusColor(LoadStatus? status) {
+    if (status == null) return AppTheme.textLight;
     switch (status) {
       case LoadStatus.queued:
         return AppTheme.textLight;
@@ -1476,7 +1477,8 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     }
   }
 
-  String _getLoadStatusText(LoadStatus status) {
+  String _getLoadStatusText(LoadStatus? status) {
+    if (status == null) return 'Queued';
     switch (status) {
       case LoadStatus.queued:
         return 'Queued';

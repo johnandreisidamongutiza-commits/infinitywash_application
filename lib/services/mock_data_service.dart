@@ -1,5 +1,5 @@
-import '../models/order.dart';
 import '../models/supply.dart';
+import '../models/order.dart';
 
 class MockDataService {
   static final MockDataService _instance = MockDataService._internal();
@@ -11,645 +11,96 @@ class MockDataService {
     'RFID-001', 'RFID-002', 'RFID-003', 'RFID-004', 'RFID-005',
     'RFID-006', 'RFID-007', 'RFID-008', 'RFID-009', 'RFID-010',
   ];
-
-  final List<LaundryOrder> _orders = [
-    LaundryOrder(
-      id: 'IW-001',
-      customerName: 'John Doe',
-      customerPhone: '0912-345-6789',
-      channel: OrderChannel.walkIn,
-      collectionMethod: CollectionMethod.dropOff,
-      returnMethod: ReturnMethod.shopPickup,
-      status: OrderStatus.processing,
-      paymentStatus: PaymentStatus.unpaid,
-      loads: [
-        OrderLoad(
-          loadNumber: 1,
-          category: 'Regular Clothing',
-          weight: 5.5,
-          categoryLimit: 8.0,
-          unit: 'kg',
-          description: 'T-shirts, shorts, sleeveless, socks, underwear',
-          isOverLimit: false,
-          loadStatus: LoadStatus.washing,
-        ),
-      ],
-      rfidTag: 'RFID-001',
-      instructions: 'Heavy wash for denim | Fold neatly',
-      createdAt: DateTime.now().subtract(const Duration(minutes: 45)),
-    ),
-    LaundryOrder(
-      id: 'IW-002',
-      customerName: 'Maria Santos',
-      customerPhone: '0922-555-0192',
-      deliveryAddress: '456 Banilad Rd, Cebu City',
-      deliveryLandmark: 'Beside green pharmacy',
-      channel: OrderChannel.online,
-      collectionMethod: CollectionMethod.riderPickup,
-      returnMethod: ReturnMethod.delivery,
-      status: OrderStatus.processing,
-      paymentStatus: PaymentStatus.unpaid,
-      loads: [
-        OrderLoad(
-          loadNumber: 1,
-          category: 'Regular Clothing',
-          weight: 3.0,
-          categoryLimit: 8.0,
-          unit: 'kg',
-          description: 'T-shirts, shorts, sleeveless, socks, underwear',
-          isOverLimit: false,
-          loadStatus: LoadStatus.drying,
-        ),
-      ],
-      rfidTag: 'RFID-003',
-      instructions: 'Extra gentle cycle on shirts | Extra Fab Con (+₱20)',
-      createdAt: DateTime.now().subtract(const Duration(minutes: 20)),
-    ),
-    LaundryOrder(
-      id: 'IW-003',
-      customerName: 'Carlos Reyes',
-      customerPhone: '0918-999-4321',
-      deliveryAddress: '123 Mango Ave, Brgy. Guadalupe, Cebu City',
-      deliveryLandmark: 'Near yellow gate across 7-Eleven',
-      channel: OrderChannel.walkIn,
-      collectionMethod: CollectionMethod.dropOff,
-      returnMethod: ReturnMethod.delivery,
-      status: OrderStatus.ready,
-      paymentStatus: PaymentStatus.paid,
-      loads: [
-        OrderLoad(
-          loadNumber: 1,
-          category: 'Regular Clothing',
-          weight: 7.5,
-          categoryLimit: 8.0,
-          unit: 'kg',
-          description: 'T-shirts, shorts, sleeveless, socks, underwear',
-          isOverLimit: false,
-          loadStatus: LoadStatus.folded,
-        ),
-        OrderLoad(
-          loadNumber: 2,
-          category: 'Heavy Clothing',
-          weight: 4.5,
-          categoryLimit: 6.0,
-          unit: 'kg',
-          description: 'Jeans, cargo, jackets, sweaters, corduroy',
-          isOverLimit: false,
-          loadStatus: LoadStatus.folded,
-        ),
-      ],
-      rfidTag: 'RFID-005',
-      instructions: 'Separate whites, delicate wash',
-      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-    ),
-    // Test order: Photo request pending pickup (TBD loads)
-    LaundryOrder(
-      id: 'IW-999',
-      customerName: 'Test Customer (Photo Request)',
-      customerPhone: '0915-123-4567',
-      deliveryAddress: '789 IT Park, Cebu City',
-      deliveryLandmark: 'Near Starbucks',
-      channel: OrderChannel.online,
-      collectionMethod: CollectionMethod.riderPickup,
-      returnMethod: ReturnMethod.delivery,
-      status: OrderStatus.pending_pickup,
-      paymentStatus: PaymentStatus.unpaid,
-      loads: [], // Empty - TBD at pickup
-      instructions: null,
-      rfidTag: null,
-      createdAt: DateTime.now().subtract(const Duration(minutes: 10)),
-      laundryPhotoUrls: ['assets/images/laundry1.jpg', 'assets/images/laundry2.jpg'],
-      customerDescription: 'Please separate whites from colors. Handle with care.',
-    ),
-    // Test order: Walk-in pickup with known loads
-    LaundryOrder(
-      id: 'IW-998',
-      customerName: 'Alice Green',
-      customerPhone: '0917-888-5555',
-      deliveryAddress: '321 Escario St, Cebu City',
-      deliveryLandmark: 'Blue building near church',
-      channel: OrderChannel.walkIn,
-      collectionMethod: CollectionMethod.riderPickup,
-      returnMethod: ReturnMethod.delivery,
-      status: OrderStatus.pending_pickup,
-      paymentStatus: PaymentStatus.unpaid,
-      loads: [
-        OrderLoad(
-          loadNumber: 1,
-          category: 'Regular Clothing',
-          weight: 7.0,
-          categoryLimit: 8.0,
-          unit: 'kg',
-          description: 'Mixed clothing',
-          isOverLimit: false,
-        ),
-        OrderLoad(
-          loadNumber: 2,
-          category: 'Regular Clothing',
-          weight: 6.5,
-          categoryLimit: 8.0,
-          unit: 'kg',
-          description: 'Mixed clothing',
-          isOverLimit: false,
-        ),
-      ],
-      rfidTag: 'RFID-007',
-      instructions: 'Customer called to request pickup',
-      createdAt: DateTime.now().subtract(const Duration(minutes: 30)),
-    ),
-    // Test customer orders for 3-tab display
-    LaundryOrder(
-      id: 'IW-1002',
-      customerName: 'Test Customer',
-      customerPhone: '0915-111-2222',
-      deliveryAddress: '100 Test St, Cebu City',
-      deliveryLandmark: 'Near mall',
-      channel: OrderChannel.online,
-      collectionMethod: CollectionMethod.riderPickup,
-      returnMethod: ReturnMethod.delivery,
-      status: OrderStatus.rejected,
-      paymentStatus: PaymentStatus.unpaid,
-      loads: [],
-      instructions: null,
-      rfidTag: null,
-      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-      laundryPhotoUrls: ['assets/images/laundry1.jpg'],
-      customerDescription: 'Test rejected order',
-      rejectionReason: 'out_of_service_area',
-      staffMessage: 'Sorry, we currently don\'t service this area.',
-      reviewedAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 50)),
-      reviewedBy: 'Staff User',
-    ),
-    LaundryOrder(
-      id: 'IW-1003',
-      customerName: 'Test Customer',
-      customerPhone: '0915-111-2222',
-      deliveryAddress: '100 Test St, Cebu City',
-      deliveryLandmark: 'Near mall',
-      channel: OrderChannel.online,
-      collectionMethod: CollectionMethod.riderPickup,
-      returnMethod: ReturnMethod.delivery,
-      status: OrderStatus.processing,
-      paymentStatus: PaymentStatus.unpaid,
-      loads: [
-        OrderLoad(
-          loadNumber: 1,
-          category: 'Regular Clothing',
-          weight: 6.0,
-          categoryLimit: 8.0,
-          unit: 'kg',
-          description: 'T-shirts, shorts, socks',
-          isOverLimit: false,
-          loadStatus: LoadStatus.washing,
-        ),
-      ],
-      rfidTag: 'RFID-008',
-      instructions: 'Handle with care',
-      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-    ),
-    LaundryOrder(
-      id: 'IW-1004',
-      customerName: 'Test Customer',
-      customerPhone: '0915-111-2222',
-      deliveryAddress: '100 Test St, Cebu City',
-      deliveryLandmark: 'Near mall',
-      channel: OrderChannel.online,
-      collectionMethod: CollectionMethod.riderPickup,
-      returnMethod: ReturnMethod.delivery,
-      status: OrderStatus.out_for_delivery,
-      paymentStatus: PaymentStatus.unpaid,
-      loads: [
-        OrderLoad(
-          loadNumber: 1,
-          category: 'Regular Clothing',
-          weight: 5.0,
-          categoryLimit: 8.0,
-          unit: 'kg',
-          description: 'Mixed clothing',
-          isOverLimit: false,
-          loadStatus: LoadStatus.folded,
-        ),
-      ],
-      rfidTag: 'RFID-009',
-      instructions: 'Call before delivery',
-      createdAt: DateTime.now().subtract(const Duration(hours: 3)),
-    ),
-    LaundryOrder(
-      id: 'IW-1005',
-      customerName: 'Test Customer',
-      customerPhone: '0915-111-2222',
-      deliveryAddress: '100 Test St, Cebu City',
-      deliveryLandmark: 'Near mall',
-      channel: OrderChannel.online,
-      collectionMethod: CollectionMethod.riderPickup,
-      returnMethod: ReturnMethod.delivery,
-      status: OrderStatus.completed,
-      paymentStatus: PaymentStatus.paid,
-      loads: [
-        OrderLoad(
-          loadNumber: 1,
-          category: 'Regular Clothing',
-          weight: 4.5,
-          categoryLimit: 8.0,
-          unit: 'kg',
-          description: 'Mixed clothing',
-          isOverLimit: false,
-          loadStatus: LoadStatus.folded,
-        ),
-      ],
-      rfidTag: 'RFID-010',
-      instructions: null,
-      createdAt: DateTime.now().subtract(const Duration(days: 2)),
-      paymentMethod: 'GCash',
-      paidAt: DateTime.now().subtract(const Duration(days: 1)),
-    ),
-  ];
-
-  final List<LaundryOrder> _pendingRequests = [
-    // Test: Pending approval photo request
-    LaundryOrder(
-      id: 'IW-1001',
-      customerName: 'Test Customer',
-      customerPhone: '0915-111-2222',
-      deliveryAddress: '100 Test St, Cebu City',
-      deliveryLandmark: 'Near mall',
-      channel: OrderChannel.online,
-      collectionMethod: CollectionMethod.riderPickup,
-      returnMethod: ReturnMethod.delivery,
-      status: OrderStatus.pending_approval,
-      paymentStatus: PaymentStatus.unpaid,
-      loads: [],
-      instructions: null,
-      rfidTag: null,
-      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-      laundryPhotoUrls: ['assets/images/laundry1.jpg', 'assets/images/laundry2.jpg', 'assets/images/laundry3.jpg'],
-      customerDescription: 'Mixed colors and whites. Please handle gently.',
-      expiresAt: DateTime.now().add(const Duration(hours: 23)),
-    ),
-  ];
   
   final List<Supply> _supplies = [
     Supply(id: '1', name: 'Liquid Detergent', currentAmount: 8.5, maxAmount: 10.0, unit: 'L'),
     Supply(id: '2', name: 'Fabric Conditioner', currentAmount: 4.2, maxAmount: 5.0, unit: 'L'),
   ];
 
-  List<LaundryOrder> get activeOrders => _orders.where((o) => o.status != OrderStatus.completed).toList();
-  List<LaundryOrder> get processingOrders => _orders.where((o) => o.status == OrderStatus.processing).toList();
-  List<LaundryOrder> get readyOrders => _orders.where((o) => o.status == OrderStatus.ready).toList();
-  List<LaundryOrder> get completedOrders => _orders.where((o) => o.status == OrderStatus.completed).toList();
-  List<LaundryOrder> get pendingRequests => List.unmodifiable(_pendingRequests);
+  // STUB: Empty lists for unmigrated features (rider, customer, service requests)
+  // Walk-in orders use real Supabase data via OrderService
+  final List<LaundryOrder> _stubOrders = [];
+  final List<LaundryOrder> _stubRequests = [];
+
   List<Supply> get supplies => List.unmodifiable(_supplies);
-
-  /// Returns RFID tags not currently assigned to any active order
-  List<String> get availableRfidTags {
-    final usedTags = _orders
-        .where((o) => o.status != OrderStatus.completed && o.rfidTag != null)
-        .map((o) => o.rfidTag!)
-        .toSet();
-    return _allRfidTags.where((tag) => !usedTags.contains(tag)).toList();
-  }
-
-  void addRequest(LaundryOrder order) {
-    _pendingRequests.add(order);
-  }
-
-  void approveRequest(String id, List<OrderLoad> loads, String rfidTag) {
-    int index = _pendingRequests.indexWhere((o) => o.id == id);
-    if (index != -1) {
-      final request = _pendingRequests.removeAt(index);
-      
-      final needsRiderPickup = request.collectionMethod == CollectionMethod.riderPickup;
-      
-      _orders.add(LaundryOrder(
-        id: request.id,
-        customerName: request.customerName,
-        channel: request.channel,
-        collectionMethod: request.collectionMethod,
-        returnMethod: request.returnMethod,
-        status: needsRiderPickup ? OrderStatus.pending_pickup : OrderStatus.processing,
-        paymentStatus: request.paymentStatus,
-        loads: loads,
-        rfidTag: rfidTag,
-        instructions: request.instructions,
-        createdAt: DateTime.now(),
-      ));
-    }
-  }
-
-  void declineRequest(String id) {
-    _pendingRequests.removeWhere((o) => o.id == id);
-  }
   
-  void lockRequestForReview(String id, String staffName) {
-    final index = _pendingRequests.indexWhere((o) => o.id == id);
-    if (index != -1) {
-      final request = _pendingRequests[index];
-      _pendingRequests[index] = LaundryOrder(
-        id: request.id,
-        customerName: request.customerName,
-        customerPhone: request.customerPhone,
-        deliveryAddress: request.deliveryAddress,
-        deliveryLandmark: request.deliveryLandmark,
-        channel: request.channel,
-        collectionMethod: request.collectionMethod,
-        returnMethod: request.returnMethod,
-        status: request.status,
-        paymentStatus: request.paymentStatus,
-        loads: request.loads,
-        instructions: request.instructions,
-        rfidTag: request.rfidTag,
-        createdAt: request.createdAt,
-        paymentMethod: request.paymentMethod,
-        paidAt: request.paidAt,
-        laundryPhotoUrls: request.laundryPhotoUrls,
-        customerDescription: request.customerDescription,
-        estimatedLoads: request.estimatedLoads,
-        rejectionReason: request.rejectionReason,
-        staffMessage: request.staffMessage,
-        reviewedAt: request.reviewedAt,
-        reviewedBy: request.reviewedBy,
-        expiresAt: request.expiresAt,
-        underReviewBy: staffName, // Lock it
-      );
-    }
-  }
+  // STUB getters for unmigrated features
+  List<LaundryOrder> get activeOrders => _stubOrders;
+  List<LaundryOrder> get completedOrders => [];
+  List<LaundryOrder> get pendingRequests => _stubRequests;
   
-  void unlockRequest(String id) {
-    final index = _pendingRequests.indexWhere((o) => o.id == id);
-    if (index != -1) {
-      final request = _pendingRequests[index];
-      _pendingRequests[index] = LaundryOrder(
-        id: request.id,
-        customerName: request.customerName,
-        customerPhone: request.customerPhone,
-        deliveryAddress: request.deliveryAddress,
-        deliveryLandmark: request.deliveryLandmark,
-        channel: request.channel,
-        collectionMethod: request.collectionMethod,
-        returnMethod: request.returnMethod,
-        status: request.status,
-        paymentStatus: request.paymentStatus,
-        loads: request.loads,
-        instructions: request.instructions,
-        rfidTag: request.rfidTag,
-        createdAt: request.createdAt,
-        paymentMethod: request.paymentMethod,
-        paidAt: request.paidAt,
-        laundryPhotoUrls: request.laundryPhotoUrls,
-        customerDescription: request.customerDescription,
-        estimatedLoads: request.estimatedLoads,
-        rejectionReason: request.rejectionReason,
-        staffMessage: request.staffMessage,
-        reviewedAt: request.reviewedAt,
-        reviewedBy: request.reviewedBy,
-        expiresAt: request.expiresAt,
-        underReviewBy: null, // Unlock it
-      );
-    }
-  }
-  
-  void approvePhotoRequest(String id, int estimatedLoads, String? message) {
-    final index = _pendingRequests.indexWhere((o) => o.id == id);
-    if (index != -1) {
-      final request = _pendingRequests.removeAt(index);
-      // Move to orders list with pending_pickup status
-      _orders.add(LaundryOrder(
-        id: request.id,
-        customerName: request.customerName,
-        customerPhone: request.customerPhone,
-        deliveryAddress: request.deliveryAddress,
-        deliveryLandmark: request.deliveryLandmark,
-        channel: request.channel,
-        collectionMethod: request.collectionMethod,
-        returnMethod: request.returnMethod,
-        status: OrderStatus.pending_pickup, // Changed status
-        paymentStatus: request.paymentStatus,
-        loads: request.loads,
-        instructions: request.instructions,
-        rfidTag: request.rfidTag,
-        createdAt: request.createdAt,
-        paymentMethod: request.paymentMethod,
-        paidAt: request.paidAt,
-        laundryPhotoUrls: request.laundryPhotoUrls,
-        customerDescription: request.customerDescription,
-        estimatedLoads: estimatedLoads,
-        rejectionReason: null,
-        staffMessage: message,
-        reviewedAt: DateTime.now(),
-        reviewedBy: 'Staff User', // TODO: Get from auth
-        expiresAt: request.expiresAt,
-        underReviewBy: null,
-      ));
-    }
-  }
-  
-  void rejectRequest(String id, String reason, String message) {
-    final index = _pendingRequests.indexWhere((o) => o.id == id);
-    if (index != -1) {
-      final request = _pendingRequests.removeAt(index);
-      // Move to orders list with rejected status
-      _orders.add(LaundryOrder(
-        id: request.id,
-        customerName: request.customerName,
-        customerPhone: request.customerPhone,
-        deliveryAddress: request.deliveryAddress,
-        deliveryLandmark: request.deliveryLandmark,
-        channel: request.channel,
-        collectionMethod: request.collectionMethod,
-        returnMethod: request.returnMethod,
-        status: OrderStatus.rejected, // Rejected status
-        paymentStatus: request.paymentStatus,
-        loads: request.loads,
-        instructions: request.instructions,
-        rfidTag: request.rfidTag,
-        createdAt: request.createdAt,
-        paymentMethod: request.paymentMethod,
-        paidAt: request.paidAt,
-        laundryPhotoUrls: request.laundryPhotoUrls,
-        customerDescription: request.customerDescription,
-        estimatedLoads: request.estimatedLoads,
-        rejectionReason: reason,
-        staffMessage: message,
-        reviewedAt: DateTime.now(),
-        reviewedBy: 'Staff User', // TODO: Get from auth
-        expiresAt: request.expiresAt,
-        underReviewBy: null,
-      ));
-    }
-  }
-
-  void addOrder(LaundryOrder order) {
-    _orders.add(order);
-  }
-
-  void useSupplies(double amount) {
-    for (int i = 0; i < _supplies.length; i++) {
-      final s = _supplies[i];
-      _supplies[i] = Supply(
-        id: s.id,
-        name: s.name,
-        currentAmount: (s.currentAmount - (amount * 0.1)).clamp(0, s.maxAmount),
-        maxAmount: s.maxAmount,
-        unit: s.unit,
-      );
-    }
-  }
-
-  void updateOrderStatus(String id, OrderStatus newStatus) {
-    int index = _orders.indexWhere((o) => o.id == id);
-    if (index != -1) {
-      final old = _orders[index];
-      
-      if (newStatus == OrderStatus.processing && old.status != OrderStatus.processing) {
-        useSupplies(old.totalWeight);
-      }
-
-      _orders[index] = LaundryOrder(
-        id: old.id,
-        customerName: old.customerName,
-        channel: old.channel,
-        collectionMethod: old.collectionMethod,
-        returnMethod: old.returnMethod,
-        status: newStatus,
-        paymentStatus: old.paymentStatus,
-        loads: old.loads,
-        rfidTag: old.rfidTag,
-        instructions: old.instructions,
-        createdAt: old.createdAt,
-      );
-    }
-  }
-
-  void updateLoadStatus(String orderId, int loadNumber, LoadStatus newStatus) {
-    int index = _orders.indexWhere((o) => o.id == orderId);
-    if (index != -1) {
-      final old = _orders[index];
-      final updatedLoads = old.loads.map((load) {
-        if (load.loadNumber == loadNumber) {
-          return load.copyWith(loadStatus: newStatus);
-        }
-        return load;
-      }).toList();
-
-      // Update order status based on all loads
-      OrderStatus orderStatus = old.status;
-      final allFolded = updatedLoads.every((load) => load.loadStatus == LoadStatus.folded);
-      if (allFolded && old.status == OrderStatus.processing) {
-        orderStatus = OrderStatus.ready;
-      }
-
-      _orders[index] = LaundryOrder(
-        id: old.id,
-        customerName: old.customerName,
-        customerPhone: old.customerPhone,
-        deliveryAddress: old.deliveryAddress,
-        deliveryLandmark: old.deliveryLandmark,
-        channel: old.channel,
-        collectionMethod: old.collectionMethod,
-        returnMethod: old.returnMethod,
-        status: orderStatus,
-        paymentStatus: old.paymentStatus,
-        loads: updatedLoads,
-        rfidTag: old.rfidTag,
-        instructions: old.instructions,
-        createdAt: old.createdAt,
-      );
-    }
-  }
-
-  // Rider Route State Tracking
+  // Rider route state (stub for unmigrated rider feature)
   bool isRiderRouteCompleted = false;
 
+  /// Returns RFID tags not currently assigned to any active order (mock implementation)
+  List<String> get availableRfidTags {
+    return List.from(_allRfidTags);
+  }
+
+  bool isRfidAvailable(String tag) {
+    // Mock implementation - always return true for valid tags
+    return _allRfidTags.contains(tag);
+  }
+
+  // STUB methods for unmigrated features (to prevent compilation errors)
+  // These do nothing - they're placeholders until those features are migrated
+  
+  void addRequest(LaundryOrder order) {
+    // STUB: Does nothing. Online service requests not migrated yet.
+  }
+
+  void lockRequestForReview(String id, String staffName) {
+    // STUB: Does nothing. Service request approval not migrated yet.
+  }
+
+  void unlockRequest(String id) {
+    // STUB: Does nothing. Service request approval not migrated yet.
+  }
+
+  void approvePhotoRequest(String id, int estimatedLoads, String? message) {
+    // STUB: Does nothing. Photo request approval not migrated yet.
+  }
+
+  void rejectRequest(String id, String reason, String message) {
+    // STUB: Does nothing. Request rejection not migrated yet.
+  }
+
+  List<LaundryOrder> getRiderPickups() {
+    // STUB: Returns empty list. Rider pickups not migrated yet.
+    return [];
+  }
+
+  List<LaundryOrder> getRiderDeliveries() {
+    // STUB: Returns empty list. Rider deliveries not migrated yet.
+    return [];
+  }
+
+  void confirmPickupWithLoads(String orderId, List<OrderLoad> loads) {
+    // STUB: Does nothing. Rider pickup confirmation not migrated yet.
+  }
+
   void completeRiderRoute() {
+    // STUB: Does nothing. Rider route completion not migrated yet.
     isRiderRouteCompleted = true;
   }
 
   void resetRiderRoute() {
+    // STUB: Does nothing. Rider route reset not migrated yet.
     isRiderRouteCompleted = false;
   }
 
-  // Rider Pickup Methods
-  List<LaundryOrder> getRiderPickups() {
-    return _orders.where((o) => 
-      o.status == OrderStatus.pending_pickup &&
-      o.collectionMethod == CollectionMethod.riderPickup
-    ).toList();
-  }
-
-  List<LaundryOrder> getRiderDeliveries() {
-    return _orders.where((o) => 
-      (o.status == OrderStatus.ready || o.status == OrderStatus.out_for_delivery) &&
-      o.returnMethod == ReturnMethod.delivery
-    ).toList();
-  }
-
-  void confirmPickupWithLoads(String orderId, List<OrderLoad> loads) {
-    final index = _orders.indexWhere((o) => o.id == orderId);
-    if (index != -1) {
-      final old = _orders[index];
-      _orders[index] = LaundryOrder(
-        id: old.id,
-        customerName: old.customerName,
-        customerPhone: old.customerPhone,
-        deliveryAddress: old.deliveryAddress,
-        deliveryLandmark: old.deliveryLandmark,
-        channel: old.channel,
-        collectionMethod: old.collectionMethod,
-        returnMethod: old.returnMethod,
-        status: OrderStatus.processing, // Move to processing after pickup
-        paymentStatus: old.paymentStatus,
-        loads: loads, // Update with scanned loads
-        rfidTag: old.rfidTag,
-        instructions: old.instructions,
-        createdAt: old.createdAt,
-        paymentMethod: old.paymentMethod,
-        paidAt: old.paidAt,
-        laundryPhotoUrls: old.laundryPhotoUrls,
-        customerDescription: old.customerDescription,
-        estimatedLoads: old.estimatedLoads,
-        rejectionReason: old.rejectionReason,
-        staffMessage: old.staffMessage,
-        reviewedAt: old.reviewedAt,
-        reviewedBy: old.reviewedBy,
-        expiresAt: old.expiresAt,
-        underReviewBy: old.underReviewBy,
-      );
-    }
-  }
-
-  bool isRfidAvailable(String tag) {
-    // Check if tag is not already assigned to an active order
-    return !_orders.any((o) => 
-      o.rfidTag == tag && 
-      o.status != OrderStatus.completed
-    );
-  }
-
-  // Customer Order Methods
   List<LaundryOrder> getCustomerRequests(String customerPhone) {
-    return _pendingRequests.where((o) => 
-      o.customerPhone == customerPhone &&
-      (o.status == OrderStatus.pending_approval || o.status == OrderStatus.rejected)
-    ).toList() + _orders.where((o) => 
-      o.customerPhone == customerPhone &&
-      (o.status == OrderStatus.pending_approval || o.status == OrderStatus.rejected)
-    ).toList();
+    // STUB: Returns empty list. Customer orders not migrated yet.
+    return [];
   }
 
   List<LaundryOrder> getCustomerActiveOrders(String customerPhone) {
-    return _orders.where((o) => 
-      o.customerPhone == customerPhone &&
-      (o.status == OrderStatus.pending_pickup ||
-       o.status == OrderStatus.processing ||
-       o.status == OrderStatus.ready ||
-       o.status == OrderStatus.out_for_delivery)
-    ).toList();
+    // STUB: Returns empty list. Customer orders not migrated yet.
+    return [];
   }
 
   List<LaundryOrder> getCustomerHistory(String customerPhone) {
-    return _orders.where((o) => 
-      o.customerPhone == customerPhone &&
-      o.status == OrderStatus.completed
-    ).toList();
+    // STUB: Returns empty list. Customer history not migrated yet.
+    return [];
   }
 }
