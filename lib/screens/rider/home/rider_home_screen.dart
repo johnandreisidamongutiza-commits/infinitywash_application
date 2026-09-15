@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../services/notification_service.dart';
 
 import '../route/rider_route_screen.dart';
 import '../route/rider_route_map_screen.dart';
 import '../../../services/mock_data_service.dart';
+import '../notifications/rider_notifications_screen.dart';
 
 class RiderHomeScreen extends StatefulWidget {
   const RiderHomeScreen({super.key});
@@ -13,164 +15,27 @@ class RiderHomeScreen extends StatefulWidget {
 }
 
 class _RiderHomeScreenState extends State<RiderHomeScreen> {
-  final List<Map<String, dynamic>> _notifications = [
-    {
-      'title': 'New Pickup Assigned',
-      'message': 'You have a new pickup at 123 Mango Ave, Cebu City.',
-      'time': '2 min ago',
-      'icon': Icons.shopping_bag_outlined,
-      'color': AppTheme.errorRed,
-      'isRead': false,
-    },
-    {
-      'title': 'Delivery Completed',
-      'message': 'Order #1042 has been marked as delivered.',
-      'time': '15 min ago',
-      'icon': Icons.check_circle_outline,
-      'color': Colors.green,
-      'isRead': false,
-    },
-    {
-      'title': 'Route Updated',
-      'message': 'Your route has been optimized. Please check the new stops.',
-      'time': '1 hr ago',
-      'icon': Icons.route_outlined,
-      'color': AppTheme.accentBlue,
-      'isRead': false,
-    },
-    {
-      'title': 'Schedule Change',
-      'message': 'Tomorrow\'s shift starts at 8:00 AM instead of 9:00 AM.',
-      'time': '3 hrs ago',
-      'icon': Icons.schedule,
-      'color': AppTheme.teamMemberIconOrange,
-      'isRead': true,
-    },
-  ];
+  final NotificationService _notificationService = NotificationService();
+  int _unreadCount = 0;
 
-  int get _unreadCount => _notifications.where((n) => n['isRead'] == false).length;
+  @override
+  void initState() {
+    super.initState();
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    final count = await _notificationService.getUnreadCount();
+    if (mounted) {
+      setState(() => _unreadCount = count);
+    }
+  }
 
   void _showNotifications() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.65,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              children: [
-                // Handle bar
-                Container(
-                  margin: const EdgeInsets.only(top: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppTheme.borderGray,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                // Header
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-                  child: Row(
-                    children: [
-                      Text('Notifications', style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 20)),
-                      const Spacer(),
-                      if (_unreadCount > 0)
-                        TextButton(
-                          onPressed: () {
-                            setModalState(() {
-                              for (var n in _notifications) {
-                                n['isRead'] = true;
-                              }
-                            });
-                            setState(() {});
-                          },
-                          child: const Text('Mark all read', style: TextStyle(color: AppTheme.accentBlue, fontSize: 13)),
-                        ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                // Notification list
-                Expanded(
-                  child: _notifications.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.notifications_none, size: 48, color: AppTheme.textLight.withValues(alpha: 0.3)),
-                              const SizedBox(height: 12),
-                              Text('No notifications', style: TextStyle(color: AppTheme.textLight, fontSize: 14)),
-                            ],
-                          ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemCount: _notifications.length,
-                          separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
-                          itemBuilder: (context, index) {
-                            final notif = _notifications[index];
-                            final bool isRead = notif['isRead'] as bool;
-                            return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
-                              leading: Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: (notif['color'] as Color).withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(notif['icon'] as IconData, color: notif['color'] as Color, size: 22),
-                              ),
-                              title: Text(
-                                notif['title'] as String,
-                                style: TextStyle(
-                                  fontWeight: isRead ? FontWeight.w500 : FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const SizedBox(height: 4),
-                                  Text(notif['message'] as String, style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
-                                  const SizedBox(height: 4),
-                                  Text(notif['time'] as String, style: TextStyle(fontSize: 11, color: AppTheme.textLight.withValues(alpha: 0.6))),
-                                ],
-                              ),
-                              trailing: !isRead
-                                  ? Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(
-                                        color: AppTheme.accentBlue,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    )
-                                  : null,
-                              onTap: () {
-                                setModalState(() {
-                                  _notifications[index]['isRead'] = true;
-                                });
-                                setState(() {});
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const RiderNotificationsScreen()),
+    ).then((_) => _loadUnreadCount()); // Reload count when returning
   }
 
   @override
@@ -275,7 +140,11 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                   color: AppTheme.softGray,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.notifications_outlined, color: AppTheme.textDark, size: 24),
+                child: Icon(
+                  Icons.notifications_outlined, 
+                  color: _unreadCount > 0 ? AppTheme.errorRed : AppTheme.textDark, 
+                  size: 24
+                ),
               ),
               if (_unreadCount > 0)
                 Positioned(

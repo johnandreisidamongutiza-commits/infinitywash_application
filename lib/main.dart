@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'config/supabase_config.dart';
+import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'screens/role_selection_screen.dart';
-// For testing Supabase auth
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Initialize Supabase first (required for auth)
   try {
-    // Initialize Supabase
     await Supabase.initialize(
       url: SupabaseConfig.supabaseUrl,
       anonKey: SupabaseConfig.supabaseAnonKey,
@@ -17,6 +18,19 @@ void main() async {
     print('✅ Supabase initialized successfully');
   } catch (e) {
     print('❌ Supabase initialization error: $e');
+  }
+  
+  // Initialize Firebase (for notifications)
+  // If this fails, the app will still work but notifications will be empty
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    print('✅ Firebase initialized successfully');
+    print('✅ Firebase app name: ${Firebase.app().name}');
+  } catch (e) {
+    print('❌ Firebase initialization error: $e');
+    print('⚠️ App will run but notifications will not work');
   }
   
   runApp(const InfinityWashApp());
