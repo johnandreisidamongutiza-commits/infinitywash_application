@@ -183,6 +183,7 @@ class LaundryOrder {
     switch (status) {
       case OrderStatus.pending_approval: return 'Pending Approval';
       case OrderStatus.rejected: return 'Rejected';
+      case OrderStatus.cancelled: return 'Cancelled';
       case OrderStatus.pending_pickup: return 'Waiting for Rider';
       case OrderStatus.processing: return 'Processing';
       case OrderStatus.ready: return 'Ready for Pickup';
@@ -280,6 +281,7 @@ class LaundryOrder {
     switch (status) {
       case OrderStatus.pending_approval: return 'pending_approval';
       case OrderStatus.rejected: return 'rejected';
+      case OrderStatus.cancelled: return 'cancelled';
       case OrderStatus.pending_pickup: return 'pending_pickup';
       case OrderStatus.processing: return 'processing';
       case OrderStatus.ready: return 'ready';
@@ -293,6 +295,7 @@ class LaundryOrder {
     switch (status) {
       case 'pending_approval': return OrderStatus.pending_approval;
       case 'rejected': return OrderStatus.rejected;
+      case 'cancelled': return OrderStatus.cancelled;
       case 'pending_pickup': return OrderStatus.pending_pickup;
       case 'processing': return OrderStatus.processing;
       case 'ready': return OrderStatus.ready;

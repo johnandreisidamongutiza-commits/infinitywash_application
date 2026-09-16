@@ -1498,6 +1498,12 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
         text = 'Rejected';
         icon = Icons.cancel;
         break;
+      case OrderStatus.cancelled:
+        bgColor = Colors.grey.withValues(alpha: 0.12);
+        textColor = Colors.grey;
+        text = 'Cancelled';
+        icon = Icons.block;
+        break;
       case OrderStatus.pending_pickup:
         bgColor = Colors.blue.withValues(alpha: 0.12);
         textColor = Colors.blue;
