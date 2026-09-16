@@ -107,6 +107,88 @@ class AuthService {
     }
   }
 
+  /// Validate account status and throw exception if deactivated
+  /// This is called after Supabase authentication succeeds
+  Future<void> _validateAccountStatus(String userId) async {
+    try {
+      print('🔒 Validating account status for user: $userId');
+      
+      // Try to query with deactivation_reason first (after migration)
+      // Fall back to without it if column doesn't exist (before migration)
+      Map<String, dynamic>? profile;
+      
+      try {
+        profile = await SupabaseService.client
+            .from('profiles')
+            .select('status, deactivation_reason, role, email')
+            .eq('supabase_user_id', userId)
+            .maybeSingle();
+      } catch (e) {
+        // If column doesn't exist, query without deactivation_reason
+        if (e.toString().contains('42703') || e.toString().contains('deactivation_reason does not exist')) {
+          print('⚠️ deactivation_reason column not found, querying without it');
+          profile = await SupabaseService.client
+              .from('profiles')
+              .select('status, role, email')
+              .eq('supabase_user_id', userId)
+              .maybeSingle();
+        } else {
+          rethrow;
+        }
+      }
+
+      if (profile == null) {
+        print('❌ Profile not found for user: $userId');
+        throw Exception('Profile not found. Please contact support.');
+      }
+
+      final status = (profile['status'] as String?)?.toLowerCase() ?? '';
+      final role = profile['role'] as String? ?? 'user';
+      final email = profile['email'] as String? ?? '';
+      final reason = profile['deactivation_reason'] as String?;
+      
+      print('🔒 Account status: $status, role: $role, email: $email');
+      print('🔒 Deactivation reason from DB: "${reason ?? "NULL"}"');
+      print('🔒 Reason is null: ${reason == null}');
+      print('🔒 Reason is empty: ${reason?.isEmpty ?? true}');
+      print('🔒 Profile keys: ${profile.keys.toList()}');
+
+      if (status == 'deactivated') {
+        // Sign out immediately
+        await _auth.signOut();
+        
+        print('❌ Account deactivated. Reason: ${reason ?? "No reason provided"}');
+        
+        // Throw a specific exception with the reason
+        if (reason != null && reason.trim().isNotEmpty) {
+          throw Exception('ACCOUNT_DEACTIVATED:$reason');
+        } else {
+          throw Exception('ACCOUNT_DEACTIVATED:No reason provided. Please contact support for more information.');
+        }
+      } else if (status == 'archived') {
+        // Archived accounts are also blocked
+        await _auth.signOut();
+        print('❌ Account archived');
+        throw Exception('ACCOUNT_DEACTIVATED:This account has been archived. Please contact support.');
+      } else if (status != 'active') {
+        // Any other non-active status
+        await _auth.signOut();
+        print('❌ Account status invalid: $status');
+        throw Exception('ACCOUNT_DEACTIVATED:Account status is invalid. Please contact support.');
+      }
+      
+      print('✅ Account status valid: $status');
+    } catch (e) {
+      // If it's already our exception, rethrow it
+      if (e.toString().contains('ACCOUNT_DEACTIVATED:')) {
+        rethrow;
+      }
+      // Otherwise wrap it
+      print('❌ Error validating account status: $e');
+      throw Exception('Failed to validate account status. Please try again.');
+    }
+  }
+
   // Sign in with email and password
   Future<AuthResponse> signIn({
     required String email,
@@ -123,6 +205,9 @@ class AuthService {
       // After successful login, ensure profile exists
       if (response.user != null) {
         await _ensureProfileExists(response.user!);
+        
+        // Validate account status BEFORE allowing login
+        await _validateAccountStatus(response.user!.id);
       }
 
       // If remember me is enabled and login successful, save the account and tokens
@@ -396,7 +481,18 @@ class AuthService {
       
       if (currentSession != null && currentSession.user.id == targetUserId) {
         print('✅ AUTO-LOGIN: Session already active');
-        // Session is already active
+        
+        // Validate account status before allowing access
+        try {
+          await _validateAccountStatus(targetUserId);
+        } catch (e) {
+          print('❌ AUTO-LOGIN: Account validation failed - $e');
+          // Account is deactivated, remove saved data
+          await _removeRememberMeData(targetUserId);
+          return null;
+        }
+        
+        // Session is already active and account is valid
         await _savedAccountsDb.updateLastLogin(targetUserId);
         return AuthResponse(
           user: currentSession.user,
@@ -411,6 +507,17 @@ class AuthService {
           final response = await _auth.refreshSession(refreshToken);
           if (response.session != null) {
             print('✅ AUTO-LOGIN: Session refreshed successfully');
+            
+            // Validate account status before allowing access
+            try {
+              await _validateAccountStatus(targetUserId);
+            } catch (e) {
+              print('❌ AUTO-LOGIN: Account validation failed - $e');
+              // Account is deactivated, remove saved data
+              await _removeRememberMeData(targetUserId);
+              return null;
+            }
+            
             // Update stored tokens with new ones
             await _secureStorage.saveAuthTokens(
               userId: targetUserId,

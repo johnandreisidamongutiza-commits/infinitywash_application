@@ -79,6 +79,7 @@ phone              VARCHAR(40) NULL
 avatar_url         TEXT NULL
 role               VARCHAR(30) NOT NULL -- admin, superadmin, customer, staff, rider
 status             VARCHAR(20) NOT NULL -- active, archived, deactivated
+deactivation_reason TEXT NULL -- Reason provided by admin when deactivated, cleared on reactivation
 created_at         TIMESTAMPTZ NOT NULL
 updated_at         TIMESTAMPTZ NOT NULL
 
