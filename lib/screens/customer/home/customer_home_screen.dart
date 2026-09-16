@@ -550,6 +550,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return Colors.green.shade700;
       case OrderStatus.rejected:
         return Colors.red;
+      case OrderStatus.cancelled:
+        return Colors.grey;
       default:
         return AppTheme.textLight;
     }
@@ -570,6 +572,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return Icons.check_circle;
       case OrderStatus.rejected:
         return Icons.cancel_outlined;
+      case OrderStatus.cancelled:
+        return Icons.block;
       default:
         return Icons.local_laundry_service;
     }
@@ -590,6 +594,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return 'Completed';
       case OrderStatus.rejected:
         return 'Declined';
+      case OrderStatus.cancelled:
+        return 'Cancelled';
       default:
         return 'Unknown';
     }
