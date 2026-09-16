@@ -34,7 +34,7 @@ class CustomerService {
     }
   }
 
-  /// Create a new walk-in customer record
+  /// Create a new customer record
   /// Returns the customer UUID for linking to orders
   Future<String> createCustomer({
     required String firstName,
@@ -43,6 +43,7 @@ class CustomerService {
     String? email,
     String? address,
     String? landmark,
+    String customerType = 'walk_in', // Default to walk-in, can be 'mobile_app'
   }) async {
     try {
       // Validate required fields
@@ -66,7 +67,7 @@ class CustomerService {
             'email': email?.trim(),
             'address': address?.trim(),
             'landmark': landmark?.trim(),
-            'customer_type': 'walk_in',
+            'customer_type': customerType,
             'profile_id': null, // Walk-in customers don't have app profiles
             'status': 'active',
             'joined_at': now,
@@ -171,6 +172,85 @@ class CustomerService {
     } catch (e) {
       print('Error searching customers: $e');
       return [];
+    }
+  }
+
+  /// Get customer ID for currently authenticated user
+  /// Returns customer UUID if found, throws exception if not authenticated or no customer record
+  Future<String> getCurrentAuthenticatedCustomerId() async {
+    try {
+      // Get current authenticated user
+      final user = SupabaseService.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated. Please log in to continue.');
+      }
+
+      print('🔄 Looking up customer for authenticated user: ${user.id}');
+
+      // Look up user's profile
+      final profileResponse = await _client
+          .from('profiles')
+          .select('id')
+          .eq('supabase_user_id', user.id)
+          .maybeSingle();
+
+      if (profileResponse == null) {
+        throw Exception('User profile not found. Please complete registration.');
+      }
+
+      final profileId = profileResponse['id'] as String;
+      print('✅ Found profile: $profileId');
+
+      // Look up customer record linked to profile
+      final customerResponse = await _client
+          .from('customers')
+          .select('id')
+          .eq('profile_id', profileId)
+          .eq('status', 'active')
+          .maybeSingle();
+
+      if (customerResponse == null) {
+        throw Exception('Customer record not found. Please complete customer registration.');
+      }
+
+      final customerId = customerResponse['id'] as String;
+      print('✅ Found customer: $customerId');
+
+      return customerId;
+    } catch (e) {
+      print('❌ Error getting authenticated customer ID: $e');
+      rethrow;
+    }
+  }
+
+  /// Get customer profile for currently authenticated user
+  /// Returns full customer data including profile information
+  Future<Map<String, dynamic>?> getCurrentAuthenticatedCustomer() async {
+    try {
+      final user = SupabaseService.currentUser;
+      if (user == null) return null;
+
+      // Query customer with profile join
+      final response = await _client
+          .from('customers')
+          .select('''
+            *,
+            profiles!inner(
+              supabase_user_id,
+              first_name,
+              last_name,
+              phone,
+              email
+            )
+          ''')
+          .eq('profiles.supabase_user_id', user.id)
+          .eq('status', 'active')
+          .maybeSingle();
+
+      return response;
+    } catch (e) {
+      print('❌ Error getting authenticated customer profile: $e');
+      return null;
     }
   }
 }

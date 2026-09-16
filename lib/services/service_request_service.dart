@@ -1,0 +1,488 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/order.dart';
+import '../services/supabase_service.dart';
+import '../services/customer_service.dart';
+import '../services/service_catalog_service.dart';
+
+class ServiceRequestService {
+  final SupabaseClient _client = SupabaseService.client;
+  final CustomerService _customerService = CustomerService();
+  final ServiceCatalogService _catalogService = ServiceCatalogService();
+
+  /// Submit a new service request from authenticated customer
+  /// Uses currently logged-in user's customer record instead of creating new one
+  Future<String> submitAuthenticatedServiceRequest({
+    required String pickupAddress,
+    String? landmark,
+    required CollectionMethod collectionMethod,
+    required ReturnMethod returnMethod,
+    String? paymentPreference,
+    List<String>? photoUrls,
+    String? customerDescription,
+    String? instructions,
+  }) async {
+    try {
+      print('🔄 Starting authenticated service request submission...');
+
+      // Step 1: Get authenticated customer ID
+      final customerId = await _customerService.getCurrentAuthenticatedCustomerId();
+      print('✅ Using authenticated customer: $customerId');
+
+      // Step 2: Get service information
+      print('🔄 Loading service catalog...');
+      final service = await _catalogService.getFullService();
+      final serviceId = service['id'] as String;
+      final serviceName = service['service_name'] as String;
+      final basePrice = (service['base_price'] as num).toDouble();
+
+      // Step 3: Generate order number
+      final orderNumber = await _generateServiceRequestNumber();
+      print('✅ Generated request number: $orderNumber');
+
+      // Step 4: Set expiry time (24 hours from now)
+      final expiresAt = DateTime.now().add(const Duration(hours: 24));
+
+      // Step 5: Create service request in orders table
+      final response = await _client.from('orders').insert({
+        'order_number': orderNumber,
+        'customer_id': customerId,
+        'source': 'mobile_app',
+        'service_id': serviceId,
+        'service_name': serviceName,
+        'weight_kg': null,
+        'loads_count': 1,
+        'customer_notes': instructions?.isNotEmpty == true ? instructions : null,
+        'staff_notes': null,
+        'assigned_staff_id': null,
+        'assigned_rider_id': null,
+        'pickup_requested': collectionMethod == CollectionMethod.riderPickup,
+        'delivery_requested': returnMethod == ReturnMethod.delivery,
+        'pickup_address': collectionMethod == CollectionMethod.riderPickup ? pickupAddress : null,
+        'delivery_address': returnMethod == ReturnMethod.delivery ? pickupAddress : null,
+        'landmark': landmark?.isNotEmpty == true ? landmark : null,
+        'subtotal': basePrice,
+        'delivery_fee': 0,
+        'total_amount': basePrice,
+        'payment_status': 'pending',
+        'status': 'pending_intake',
+        
+        // Service request specific fields
+        'laundry_photo_urls': photoUrls ?? [],
+        'customer_description': customerDescription?.isNotEmpty == true ? customerDescription : null,
+        'estimated_loads': null,
+        'rejection_reason': null,
+        'expires_at': expiresAt.toIso8601String(),
+        'reviewed_at': null,
+        'reviewed_by': null,
+      }).select('id').single();
+
+      final orderId = response['id'] as String;
+      print('✅ Service request created: $orderId');
+
+      return orderId;
+    } catch (e) {
+      print('❌ Error submitting authenticated service request: $e');
+      rethrow;
+    }
+  }
+
+  /// Submit a new service request from customer (legacy method for non-authenticated flow)
+  Future<String> submitServiceRequest({
+    required String customerName,
+    required String customerPhone,
+    required String pickupAddress,
+    String? landmark,
+    required CollectionMethod collectionMethod,
+    required ReturnMethod returnMethod,
+    String? paymentPreference,
+    List<String>? photoUrls,
+    String? customerDescription,
+    String? instructions,
+  }) async {
+    try {
+      print('🔄 Starting service request submission...');
+
+      // Step 1: Create or find customer
+      print('🔄 Creating/finding customer...');
+      
+      // Split customer name
+      final nameParts = customerName.trim().split(' ');
+      final firstName = nameParts.first;
+      final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : null;
+      
+      final customerId = await _customerService.createCustomer(
+        firstName: firstName,
+        lastName: lastName,
+        phone: customerPhone.isNotEmpty ? customerPhone : null,
+        email: null, // Not collected in mobile app flow
+        address: pickupAddress.isNotEmpty ? pickupAddress : null,
+        landmark: landmark?.isNotEmpty == true ? landmark : null,
+        customerType: 'mobile_app', // Mobile app customer
+      );
+      
+      print('✅ Customer created/found: $customerId');
+
+      // Step 2: Get service information
+      print('🔄 Loading service catalog...');
+      final service = await _catalogService.getFullService();
+      final serviceId = service['id'] as String;
+      final serviceName = service['service_name'] as String;
+      final basePrice = (service['base_price'] as num).toDouble();
+
+      // Step 3: Generate order number
+      final orderNumber = await _generateServiceRequestNumber();
+      print('✅ Generated request number: $orderNumber');
+
+      // Step 4: Set expiry time (24 hours from now)
+      final expiresAt = DateTime.now().add(const Duration(hours: 24));
+
+      // Step 5: Create service request in orders table
+      final response = await _client.from('orders').insert({
+        'order_number': orderNumber,
+        'customer_id': customerId,
+        'source': 'mobile_app', // Mobile app source
+        'service_id': serviceId,
+        'service_name': serviceName,
+        'weight_kg': null, // Will be determined by staff
+        'loads_count': 1, // Default, staff will update
+        'customer_notes': instructions?.isNotEmpty == true ? instructions : null,
+        'staff_notes': null, // Staff will add notes during review
+        'assigned_staff_id': null, // Not assigned yet
+        'assigned_rider_id': null, // Not assigned yet
+        'pickup_requested': collectionMethod == CollectionMethod.riderPickup,
+        'delivery_requested': returnMethod == ReturnMethod.delivery,
+        'pickup_address': collectionMethod == CollectionMethod.riderPickup ? pickupAddress : null,
+        'delivery_address': returnMethod == ReturnMethod.delivery ? pickupAddress : null, // Same address for pickup/delivery in mobile app
+        'landmark': landmark?.isNotEmpty == true ? landmark : null,
+        'subtotal': basePrice, // Base price, will be updated after staff review
+        'delivery_fee': 0, // Free delivery
+        'total_amount': basePrice, // Will be updated after staff review
+        'payment_status': 'pending', // Payment pending until staff approval
+        'status': 'pending_intake', // Waiting for staff review
+        
+        // Service request specific fields
+        'laundry_photo_urls': photoUrls ?? [],
+        'customer_description': customerDescription?.isNotEmpty == true ? customerDescription : null,
+        'estimated_loads': null, // Staff will estimate from photos
+        'rejection_reason': null,
+        'expires_at': expiresAt.toIso8601String(),
+        'reviewed_at': null,
+        'reviewed_by': null,
+      }).select('id').single();
+
+      final orderId = response['id'] as String;
+      print('✅ Service request created: $orderId');
+
+      return orderId;
+    } catch (e) {
+      print('❌ Error submitting service request: $e');
+      rethrow;
+    }
+  }
+
+  /// Get service requests for a specific customer by customer ID (authenticated)
+  Future<List<LaundryOrder>> getOrdersByCustomerId(String customerId) async {
+    try {
+      print('🔄 Fetching orders for customer ID: $customerId');
+
+      final response = await _client
+          .from('orders')
+          .select('''
+            *,
+            customers!inner(first_name, last_name, phone, address, landmark)
+          ''')
+          .eq('customer_id', customerId)
+          .order('created_at', ascending: false);
+
+      final List<LaundryOrder> orders = [];
+      for (final orderData in response) {
+        try {
+          final customer = orderData['customers'];
+          final customerName = _buildCustomerName(
+            customer['first_name'] as String?,
+            customer['last_name'] as String?,
+          );
+
+          final order = LaundryOrder(
+            id: orderData['id'] as String,
+            orderNumber: orderData['order_number'] as String?,
+            customerName: customerName,
+            customerPhone: customer['phone'] as String?,
+            deliveryAddress: orderData['delivery_address'] as String?,
+            deliveryLandmark: orderData['landmark'] as String?,
+            channel: OrderChannel.online,
+            collectionMethod: (orderData['pickup_requested'] as bool) ? CollectionMethod.riderPickup : CollectionMethod.dropOff,
+            returnMethod: (orderData['delivery_requested'] as bool) ? ReturnMethod.delivery : ReturnMethod.shopPickup,
+            status: _mapDatabaseStatus(orderData['status'] as String),
+            paymentStatus: _mapPaymentStatus(orderData['payment_status'] as String),
+            loads: [],
+            instructions: orderData['customer_notes'] as String?,
+            rfidTag: null,
+            createdAt: DateTime.parse(orderData['created_at'] as String),
+            paymentMethod: null,
+            paidAt: null,
+            
+            // Service request specific fields
+            laundryPhotoUrls: List<String>.from(orderData['laundry_photo_urls'] ?? []),
+            customerDescription: orderData['customer_description'] as String?,
+            estimatedLoads: orderData['estimated_loads'] as int?,
+            rejectionReason: orderData['rejection_reason'] as String?,
+            staffMessage: null,
+            reviewedAt: orderData['reviewed_at'] != null ? DateTime.parse(orderData['reviewed_at'] as String) : null,
+            reviewedBy: orderData['reviewed_by'] as String?,
+            expiresAt: orderData['expires_at'] != null ? DateTime.parse(orderData['expires_at'] as String) : null,
+            underReviewBy: null,
+          );
+
+          orders.add(order);
+        } catch (e) {
+          print('⚠️ Error parsing order ${orderData['id']}: $e');
+          continue;
+        }
+      }
+
+      print('✅ Found ${orders.length} orders for customer');
+      return orders;
+    } catch (e) {
+      print('❌ Error fetching customer orders: $e');
+      rethrow;
+    }
+  }
+
+  /// Get service requests for a specific customer by phone (deprecated - use getOrdersByCustomerId instead)
+  @Deprecated('Use getOrdersByCustomerId instead for better security')
+  Future<List<LaundryOrder>> getCustomerServiceRequests(String customerPhone) async {
+    try {
+      print('🔄 Fetching service requests for customer: $customerPhone');
+
+      final response = await _client
+          .from('orders')
+          .select('''
+            *,
+            customers!inner(first_name, last_name, phone, address, landmark)
+          ''')
+          .eq('source', 'mobile_app')
+          .eq('customers.phone', customerPhone)
+          .order('created_at', ascending: false);
+
+      final List<LaundryOrder> orders = [];
+      for (final orderData in response) {
+        try {
+          final customer = orderData['customers'];
+          final customerName = _buildCustomerName(
+            customer['first_name'] as String?,
+            customer['last_name'] as String?,
+          );
+
+          final order = LaundryOrder(
+            id: orderData['id'] as String,
+            orderNumber: orderData['order_number'] as String?,
+            customerName: customerName,
+            customerPhone: customer['phone'] as String?,
+            deliveryAddress: orderData['delivery_address'] as String?,
+            deliveryLandmark: orderData['landmark'] as String?,
+            channel: OrderChannel.online, // Mobile app = online
+            collectionMethod: (orderData['pickup_requested'] as bool) ? CollectionMethod.riderPickup : CollectionMethod.dropOff,
+            returnMethod: (orderData['delivery_requested'] as bool) ? ReturnMethod.delivery : ReturnMethod.shopPickup,
+            status: _mapDatabaseStatus(orderData['status'] as String),
+            paymentStatus: _mapPaymentStatus(orderData['payment_status'] as String),
+            loads: [], // Service requests don't have loads until approved
+            instructions: orderData['customer_notes'] as String?,
+            rfidTag: null, // RFID assigned after approval
+            createdAt: DateTime.parse(orderData['created_at'] as String),
+            paymentMethod: null, // Payment method set after approval
+            paidAt: null,
+            
+            // Service request specific fields
+            laundryPhotoUrls: List<String>.from(orderData['laundry_photo_urls'] ?? []),
+            customerDescription: orderData['customer_description'] as String?,
+            estimatedLoads: orderData['estimated_loads'] as int?,
+            rejectionReason: orderData['rejection_reason'] as String?,
+            staffMessage: null, // Staff message not implemented yet
+            reviewedAt: orderData['reviewed_at'] != null ? DateTime.parse(orderData['reviewed_at'] as String) : null,
+            reviewedBy: orderData['reviewed_by'] as String?,
+            expiresAt: orderData['expires_at'] != null ? DateTime.parse(orderData['expires_at'] as String) : null,
+            underReviewBy: null, // Under review feature not implemented yet
+          );
+
+          orders.add(order);
+        } catch (e) {
+          print('⚠️ Error parsing order ${orderData['id']}: $e');
+          continue;
+        }
+      }
+
+      print('✅ Found ${orders.length} service requests for customer');
+      return orders;
+    } catch (e) {
+      print('❌ Error fetching customer service requests: $e');
+      rethrow;
+    }
+  }
+
+  /// Generate unique service request number (REQ-YYYYMMDD-00001)
+  Future<String> _generateServiceRequestNumber() async {
+    final now = DateTime.now();
+    final datePrefix = 'REQ-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    
+    // Find the highest number for today
+    final response = await _client
+        .from('orders')
+        .select('order_number')
+        .like('order_number', '$datePrefix%')
+        .order('order_number', ascending: false)
+        .limit(1);
+
+    int nextNumber = 1;
+    if (response.isNotEmpty) {
+      final lastOrderNumber = response.first['order_number'] as String;
+      final lastNumberStr = lastOrderNumber.split('-').last;
+      final lastNumber = int.tryParse(lastNumberStr) ?? 0;
+      nextNumber = lastNumber + 1;
+    }
+
+    return '$datePrefix-${nextNumber.toString().padLeft(5, '0')}';
+  }
+
+  /// Build customer full name from first and last name
+  String _buildCustomerName(String? firstName, String? lastName) {
+    if (firstName == null && lastName == null) return 'Unknown Customer';
+    if (lastName == null || lastName.isEmpty) return firstName ?? 'Unknown Customer';
+    if (firstName == null || firstName.isEmpty) return lastName;
+    return '$firstName $lastName';
+  }
+
+  /// Map database status to OrderStatus enum
+  OrderStatus _mapDatabaseStatus(String status) {
+    switch (status) {
+      case 'pending_intake':
+        return OrderStatus.pending_approval;
+      case 'processing':
+        return OrderStatus.processing;
+      case 'ready':
+        return OrderStatus.ready;
+      case 'out_for_delivery':
+        return OrderStatus.out_for_delivery;
+      case 'completed':
+        return OrderStatus.completed;
+      case 'cancelled':
+        return OrderStatus.cancelled;
+      case 'rejected':
+        return OrderStatus.rejected;
+      default:
+        return OrderStatus.pending_approval;
+    }
+  }
+
+  /// Map database payment status to PaymentStatus enum
+  PaymentStatus _mapPaymentStatus(String status) {
+    switch (status) {
+      case 'paid':
+        return PaymentStatus.paid;
+      case 'pending':
+      case 'failed':
+      case 'refunded':
+      default:
+        return PaymentStatus.unpaid;
+    }
+  }
+
+  /// Cancel an order by updating its status to cancelled
+  Future<void> cancelOrder(String orderId) async {
+    try {
+      print('🔄 Cancelling order: $orderId');
+      
+      await _client
+          .from('orders')
+          .update({
+            'status': 'cancelled',
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', orderId);
+      
+      print('✅ Order cancelled successfully');
+    } catch (e) {
+      print('❌ Error cancelling order: $e');
+      rethrow;
+    }
+  }
+
+  /// Check if service request has expired (24 hours)
+  bool isServiceRequestExpired(DateTime? expiresAt) {
+    if (expiresAt == null) return false;
+    return DateTime.now().isAfter(expiresAt);
+  }
+
+  /// Get pending service requests for staff (non-expired only)
+  Future<List<LaundryOrder>> getPendingServiceRequests() async {
+    try {
+      print('🔄 Fetching pending service requests for staff...');
+
+      final now = DateTime.now().toIso8601String();
+      
+      final response = await _client
+          .from('orders')
+          .select('''
+            *,
+            customers!inner(first_name, last_name, phone, address, landmark)
+          ''')
+          .eq('source', 'mobile_app')
+          .eq('status', 'pending_intake')
+          .or('expires_at.is.null,expires_at.gt.$now') // Include non-expired requests
+          .order('created_at', ascending: true); // Oldest first
+
+      final List<LaundryOrder> requests = [];
+      for (final orderData in response) {
+        try {
+          final customer = orderData['customers'];
+          final customerName = _buildCustomerName(
+            customer['first_name'] as String?,
+            customer['last_name'] as String?,
+          );
+
+          final request = LaundryOrder(
+            id: orderData['id'] as String,
+            orderNumber: orderData['order_number'] as String?,
+            customerName: customerName,
+            customerPhone: customer['phone'] as String?,
+            deliveryAddress: orderData['delivery_address'] as String?,
+            deliveryLandmark: orderData['landmark'] as String?,
+            channel: OrderChannel.online,
+            collectionMethod: (orderData['pickup_requested'] as bool) ? CollectionMethod.riderPickup : CollectionMethod.dropOff,
+            returnMethod: (orderData['delivery_requested'] as bool) ? ReturnMethod.delivery : ReturnMethod.shopPickup,
+            status: OrderStatus.pending_approval,
+            paymentStatus: PaymentStatus.unpaid,
+            loads: [],
+            instructions: orderData['customer_notes'] as String?,
+            rfidTag: null,
+            createdAt: DateTime.parse(orderData['created_at'] as String),
+            paymentMethod: null,
+            paidAt: null,
+            
+            // Service request fields
+            laundryPhotoUrls: List<String>.from(orderData['laundry_photo_urls'] ?? []),
+            customerDescription: orderData['customer_description'] as String?,
+            estimatedLoads: orderData['estimated_loads'] as int?,
+            rejectionReason: orderData['rejection_reason'] as String?,
+            staffMessage: null,
+            reviewedAt: orderData['reviewed_at'] != null ? DateTime.parse(orderData['reviewed_at'] as String) : null,
+            reviewedBy: orderData['reviewed_by'] as String?,
+            expiresAt: orderData['expires_at'] != null ? DateTime.parse(orderData['expires_at'] as String) : null,
+            underReviewBy: null,
+          );
+
+          requests.add(request);
+        } catch (e) {
+          print('⚠️ Error parsing service request ${orderData['id']}: $e');
+          continue;
+        }
+      }
+
+      print('✅ Found ${requests.length} pending service requests');
+      return requests;
+    } catch (e) {
+      print('❌ Error fetching pending service requests: $e');
+      rethrow;
+    }
+  }
+}

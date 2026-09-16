@@ -4,7 +4,8 @@ import 'dart:io';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_text_field.dart';
 import '../../../models/order.dart';
-import '../../../services/mock_data_service.dart';
+import '../../../services/service_request_service.dart';
+import '../../../services/customer_service.dart';
 
 class RequestServiceFlow extends StatefulWidget {
   const RequestServiceFlow({super.key});
@@ -24,21 +25,50 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   final ImagePicker _imagePicker = ImagePicker();
   final int _maxPhotos = 3;
 
-  // Profile default data
-  static const String _defaultName = 'John Customer';
-  static const String _defaultPhone = '0912-345-6789';
-  static const String _defaultAddress = '123 Laundry St, Clean City';
-  static const String _defaultLandmark = 'Near the blue gate';
-
-  // Active details for this order
-  String _customerName = _defaultName;
-  String _phoneNumber = _defaultPhone;
-  String _pickupAddress = _defaultAddress;
-  String _landmark = _defaultLandmark;
-  bool _isUsingCustomDetails = false;
+  // Active details for this order - loaded from authenticated customer profile
+  String _pickupAddress = '';
+  String _landmark = '';
+  Map<String, dynamic>? _currentCustomer;
+  bool _isLoadingAddress = true;
+  String? _loadError;
 
   final TextEditingController _instructionsController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomerData();
+  }
+
+  Future<void> _loadCustomerData() async {
+    setState(() {
+      _isLoadingAddress = true;
+      _loadError = null;
+    });
+
+    try {
+      final customer = await CustomerService().getCurrentAuthenticatedCustomer();
+      if (customer != null) {
+        setState(() {
+          _currentCustomer = customer;
+          _pickupAddress = customer['address'] as String? ?? '';
+          _landmark = customer['landmark'] as String? ?? '';
+          _isLoadingAddress = false;
+        });
+      } else {
+        setState(() {
+          _loadError = 'Unable to load customer profile. Please try again.';
+          _isLoadingAddress = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _loadError = 'Error loading profile: $e';
+        _isLoadingAddress = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -153,21 +183,18 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   }
 
   void _resetToProfileAddress() {
-    setState(() {
-      _customerName = _defaultName;
-      _phoneNumber = _defaultPhone;
-      _pickupAddress = _defaultAddress;
-      _landmark = _defaultLandmark;
-      _isUsingCustomDetails = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Reset to saved profile address.')),
-    );
+    if (_currentCustomer != null) {
+      setState(() {
+        _pickupAddress = _currentCustomer!['address'] as String? ?? '';
+        _landmark = _currentCustomer!['landmark'] as String? ?? '';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reset to saved profile address.')),
+      );
+    }
   }
 
   void _showEditAddressModal() {
-    final nameCtrl = TextEditingController(text: _customerName);
-    final phoneCtrl = TextEditingController(text: _phoneNumber);
     final addressCtrl = TextEditingController(text: _pickupAddress);
     final landmarkCtrl = TextEditingController(text: _landmark);
 
@@ -216,24 +243,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Update your contact or pickup address for this request only.',
+                  'Update your pickup address for this request only.',
                   style: TextStyle(fontSize: 12, color: AppTheme.textLight),
                 ),
                 const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Contact Name',
-                  hint: 'Enter contact name',
-                  prefixIcon: Icons.person_outline,
-                  controller: nameCtrl,
-                ),
-                const SizedBox(height: 16),
-                CustomTextField(
-                  label: 'Phone Number',
-                  hint: '09XX-XXX-XXXX',
-                  prefixIcon: Icons.phone_android,
-                  controller: phoneCtrl,
-                ),
-                const SizedBox(height: 16),
                 CustomTextField(
                   label: 'Pick-up Address',
                   hint: 'Enter pickup address',
@@ -251,11 +264,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 ElevatedButton(
                   onPressed: () {
                     setState(() {
-                      _customerName = nameCtrl.text.trim().isEmpty ? _defaultName : nameCtrl.text.trim();
-                      _phoneNumber = phoneCtrl.text.trim().isEmpty ? _defaultPhone : phoneCtrl.text.trim();
-                      _pickupAddress = addressCtrl.text.trim().isEmpty ? _defaultAddress : addressCtrl.text.trim();
+                      _pickupAddress = addressCtrl.text.trim().isEmpty 
+                          ? (_currentCustomer?['address'] as String? ?? '') 
+                          : addressCtrl.text.trim();
                       _landmark = landmarkCtrl.text.trim();
-                      _isUsingCustomDetails = true;
                     });
                     Navigator.pop(ctx);
                   },
@@ -350,7 +362,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'MINIMUM 2 LOADS REQUIRED (Approx. 16kg or more) for pickup/delivery service.',
+                      'MINIMUM 2 LOADS REQUIRED for rider pickup/delivery service.',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.orange.shade800,
@@ -395,33 +407,6 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               _selectedReturn == ReturnMethod.shopPickup,
               () => setState(() => _selectedReturn = ReturnMethod.shopPickup),
             ),
-            if (_selectedReturn == ReturnMethod.delivery) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline, color: AppTheme.teamMemberIconOrange, size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Delivery also requires minimum 2 loads.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.orange.shade800,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () => setState(() => _currentStep = 2),
@@ -971,38 +956,78 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
             // Submit Button
             ElevatedButton(
-              onPressed: () {
+              onPressed: _isLoadingAddress ? null : () async {
+                if (_currentCustomer == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Unable to submit: Customer profile not loaded')),
+                  );
+                  return;
+                }
+
+                // Validate address is not empty
+                if (_pickupAddress.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter your pickup address')),
+                  );
+                  return;
+                }
+
                 final String fullNote = [
                   if (_landmark.isNotEmpty) 'Landmark: $_landmark',
                   if (_instructionsController.text.trim().isNotEmpty) _instructionsController.text.trim(),
                   'Payment: $_selectedPaymentPreference',
                 ].join(' | ');
 
-                // Convert File paths to strings for storage
-                final List<String> photoPaths = _laundryPhotos.map((file) => file.path).toList();
-                
-                final newRequest = LaundryOrder(
-                  id: 'IW-REQ-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
-                  customerName: _customerName,
-                  customerPhone: _phoneNumber,
-                  deliveryAddress: _selectedReturn == ReturnMethod.delivery ? _pickupAddress : null,
-                  deliveryLandmark: _selectedReturn == ReturnMethod.delivery && _landmark.isNotEmpty ? _landmark : null,
-                  channel: OrderChannel.online,
-                  collectionMethod: _selectedCollection,
-                  returnMethod: _selectedReturn,
-                  status: OrderStatus.pending_approval,
-                  paymentStatus: PaymentStatus.unpaid,
-                  loads: [], // Empty - staff will fill when laundry arrives
-                  instructions: 'Pickup Address: $_pickupAddress${fullNote.isNotEmpty ? ' ($fullNote)' : ''}',
-                  createdAt: DateTime.now(),
-                  laundryPhotoUrls: photoPaths,
-                  customerDescription: _descriptionController.text.trim().isNotEmpty ? _descriptionController.text.trim() : null,
-                  expiresAt: DateTime.now().add(const Duration(hours: 24)), // Auto-reject after 24 hours
-                );
+                try {
+                  // Show loading indicator
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (ctx) => const Center(child: CircularProgressIndicator()),
+                  );
 
-                MockDataService().addRequest(newRequest);
+                  // Save address to customer profile if it's new or changed
+                  final profileAddress = _currentCustomer?['address'] as String? ?? '';
+                  final profileLandmark = _currentCustomer?['landmark'] as String? ?? '';
+                  if (_pickupAddress != profileAddress || _landmark != profileLandmark) {
+                    final customerId = _currentCustomer!['id'] as String;
+                    await CustomerService().updateCustomer(
+                      customerId: customerId,
+                      address: _pickupAddress,
+                      landmark: _landmark.isNotEmpty ? _landmark : null,
+                    );
+                    print('✅ Saved address to customer profile');
+                  }
 
-                setState(() => _currentStep = 4);
+                  // Submit the request using authenticated method
+                  await ServiceRequestService().submitAuthenticatedServiceRequest(
+                    collectionMethod: _selectedCollection,
+                    returnMethod: _selectedReturn,
+                    pickupAddress: _pickupAddress,
+                    landmark: _landmark.isNotEmpty ? _landmark : null,
+                    instructions: 'Pickup Address: $_pickupAddress${fullNote.isNotEmpty ? ' ($fullNote)' : ''}',
+                    paymentPreference: _selectedPaymentPreference,
+                    photoUrls: _laundryPhotos.map((file) => file.path).toList(),
+                    customerDescription: _descriptionController.text.trim().isNotEmpty 
+                        ? _descriptionController.text.trim() 
+                        : null,
+                  );
+
+                  // Close loading dialog
+                  if (!mounted) return;
+                  Navigator.of(context).pop();
+
+                  // Move to success screen
+                  setState(() => _currentStep = 4);
+                } catch (e) {
+                  // Close loading dialog
+                  if (!mounted) return;
+                  Navigator.of(context).pop();
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to submit request: $e')),
+                  );
+                }
               },
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1021,6 +1046,53 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   }
 
   Widget _buildSavedLocationCard() {
+    if (_isLoadingAddress) {
+      return Container(
+        padding: const EdgeInsets.all(40),
+        decoration: AppStyles.cardDecoration,
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_loadError != null) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: AppStyles.cardDecoration,
+        child: Column(
+          children: [
+            const Icon(Icons.error_outline, color: AppTheme.errorRed, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              _loadError!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppTheme.errorRed),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadCustomerData,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Get customer details from the map
+    final firstName = _currentCustomer?['first_name'] as String? ?? '';
+    final lastName = _currentCustomer?['last_name'] as String? ?? '';
+    final customerName = lastName.isNotEmpty ? '$firstName $lastName' : firstName;
+    final customerPhone = _currentCustomer?['phone'] as String? ?? 'N/A';
+    
+    final profileAddress = _currentCustomer?['address'] as String? ?? '';
+    final profileLandmark = _currentCustomer?['landmark'] as String? ?? '';
+    final isCustomAddress = _currentCustomer != null && 
+        (_pickupAddress != profileAddress || _landmark != profileLandmark);
+
+    // If no saved address, show form to collect it
+    if (profileAddress.isEmpty && !isCustomAddress) {
+      return _buildAddressForm();
+    }
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration,
@@ -1033,7 +1105,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _isUsingCustomDetails
+                  color: isCustomAddress
                       ? AppTheme.teamMemberIconOrange.withValues(alpha: 0.12)
                       : AppTheme.accentBlue.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
@@ -1042,15 +1114,15 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      _isUsingCustomDetails ? Icons.edit_location_alt : Icons.home_outlined,
+                      isCustomAddress ? Icons.edit_location_alt : Icons.home_outlined,
                       size: 14,
-                      color: _isUsingCustomDetails ? AppTheme.teamMemberIconOrange : AppTheme.accentBlue,
+                      color: isCustomAddress ? AppTheme.teamMemberIconOrange : AppTheme.accentBlue,
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      _isUsingCustomDetails ? 'Custom Address (This Order)' : 'Saved Profile Address',
+                      isCustomAddress ? 'Custom Address (This Order)' : 'Saved Profile Address',
                       style: TextStyle(
-                        color: _isUsingCustomDetails ? AppTheme.teamMemberIconOrange : AppTheme.accentBlue,
+                        color: isCustomAddress ? AppTheme.teamMemberIconOrange : AppTheme.accentBlue,
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
                       ),
@@ -1080,14 +1152,14 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               const Icon(Icons.person_outline, size: 18, color: AppTheme.textLight),
               const SizedBox(width: 10),
               Text(
-                _customerName,
+                customerName.isEmpty ? 'Unknown' : customerName,
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
               ),
               const SizedBox(width: 8),
               const Text('•', style: TextStyle(color: AppTheme.textLight)),
               const SizedBox(width: 8),
               Text(
-                _phoneNumber,
+                customerPhone,
                 style: const TextStyle(fontSize: 14, color: AppTheme.textLight),
               ),
             ],
@@ -1104,7 +1176,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _pickupAddress,
+                      _pickupAddress.isEmpty ? 'No address set' : _pickupAddress,
                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textDark),
                     ),
                     if (_landmark.isNotEmpty) ...[
@@ -1119,7 +1191,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               ),
             ],
           ),
-          if (_isUsingCustomDetails) ...[
+          if (isCustomAddress) ...[
             const SizedBox(height: 14),
             const Divider(height: 1),
             const SizedBox(height: 8),
@@ -1134,6 +1206,80 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddressForm() {
+    final addressCtrl = TextEditingController(text: _pickupAddress);
+    final landmarkCtrl = TextEditingController(text: _landmark);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.shade200, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.location_on, color: Colors.orange.shade700, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Set Your Pickup Address',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Please enter your address where our rider should pick up your laundry. This will be saved to your profile.',
+            style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+          ),
+          const SizedBox(height: 16),
+          CustomTextField(
+            label: 'Pick-up Address *',
+            hint: 'Enter your complete address',
+            prefixIcon: Icons.location_on_outlined,
+            controller: addressCtrl,
+          ),
+          const SizedBox(height: 12),
+          CustomTextField(
+            label: 'Landmark (Optional)',
+            hint: 'e.g. Near blue gate, 2nd floor apt',
+            prefixIcon: Icons.assistant_navigation,
+            controller: landmarkCtrl,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () {
+              final address = addressCtrl.text.trim();
+              if (address.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter your pickup address')),
+                );
+                return;
+              }
+              setState(() {
+                _pickupAddress = address;
+                _landmark = landmarkCtrl.text.trim();
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Address set! This will be saved when you submit your request.')),
+              );
+            },
+            child: const Text('Save Address'),
+          ),
         ],
       ),
     );
@@ -1203,7 +1349,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     icon: Icons.check_circle,
                     iconColor: Colors.green,
                     title: '1. Request Received',
-                    subtitle: 'Our branch is coordinating rider pickup for $_pickupAddress.',
+                    subtitle: 'Our branch is coordinating rider pickup for your address.',
                     isDone: true,
                   ),
                   const SizedBox(height: 16),
@@ -1236,14 +1382,14 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
             ElevatedButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(context, true); // Return true to trigger refresh
               },
               child: const Text('View in Active Orders'),
             ),
             const SizedBox(height: 12),
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(context, true); // Return true to trigger refresh
               },
               child: const Text(
                 'Back to Home',

@@ -1,5 +1,5 @@
 
-enum OrderStatus { pending_approval, rejected, pending_pickup, processing, ready, out_for_delivery, completed }
+enum OrderStatus { pending_approval, rejected, cancelled, pending_pickup, processing, ready, out_for_delivery, completed }
 enum CollectionMethod { dropOff, riderPickup }
 enum ReturnMethod { shopPickup, delivery }
 enum OrderChannel { walkIn, online }

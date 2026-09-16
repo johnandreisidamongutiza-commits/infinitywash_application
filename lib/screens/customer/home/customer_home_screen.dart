@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/notification_service.dart';
+import '../../../services/service_request_service.dart';
+import '../../../services/customer_service.dart';
+import '../../../models/order.dart';
 
 import '../orders/request_service_flow.dart';
 import '../delivery/delivery_tracking_screen.dart';
@@ -16,18 +19,54 @@ class CustomerHomeScreen extends StatefulWidget {
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final NotificationService _notificationService = NotificationService();
+  final ServiceRequestService _serviceRequestService = ServiceRequestService();
+  final CustomerService _customerService = CustomerService();
   int _unreadNotificationsCount = 0;
+  
+  // Recent activity state
+  bool _loadingRecentOrders = false;
+  List<LaundryOrder> _recentOrders = [];
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _loadUnreadCount();
+    _loadRecentOrders();
   }
 
   Future<void> _loadUnreadCount() async {
     final count = await _notificationService.getUnreadCount();
     if (mounted) {
       setState(() => _unreadNotificationsCount = count);
+    }
+  }
+
+  /// Load recent customer orders (last 3 orders)
+  Future<void> _loadRecentOrders() async {
+    setState(() {
+      _loadingRecentOrders = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // Get authenticated customer ID
+      final customerId = await _customerService.getCurrentAuthenticatedCustomerId();
+      
+      // Fetch orders for this customer
+      final orders = await _serviceRequestService.getOrdersByCustomerId(customerId);
+      
+      setState(() {
+        _recentOrders = orders.take(3).toList(); // Show last 3 orders
+        _loadingRecentOrders = false;
+      });
+      print('✅ Loaded ${orders.length} recent orders for home screen');
+    } catch (e) {
+      setState(() {
+        _loadingRecentOrders = false;
+        _errorMessage = e.toString();
+      });
+      print('❌ Error loading recent orders: $e');
     }
   }
 
@@ -229,11 +268,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 Icons.add_shopping_cart,
                 AppTheme.lightBlue,
                 AppTheme.accentBlue,
-                onTap: () {
-                  Navigator.push(
+                onTap: () async {
+                  final result = await Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
                   );
+                  // Refresh recent orders after creating a new request
+                  if (result == true) {
+                    _loadRecentOrders();
+                  }
                 },
               ),
             ),
@@ -294,148 +337,261 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           children: [
             Text('Recent Activity', style: AppTheme.lightTheme.textTheme.titleMedium),
             TextButton(
-              onPressed: () {
-                Navigator.push(
+              onPressed: () async {
+                final result = await Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const CustomerOrdersScreen()),
                 );
+                // Refresh recent orders when returning from orders screen
+                if (result == true) {
+                  _loadRecentOrders();
+                }
               },
               child: const Text('View All', style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const CustomerOrdersScreen()),
-              );
-            },
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: AppStyles.cardDecoration,
+        
+        // Loading state
+        if (_loadingRecentOrders)
+          Container(
+            padding: const EdgeInsets.all(40),
+            decoration: AppStyles.cardDecoration,
+            child: const Center(
               child: Column(
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppTheme.lightBlue,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.local_laundry_service, color: AppTheme.accentBlue, size: 22),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Order #IW-105',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              'Sept 04, 2026 • Wash, Dry & Fold',
-                              style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppTheme.accentBlue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.sync, size: 12, color: AppTheme.accentBlue),
-                            SizedBox(width: 4),
-                            Text(
-                              'Processing',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Expanded(
-                        child: Row(
-                          children: [
-                            Icon(Icons.scale_outlined, size: 15, color: AppTheme.textLight),
-                            SizedBox(width: 4),
-                            Text('5.5 kg', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textDark)),
-                            SizedBox(width: 8),
-                            Icon(Icons.delivery_dining_outlined, size: 15, color: AppTheme.textLight),
-                            SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                'Doorstep Delivery',
-                                style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        '₱170.00',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.accentBlue),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Expanded(
-                        child: Row(
-                          children: [
-                            Icon(Icons.person_pin_circle_outlined, size: 15, color: AppTheme.textLight),
-                            SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                'Rider: Michael Rider',
-                                style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('Order Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue)),
-                          SizedBox(width: 4),
-                          Icon(Icons.arrow_forward_ios, size: 11, color: AppTheme.accentBlue),
-                        ],
-                      ),
-                    ],
-                  ),
+                  CircularProgressIndicator(),
+                  SizedBox(height: 12),
+                  Text('Loading recent orders...', style: TextStyle(color: AppTheme.textLight, fontSize: 12)),
                 ],
               ),
             ),
+          )
+        
+        // No recent orders
+        else if (_recentOrders.isEmpty)
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
+                );
+                // Refresh recent orders after creating a new request
+                if (result == true) {
+                  _loadRecentOrders();
+                }
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: AppStyles.cardDecoration,
+                child: Column(
+                  children: [
+                    Icon(Icons.local_laundry_service_outlined, size: 48, color: AppTheme.textLight.withValues(alpha: 0.5)),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'No recent orders',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textLight),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Tap to request your first laundry service',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        
+        // Recent orders list
+        else
+          Column(
+            children: _recentOrders.take(3).map((order) => _buildRecentOrderCard(order)).toList(),
           ),
-        ),
       ],
     );
+  }
+
+  /// Build a card for a recent order
+  Widget _buildRecentOrderCard(LaundryOrder order) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const CustomerOrdersScreen()),
+            );
+            if (result == true) {
+              _loadRecentOrders();
+            }
+          },
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: AppStyles.cardDecoration,
+            child: Column(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(order.status).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(_getStatusIcon(order.status), color: _getStatusColor(order.status), size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            order.orderNumber ?? 'REQ-${order.id.substring(0, 8)}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _formatOrderSubtitle(order),
+                            style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(order.status).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(_getStatusIcon(order.status), size: 12, color: _getStatusColor(order.status)),
+                          const SizedBox(width: 4),
+                          Text(
+                            _getStatusText(order.status),
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _getStatusColor(order.status)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                
+                // Show additional details for service requests
+                if (order.customerDescription != null || order.laundryPhotoUrls?.isNotEmpty == true) ...[
+                  const Divider(height: 20),
+                  Row(
+                    children: [
+                      if (order.laundryPhotoUrls?.isNotEmpty == true) ...[
+                        const Icon(Icons.photo_camera_outlined, size: 15, color: AppTheme.textLight),
+                        const SizedBox(width: 4),
+                        Text('${order.laundryPhotoUrls!.length} photo${order.laundryPhotoUrls!.length > 1 ? 's' : ''}', 
+                             style: const TextStyle(fontSize: 12, color: AppTheme.textDark, fontWeight: FontWeight.w600)),
+                        const SizedBox(width: 12),
+                      ],
+                      if (order.customerDescription != null) ...[
+                        const Icon(Icons.description_outlined, size: 15, color: AppTheme.textLight),
+                        const SizedBox(width: 4),
+                        const Expanded(
+                          child: Text('Description provided', 
+                               style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                               overflow: TextOverflow.ellipsis),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Format order subtitle with date and service type
+  String _formatOrderSubtitle(LaundryOrder order) {
+    final date = _formatDate(order.createdAt);
+    return '$date • Wash, Dry & Fold';
+  }
+
+  /// Format date for display
+  String _formatDate(DateTime date) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[date.month - 1]} ${date.day.toString().padLeft(2, '0')}, ${date.year}';
+  }
+
+  /// Get status color for order status
+  Color _getStatusColor(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending_approval:
+        return Colors.orange;
+      case OrderStatus.processing:
+        return AppTheme.accentBlue;
+      case OrderStatus.ready:
+        return Colors.green;
+      case OrderStatus.out_for_delivery:
+        return Colors.purple;
+      case OrderStatus.completed:
+        return Colors.green.shade700;
+      case OrderStatus.rejected:
+        return Colors.red;
+      default:
+        return AppTheme.textLight;
+    }
+  }
+
+  /// Get status icon for order status
+  IconData _getStatusIcon(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending_approval:
+        return Icons.pending_outlined;
+      case OrderStatus.processing:
+        return Icons.sync;
+      case OrderStatus.ready:
+        return Icons.check_circle_outline;
+      case OrderStatus.out_for_delivery:
+        return Icons.local_shipping_outlined;
+      case OrderStatus.completed:
+        return Icons.check_circle;
+      case OrderStatus.rejected:
+        return Icons.cancel_outlined;
+      default:
+        return Icons.local_laundry_service;
+    }
+  }
+
+  /// Get status text for order status
+  String _getStatusText(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending_approval:
+        return 'Pending Review';
+      case OrderStatus.processing:
+        return 'Processing';
+      case OrderStatus.ready:
+        return 'Ready';
+      case OrderStatus.out_for_delivery:
+        return 'Out for Delivery';
+      case OrderStatus.completed:
+        return 'Completed';
+      case OrderStatus.rejected:
+        return 'Declined';
+      default:
+        return 'Unknown';
+    }
   }
 }

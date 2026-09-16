@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/top_notification.dart';
 import '../../../models/order.dart';
-import '../../../services/mock_data_service.dart';
+import '../../../services/service_request_service.dart';
+import '../../../services/customer_service.dart';
 import 'request_service_flow.dart';
 import '../chats/customer_chat_detail_screen.dart';
 
@@ -14,14 +15,95 @@ class CustomerOrdersScreen extends StatefulWidget {
 }
 
 class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
-  final MockDataService _dataService = MockDataService();
+  final ServiceRequestService _serviceRequestService = ServiceRequestService();
+  final CustomerService _customerService = CustomerService();
   int _selectedTabIndex = 0; // 0: Requests, 1: Active, 2: History
-  final String _customerPhone = '0915-111-2222'; // Test customer
   final Set<String> _expandedOrderIds = {};
+  
+  // Loading and data state
+  bool _isLoading = false;
+  List<LaundryOrder> _customerOrders = [];
+  String? _errorMessage;
 
-  List<LaundryOrder> get _requestOrders => _dataService.getCustomerRequests(_customerPhone);
-  List<LaundryOrder> get _activeOrders => _dataService.getCustomerActiveOrders(_customerPhone);
-  List<LaundryOrder> get _historyOrders => _dataService.getCustomerHistory(_customerPhone);
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomerOrders();
+  }
+
+  /// Load customer orders from database
+  Future<void> _loadCustomerOrders() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // Get authenticated customer ID
+      final customerId = await _customerService.getCurrentAuthenticatedCustomerId();
+      
+      // Fetch orders for this customer
+      final orders = await _serviceRequestService.getOrdersByCustomerId(customerId);
+      
+      setState(() {
+        _customerOrders = orders;
+        _isLoading = false;
+      });
+      print('✅ Loaded ${orders.length} customer orders');
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Failed to load orders: ${e.toString()}';
+      });
+      print('❌ Error loading customer orders: $e');
+    }
+  }
+
+  /// Cancel an order
+  Future<void> _cancelOrder(String orderId) async {
+    try {
+      await _serviceRequestService.cancelOrder(orderId);
+      
+      // Show success notification
+      if (mounted) {
+        showTopNotification(
+          context,
+          message: 'Request cancelled successfully',
+          icon: Icons.check_circle,
+          backgroundColor: Colors.green,
+        );
+      }
+      
+      // Reload orders to reflect the change
+      await _loadCustomerOrders();
+    } catch (e) {
+      print('❌ Error cancelling order: $e');
+      
+      // Show error notification
+      if (mounted) {
+        showTopNotification(
+          context,
+          message: 'Failed to cancel request: ${e.toString()}',
+          icon: Icons.error,
+          backgroundColor: Colors.red,
+        );
+      }
+    }
+  }
+
+  /// Filter orders by status for different tabs
+  List<LaundryOrder> get _requestOrders => _customerOrders.where((order) => 
+      order.status == OrderStatus.pending_approval).toList();
+  
+  List<LaundryOrder> get _activeOrders => _customerOrders.where((order) => 
+      order.status == OrderStatus.processing || 
+      order.status == OrderStatus.ready || 
+      order.status == OrderStatus.out_for_delivery).toList();
+  
+  List<LaundryOrder> get _historyOrders => _customerOrders.where((order) => 
+      order.status == OrderStatus.completed || 
+      order.status == OrderStatus.rejected ||
+      order.status == OrderStatus.cancelled).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -76,20 +158,28 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
           const SizedBox(width: 16),
         ],
       ),
-      body: Column(
-        children: [
-          _buildTabBar(),
-          Expanded(
-            child: _buildCurrentTabView(),
-          ),
-        ],
+      body: RefreshIndicator(
+        onRefresh: _loadCustomerOrders,
+        child: Column(
+          children: [
+            _buildTabBar(),
+            Expanded(
+              child: _buildCurrentTabView(),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.push(
+        onPressed: () async {
+          final result = await Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
           );
+          
+          // If a service request was submitted successfully, refresh the data
+          if (result == true) {
+            _loadCustomerOrders();
+          }
         },
         backgroundColor: AppTheme.accentBlue,
         icon: const Icon(Icons.add),
@@ -197,6 +287,40 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   }
 
   Widget _buildCurrentTabView() {
+    // Handle loading state
+    if (_isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Loading your orders...', style: TextStyle(color: AppTheme.textLight)),
+          ],
+        ),
+      );
+    }
+
+    // Handle error state
+    if (_errorMessage != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadCustomerOrders,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Handle normal state
     switch (_selectedTabIndex) {
       case 0:
         return _buildRequestsTab();
@@ -315,13 +439,31 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: () {
-                              showTopNotification(
-                                context,
-                                message: 'Request cancelled',
-                                icon: Icons.cancel,
-                                backgroundColor: Colors.red,
+                            onPressed: () async {
+                              // Show confirmation dialog
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Cancel Request?'),
+                                  content: const Text('Are you sure you want to cancel this service request? This action cannot be undone.'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, false),
+                                      child: const Text('Keep Request'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, true),
+                                      style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                      child: const Text('Cancel Request'),
+                                    ),
+                                  ],
+                                ),
                               );
+                              
+                              // If user confirmed, cancel the order
+                              if (confirmed == true) {
+                                await _cancelOrder(order.id);
+                              }
                             },
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.red,
