@@ -160,9 +160,19 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (error) {
       print('❌ LOGIN: Failed - $error');
       if (mounted) {
-        final message = error is AuthApiException && error.code == 'email_not_confirmed'
-            ? 'Email not confirmed. Check your inbox or confirm this user in Supabase Authentication.'
-            : 'Login failed: ${error.toString()}';
+        String message;
+        final errorStr = error.toString();
+        
+        // Check if it's a deactivation error with reason
+        if (errorStr.contains('ACCOUNT_DEACTIVATED:')) {
+          final reason = errorStr.split('ACCOUNT_DEACTIVATED:').last.trim();
+          message = 'Your account has been deactivated.\n\nReason: $reason';
+        } else if (error is AuthApiException && error.code == 'email_not_confirmed') {
+          message = 'Email not confirmed. Check your inbox or confirm this user in Supabase Authentication.';
+        } else {
+          message = 'Login failed: ${error.toString()}';
+        }
+        
         _showMessage(message);
       }
     } finally {
@@ -173,9 +183,36 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    // Check if it's a deactivation message - show dialog instead of snackbar
+    if (message.contains('Your account has been deactivated')) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.block, color: AppTheme.errorRed),
+              SizedBox(width: 12),
+              Text('Account Deactivated'),
+            ],
+          ),
+          content: Text(
+            message,
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('OK', style: TextStyle(color: AppTheme.accentBlue)),
+            ),
+          ],
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
   }
 
   @override
