@@ -20,7 +20,6 @@ class AuthService {
       final response = await _auth.signUp(
         email: email,
         password: password,
-        phone: phone,
         data: metadata,
       );
       return response;
