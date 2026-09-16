@@ -120,6 +120,11 @@ class AuthService {
         password: password,
       );
 
+      // After successful login, ensure profile exists
+      if (response.user != null) {
+        await _ensureProfileExists(response.user!);
+      }
+
       // If remember me is enabled and login successful, save the account and tokens
       if (rememberMe && response.user != null && response.session != null) {
         await _saveRememberMeData(
@@ -133,6 +138,49 @@ class AuthService {
       return response;
     } catch (e) {
       rethrow;
+    }
+  }
+
+  /// Ensure a profile exists for the user, create if missing
+  Future<void> _ensureProfileExists(User user) async {
+    try {
+      // Check if profile exists
+      final profile = await SupabaseService.client
+          .from('profiles')
+          .select('id')
+          .eq('supabase_user_id', user.id)
+          .maybeSingle();
+
+      if (profile != null) {
+        print('✅ Profile exists for ${user.email}');
+        return;
+      }
+
+      print('⚠️ Profile missing for ${user.email}, creating...');
+
+      // Create profile from user metadata
+      final metadata = user.userMetadata ?? {};
+      final now = DateTime.now().toIso8601String();
+
+      await SupabaseService.client.from('profiles').insert({
+        'id': user.id,
+        'supabase_user_id': user.id,
+        'email': user.email ?? '',
+        'first_name': metadata['first_name'] ?? 'User',
+        'last_name': metadata['last_name'] ?? '',
+        'phone': metadata['phone'] ?? user.phone ?? '',
+        'address': metadata['address'] ?? '',
+        'landmark': metadata['landmark'] ?? '',
+        'role': metadata['role'] ?? 'customer',
+        'status': 'active',
+        'created_at': now,
+        'updated_at': now,
+      });
+
+      print('✅ Profile created automatically on login');
+    } catch (e) {
+      print('⚠️ Could not auto-create profile: $e');
+      // Don't fail the login if profile creation fails
     }
   }
 
@@ -204,6 +252,10 @@ class AuthService {
       rethrow;
     }
   }
+  
+  // Note: The new password reset flow uses PasswordResetService
+  // which integrates with the password_reset_tokens table
+  // See password_reset_service.dart for the complete implementation
 
   // Update password (requires current session)
   Future<UserResponse> updatePassword(String newPassword) async {

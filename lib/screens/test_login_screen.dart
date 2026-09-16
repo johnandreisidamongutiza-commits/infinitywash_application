@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/supabase_service.dart';
+import 'profile_fix_screen.dart';
 
 class TestLoginScreen extends StatefulWidget {
   const TestLoginScreen({super.key});
@@ -174,6 +175,22 @@ class _TestLoginScreenState extends State<TestLoginScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Text('Sign Out'),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ProfileFixScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.build),
+                      label: const Text('Fix Missing Profile'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.all(16),
+                      ),
                     ),
                   ],
                 ),

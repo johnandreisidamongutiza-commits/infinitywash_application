@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
+import '../services/password_reset_service.dart';
 
 enum ForgotPasswordStep { identity, otp, reset, success }
 
@@ -15,15 +16,24 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   ForgotPasswordStep _currentStep = ForgotPasswordStep.identity;
-  final TextEditingController _idController = TextEditingController();
-  final TextEditingController _contactController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
   final List<TextEditingController> _otpControllers = List.generate(6, (index) => TextEditingController());
   final List<FocusNode> _otpFocusNodes = List.generate(6, (index) => FocusNode());
+  
+  final _passwordResetService = PasswordResetService();
+  bool _isLoading = false;
+  String? _tokenId;
+  String? _userEmail;
+  int _resendCountdown = 60;
+  bool _canResend = false;
 
   @override
   void dispose() {
-    _idController.dispose();
-    _contactController.dispose();
+    _emailController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
     for (var controller in _otpControllers) {
       controller.dispose();
     }
@@ -31,6 +41,25 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       node.dispose();
     }
     super.dispose();
+  }
+  
+  void _startResendCountdown() {
+    _canResend = false;
+    _resendCountdown = 60;
+    
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (mounted) {
+        setState(() {
+          _resendCountdown--;
+          if (_resendCountdown <= 0) {
+            _canResend = true;
+          }
+        });
+        return _resendCountdown > 0;
+      }
+      return false;
+    });
   }
 
   @override
@@ -76,7 +105,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Widget _buildIdentityView() {
-    bool isInternal = widget.role != 'Customer';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -87,41 +115,89 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          isInternal
-              ? 'Validate your ${widget.role} credentials to receive a verification code.'
-              : 'Enter your registered email or mobile number below.',
+          'Enter your registered email address to receive a verification code.',
           style: AppTheme.lightTheme.textTheme.bodyMedium,
         ),
         const SizedBox(height: 40),
-        if (isInternal) ...[
-          CustomTextField(
-            label: '${widget.role} ID',
-            hint: 'Enter your IW-${widget.role.toUpperCase()}-XXX',
-            prefixIcon: Icons.badge_outlined,
-            controller: _idController,
-          ),
-          const SizedBox(height: 20),
-        ],
         CustomTextField(
-          label: 'Email or Mobile',
-          hint: 'Enter registered contact',
-          prefixIcon: Icons.contact_mail_outlined,
-          controller: _contactController,
+          label: 'Email Address',
+          hint: 'Enter your email',
+          prefixIcon: Icons.email_outlined,
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
         ),
         const SizedBox(height: 40),
-        ElevatedButton(
-          onPressed: () {
-            if (_contactController.text.isNotEmpty && (!isInternal || _idController.text.isNotEmpty)) {
-              setState(() => _currentStep = ForgotPasswordStep.otp);
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Please fill in all required fields')),
-              );
-            }
-          },
-          child: const Text('Send Verification Code'),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleSendCode,
+            child: _isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Send Verification Code'),
+          ),
         ),
       ],
+    );
+  }
+  
+  Future<void> _handleSendCode() async {
+    if (_emailController.text.isEmpty) {
+      _showError('Please enter your email address');
+      return;
+    }
+    
+    // Basic email validation
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(_emailController.text.trim())) {
+      _showError('Please enter a valid email address');
+      return;
+    }
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      final result = await _passwordResetService.requestPasswordReset(
+        _emailController.text.trim(),
+      );
+      
+      _tokenId = result['token_id'];
+      _userEmail = result['email'];
+      
+      if (mounted) {
+        setState(() {
+          _currentStep = ForgotPasswordStep.otp;
+          _isLoading = false;
+        });
+        _startResendCountdown();
+        _showSuccess('Verification code sent to your email');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showError(e.toString().replaceAll('Exception: ', ''));
+      }
+    }
+  }
+  
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+  
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+      ),
     );
   }
 
@@ -136,7 +212,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'A 6-digit security code has been sent to your registered device.',
+          'A 6-character security code has been sent to your registered email.',
           style: AppTheme.lightTheme.textTheme.bodyMedium,
         ),
         const SizedBox(height: 40),
@@ -145,25 +221,96 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           children: List.generate(6, (index) => _buildOtpBox(index)),
         ),
         const SizedBox(height: 40),
-        ElevatedButton(
-          onPressed: () {
-            // Mock verification
-            setState(() => _currentStep = ForgotPasswordStep.reset);
-          },
-          child: const Text('Verify Code'),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleVerifyCode,
+            child: _isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Verify Code'),
+          ),
         ),
         const SizedBox(height: 20),
         Center(
           child: TextButton(
-            onPressed: () {},
-            child: const Text(
-              'Resend Code in 00:59',
-              style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
+            onPressed: _canResend ? _handleResendCode : null,
+            child: Text(
+              _canResend 
+                  ? 'Resend Code' 
+                  : 'Resend Code in 00:${_resendCountdown.toString().padLeft(2, '0')}',
+              style: TextStyle(
+                color: _canResend ? AppTheme.accentBlue : Colors.grey,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ),
       ],
     );
+  }
+  
+  Future<void> _handleVerifyCode() async {
+    // Collect the code from all 6 fields
+    String code = _otpControllers.map((c) => c.text).join();
+    
+    if (code.length != 6) {
+      _showError('Please enter the complete 6-character code');
+      return;
+    }
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      final tokenId = await _passwordResetService.verifyResetCode(
+        _userEmail!,
+        code,
+      );
+      
+      if (tokenId != null) {
+        _tokenId = tokenId;
+        if (mounted) {
+          setState(() {
+            _currentStep = ForgotPasswordStep.reset;
+            _isLoading = false;
+          });
+          _showSuccess('Code verified successfully!');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showError(e.toString().replaceAll('Exception: ', ''));
+      }
+    }
+  }
+  
+  Future<void> _handleResendCode() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      final result = await _passwordResetService.resendResetCode(_userEmail!);
+      
+      if (mounted) {
+        // Clear OTP fields
+        for (var controller in _otpControllers) {
+          controller.clear();
+        }
+        _otpFocusNodes[0].requestFocus();
+        
+        setState(() => _isLoading = false);
+        _showSuccess('A new code has been sent to your email!');
+        _startResendCountdown();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showError(e.toString().replaceAll('Exception: ', ''));
+      }
+    }
   }
 
   Widget _buildOtpBox(int index) {
@@ -173,12 +320,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       child: TextFormField(
         controller: _otpControllers[index],
         focusNode: _otpFocusNodes[index],
-        keyboardType: TextInputType.number,
+        keyboardType: TextInputType.text, // Changed from number to text for letters+numbers
         textAlign: TextAlign.center,
+        textCapitalization: TextCapitalization.characters,
         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         inputFormatters: [
           LengthLimitingTextInputFormatter(1),
-          FilteringTextInputFormatter.digitsOnly,
+          FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')), // Allow letters and numbers
         ],
         decoration: InputDecoration(
           filled: true,
@@ -218,28 +366,76 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           style: AppTheme.lightTheme.textTheme.bodyMedium,
         ),
         const SizedBox(height: 40),
-        const CustomTextField(
+        CustomTextField(
           label: 'New Password',
           hint: '••••••••',
           prefixIcon: Icons.lock_outline,
           isPassword: true,
+          controller: _newPasswordController,
         ),
         const SizedBox(height: 20),
-        const CustomTextField(
+        CustomTextField(
           label: 'Confirm Password',
           hint: '••••••••',
           prefixIcon: Icons.lock_reset_outlined,
           isPassword: true,
+          controller: _confirmPasswordController,
         ),
         const SizedBox(height: 40),
-        ElevatedButton(
-          onPressed: () {
-            setState(() => _currentStep = ForgotPasswordStep.success);
-          },
-          child: const Text('Reset Password'),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleResetPassword,
+            child: _isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Reset Password'),
+          ),
         ),
       ],
     );
+  }
+  
+  Future<void> _handleResetPassword() async {
+    final newPassword = _newPasswordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+    
+    // Validation
+    if (newPassword.isEmpty || confirmPassword.isEmpty) {
+      _showError('Please fill in all fields');
+      return;
+    }
+    
+    if (newPassword.length < 8) {
+      _showError('Password must be at least 8 characters long');
+      return;
+    }
+    
+    if (newPassword != confirmPassword) {
+      _showError('Passwords do not match');
+      return;
+    }
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      await _passwordResetService.resetPassword(_tokenId!, newPassword);
+      
+      if (mounted) {
+        setState(() {
+          _currentStep = ForgotPasswordStep.success;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showError(e.toString().replaceAll('Exception: ', ''));
+      }
+    }
   }
 
   Widget _buildSuccessView() {
