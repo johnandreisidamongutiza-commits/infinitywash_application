@@ -4,7 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'config/supabase_config.dart';
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
-import 'screens/role_selection_screen.dart';
+import 'screens/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,9 +45,8 @@ class InfinityWashApp extends StatelessWidget {
       title: 'Infinity Wash',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      // Toggle between these two screens to test:
-      home: const RoleSelectionScreen(), // Your normal app
-      // home: const TestLoginScreen(),   // Uncomment to test Supabase auth
+      // Start with splash screen for auto-login check
+      home: const SplashScreen(),
     );
   }
 }

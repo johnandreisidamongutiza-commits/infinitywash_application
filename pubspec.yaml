@@ -38,6 +38,10 @@ dependencies:
   # Supabase
   supabase_flutter: ^2.8.0
   
+  # Secure Storage and Database
+  flutter_secure_storage: ^9.0.0
+  sqflite: ^2.3.0
+  
   # Firebase (keeping for reference, you may want to remove these if fully migrating to Supabase)
   firebase_core: ^3.8.1
   firebase_auth: ^5.3.4

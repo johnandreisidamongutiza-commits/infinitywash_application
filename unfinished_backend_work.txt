@@ -1,0 +1,509 @@
+================================================================================
+INFINITY WASH APPLICATION - UNFINISHED BACKEND WORK
+================================================================================
+Generated: September 16, 2026
+Project: infinitywash_application
+================================================================================
+
+SUMMARY:
+This document lists all unfinished backend integrations, TODO items, mock/stub
+implementations, and missing features that need real backend implementation.
+
+================================================================================
+1. CONFIGURATION & CREDENTIALS
+================================================================================
+
+1.1 Supabase Configuration
+   Location: lib/config/supabase_config.dart
+   Status: ⚠️ TODO comment present
+   Issue: Contains TODO comment about replacing credentials
+   Note: Credentials appear to be present, but marked as requiring replacement
+   Action: Verify and update Supabase credentials if needed
+
+1.2 Google Maps API Key
+   Location: lib/config/map_config.dart
+   Status: ❌ Not configured
+   Issue: Placeholder for Google Maps API key
+   Current Value: Empty string with placeholder method
+   Action: Add real Google Maps API key for map/navigation features
+
+1.3 Map Service
+   Location: lib/services/map_service.dart
+   Status: ❌ Placeholder only
+   Issue: Intentionally blank placeholder for future rider navigation
+   Action: Implement full map service for rider navigation integration
+
+================================================================================
+2. MOCK DATA & STUB IMPLEMENTATIONS
+================================================================================
+
+2.1 Mock Data Service - Rider Features
+   Location: lib/services/mock_data_service.dart
+   Status: ❌ Multiple stub methods
+   
+   Unimplemented Methods:
+   - getRiderPickups() - Returns empty list
+   - getRiderDeliveries() - Returns empty list  
+   - confirmPickupWithLoads() - Does nothing
+   - completeRiderRoute() - Does nothing
+   - resetRiderRoute() - Does nothing
+   
+   Action: Integrate with real Supabase backend for rider pickup/delivery
+
+2.2 Mock Data Service - Customer Features
+   Location: lib/services/mock_data_service.dart
+   Status: ❌ Multiple stub methods
+   
+   Unimplemented Methods:
+   - getCustomerRequests() - Returns empty list
+   - getCustomerActiveOrders() - Returns empty list
+   - getCustomerHistory() - Returns empty list
+   
+   Action: Connect to Supabase for customer order management
+
+2.3 Mock Data Service - Service Request Features  
+   Location: lib/services/mock_data_service.dart
+   Status: ❌ Multiple stub methods
+   
+   Unimplemented Methods:
+   - addRequest() - Does nothing
+   - lockRequestForReview() - Does nothing
+   - unlockRequest() - Does nothing
+   - approvePhotoRequest() - Does nothing
+   - rejectRequest() - Does nothing
+   
+   Action: Implement online service request workflow in backend
+
+2.4 Chat Service - Mock Data
+   Location: lib/services/chat_service.dart
+   Status: ❌ Uses mock data
+   
+   Issue: 
+   - Mock participants hardcoded
+   - Mock conversations with fake data
+   - In-memory message storage
+   - No real-time backend integration
+   
+   Action: Replace with real-time chat backend (Supabase Realtime or Firebase)
+
+================================================================================
+3. INCOMPLETE FEATURES & TODO ITEMS
+================================================================================
+
+3.1 Staff User Identification
+   Location: lib/screens/staff/orders/orders_screen.dart:494
+   Line: final String currentStaff = 'Staff User'; // TODO: Get from auth/session
+   Status: ⚠️ TODO
+   Issue: Hardcoded staff user, needs auth integration
+   Action: Get current staff from authentication service
+
+3.2 Profile Service - Syntax Errors
+   Location: lib/services/profile_service.dart
+   Status: ⚠️ Syntax issues
+   Issue: Uses undefined '?email' syntax (should be 'email')
+   Lines: 45, 46, 47, 59, 60
+   Action: Fix syntax errors in update methods
+
+3.3 Phone Number Format Placeholders
+   Multiple Locations:
+   - lib/screens/staff/orders/create_order_flow.dart:1213
+   - lib/screens/forgot_password_screen.dart:99
+   - lib/screens/customer/orders/request_service_flow.dart:232
+   - lib/screens/customer/customer_registration_screen.dart:181
+   Status: ⚠️ UI Placeholder text
+   Hint: '09XX-XXX-XXXX'
+   Action: Consider adding phone number validation
+
+================================================================================
+4. PAYMENT & TRANSACTION HANDLING
+================================================================================
+
+4.1 Payment Processing
+   Location: lib/services/order_service.dart
+   Status: ⚠️ Conditional payment processor assignment
+   Issue: Payment record created without 'processed_by' if no staff ID
+   Lines: 189-196
+   Action: Ensure proper staff assignment for all payment transactions
+
+4.2 Payment Status Tracking
+   Location: lib/services/order_service.dart:159
+   Status: ✅ Implemented but basic
+   Issue: Payment status set as 'paid' or 'pending' 
+   Action: Consider adding more payment states (processing, failed, refunded)
+
+================================================================================
+5. INCOMPLETE BACKEND INTEGRATIONS
+================================================================================
+
+5.1 Online Service Requests
+   Status: ❌ Not implemented
+   Affected Features:
+   - Customer photo-based laundry requests
+   - Staff approval/rejection workflow
+   - Request locking mechanism
+   Action: Build complete service request pipeline in Supabase
+
+5.2 Rider Management System
+   Status: ❌ Not implemented  
+   Affected Features:
+   - Pickup scheduling and confirmation
+   - Delivery routing
+   - Route completion tracking
+   - Real-time location tracking
+   Action: Implement rider backend with map integration
+
+5.3 Customer Order Portal
+   Status: ❌ Not implemented
+   Affected Features:
+   - Customer order history
+   - Active order tracking
+   - Service request submission
+   Action: Build customer-facing backend APIs
+
+5.4 Real-time Chat/Messaging
+   Status: ❌ Mock only
+   Affected Features:
+   - Staff-Customer messaging
+   - Staff-Rider messaging
+   - Real-time notifications
+   - Message persistence
+   Action: Integrate Supabase Realtime or Firebase for chat
+
+5.5 Map & Navigation Services
+   Status: ❌ Not implemented
+   Affected Features:
+   - Rider navigation to pickup/delivery locations
+   - Distance/time calculations
+   - Route optimization
+   Action: Integrate Google Maps Platform APIs
+
+================================================================================
+6. DATA VALIDATION & ERROR HANDLING
+================================================================================
+
+6.1 RFID Tag Validation
+   Location: lib/services/order_service.dart
+   Status: ✅ Basic validation implemented
+   Improvement: Add more robust error recovery
+
+6.2 Customer Data Validation  
+   Location: lib/services/customer_service.dart
+   Status: ✅ Basic validation implemented
+   Improvement: Add phone/email format validation
+
+6.3 Order Data Validation
+   Location: lib/services/order_service.dart
+   Status: ✅ Basic validation implemented
+   Improvement: Add business rule validation
+
+================================================================================
+7. AUTHENTICATION & AUTHORIZATION
+================================================================================
+
+7.1 Authentication Service
+   Location: lib/services/auth_service.dart
+   Status: ✅ Implemented for basic auth
+   Missing Features:
+   - Password reset completion flow
+   - Email verification handling
+   - Session timeout management
+   - Multi-device session management
+
+7.2 Role-Based Access Control
+   Status: ⚠️ Partially implemented
+   Issue: Role checking exists but not consistently applied
+   Action: Audit all screens for proper role-based access control
+
+================================================================================
+8. NOTIFICATION SYSTEM
+================================================================================
+
+8.1 Firebase Notifications
+   Location: lib/services/notification_service.dart
+   Status: ⚠️ Read-only implementation
+   Missing Features:
+   - Push notification sending
+   - Notification creation API
+   - Admin notification management
+   Action: Implement notification sending/management backend
+
+8.2 Notification Indexing
+   Status: ⚠️ Workaround in place
+   Issue: In-memory sorting to avoid Firebase index requirement
+   Note: "Ultra-simplified query - no orderBy to avoid index requirement"
+   Action: Create proper Firebase composite indexes
+
+================================================================================
+9. MISSING BACKEND TABLES/SCHEMAS
+================================================================================
+
+Based on mock data service, these may need backend implementation:
+
+9.1 Service Requests Table
+   - Request submissions from customers
+   - Photo storage references
+   - Approval workflow states
+   - Staff assignments/locks
+
+9.2 Chat/Messaging Tables
+   - Conversations
+   - Messages
+   - Participants
+   - Read receipts
+
+9.3 Rider Routes/Assignments
+   - Route planning
+   - Pickup/delivery assignments
+   - Location tracking
+   - Completion status
+
+9.4 Supply Inventory (Currently in mock)
+   - Current: In-memory data in MockDataService
+   - Action: Migrate to Supabase table
+
+================================================================================
+10. TESTING & QUALITY ASSURANCE
+================================================================================
+
+10.1 Backend Integration Tests
+   Status: ❌ Not implemented
+   Action: Create integration tests for all backend services
+
+10.2 Mock Data Testing
+   Location: test/rfid_blank_fix_test.dart
+   Status: ✅ Some UI tests exist
+   Action: Add backend service unit tests
+
+================================================================================
+11. PRIORITY RECOMMENDATIONS
+================================================================================
+
+HIGH PRIORITY (Critical for MVP):
+1. Fix profile_service.dart syntax errors
+2. Implement proper staff authentication tracking
+3. Complete payment processing workflow
+4. Add phone/email validation
+
+MEDIUM PRIORITY (Important for production):
+5. Implement online service request backend
+6. Build rider management system with map integration
+7. Create customer order portal backend
+8. Implement real-time chat system
+9. Add proper Firebase indexes for notifications
+
+LOW PRIORITY (Future enhancements):
+10. Multi-device session management
+11. Advanced notification features
+12. Supply inventory backend migration
+13. Enhanced error recovery
+
+================================================================================
+12. BACKEND SERVICE STATUS MATRIX
+================================================================================
+
+Service                    | Status | Integration | Notes
+---------------------------|--------|-------------|-------------------------
+auth_service.dart          | ✅ 85% | Supabase    | Core auth working
+order_service.dart         | ✅ 90% | Supabase    | Walk-in orders done
+customer_service.dart      | ✅ 90% | Supabase    | Customer CRUD done
+rfid_service.dart          | ✅ 90% | Supabase    | RFID tracking done
+service_catalog_service    | ✅ 95% | Supabase    | Pricing/catalog done
+profile_service.dart       | ⚠️ 70% | Supabase    | Has syntax errors
+notification_service.dart  | ⚠️ 60% | Firebase    | Read-only, needs indexes
+chat_service.dart          | ❌ 10% | Mock Only   | No backend yet
+map_service.dart           | ❌ 0%  | None        | Placeholder only
+mock_data_service.dart     | ❌ 0%  | Mock Only   | Rider/customer stubs
+
+Legend:
+✅ = Implemented with backend
+⚠️ = Partially implemented or has issues  
+❌ = Not implemented / Mock only
+
+================================================================================
+13. REQUIRED EXTERNAL SERVICES
+================================================================================
+
+13.1 Currently Configured:
+- Supabase (Database, Auth, Storage)
+- Firebase (Cloud Firestore for notifications)
+
+13.2 Need Configuration:
+- Google Maps Platform (API key required)
+- Push Notification Service (FCM configuration)
+- SMS Service (for OTP if needed)
+- Email Service (for notifications if needed)
+
+================================================================================
+14. DATABASE SCHEMA GAPS
+================================================================================
+
+Verify these tables exist in Supabase:
+
+✅ Confirmed Existing:
+- profiles
+- employees  
+- customers
+- orders
+- order_loads
+- order_addons
+- payments
+- service_catalog
+- service_addons
+- rfid_tags
+
+❌ May Need Creation:
+- service_requests
+- request_photos
+- request_approvals
+- chat_conversations
+- chat_messages
+- rider_routes
+- rider_locations
+- supplies
+- notification_reads (in Firestore, not Supabase)
+
+================================================================================
+15. API ENDPOINTS NEEDED
+================================================================================
+
+If building a REST API layer (recommended for complex operations):
+
+Customer APIs:
+- POST /api/customer/request-service
+- GET /api/customer/orders
+- GET /api/customer/order/{id}/status
+- POST /api/customer/chat/send
+
+Staff APIs:
+- GET /api/staff/requests/pending
+- POST /api/staff/request/{id}/approve
+- POST /api/staff/request/{id}/reject
+- POST /api/staff/order/create
+
+Rider APIs:
+- GET /api/rider/pickups
+- GET /api/rider/deliveries
+- POST /api/rider/pickup/{id}/confirm
+- POST /api/rider/delivery/{id}/complete
+- POST /api/rider/location/update
+
+Admin APIs:
+- POST /api/admin/notification/create
+- GET /api/admin/analytics/*
+- POST /api/admin/supply/update
+
+================================================================================
+16. SECURITY CONSIDERATIONS
+================================================================================
+
+16.1 Row-Level Security (RLS)
+   Status: Unknown
+   Action: Verify Supabase RLS policies are configured for all tables
+
+16.2 API Key Security
+   Status: ⚠️ Keys in source code
+   Action: Move sensitive keys to environment variables
+
+16.3 Payment Data Security
+   Status: ⚠️ Needs review
+   Action: Ensure PCI compliance if storing payment details
+
+16.4 User Data Privacy
+   Status: ⚠️ Needs review
+   Action: Implement data encryption for sensitive fields
+
+================================================================================
+17. PERFORMANCE OPTIMIZATIONS NEEDED
+================================================================================
+
+17.1 Database Queries
+   - Add indexes for frequently queried fields
+   - Implement query result caching
+   - Optimize complex joins
+
+17.2 Real-time Features
+   - Implement efficient subscription management
+   - Add debouncing for location updates
+   - Optimize notification polling
+
+17.3 Asset Loading
+   - Implement image caching
+   - Add lazy loading for order lists
+   - Optimize RFID tag queries
+
+================================================================================
+18. DOCUMENTATION NEEDS
+================================================================================
+
+❌ Missing Documentation:
+- API endpoint documentation
+- Database schema documentation  
+- Backend service integration guide
+- Deployment/configuration guide
+- Error code reference
+- Testing procedures
+
+================================================================================
+19. DEPLOYMENT READINESS
+================================================================================
+
+Blockers for Production Deployment:
+
+CRITICAL:
+- Fix profile_service.dart syntax errors
+- Complete authentication flow
+- Implement service request backend
+- Configure Google Maps API
+- Set up proper error logging
+
+IMPORTANT:
+- Implement rider management
+- Add real-time chat
+- Create backup/recovery procedures
+- Set up monitoring/alerting
+- Configure production environment variables
+
+RECOMMENDED:
+- Complete integration testing
+- Perform security audit
+- Load testing
+- Create rollback procedures
+
+================================================================================
+20. MIGRATION TASKS
+================================================================================
+
+From Mock to Backend:
+
+1. Chat System
+   - Design chat database schema
+   - Implement Supabase Realtime subscriptions
+   - Migrate mock chat UI to real backend
+   - Add message persistence
+
+2. Service Requests
+   - Create request workflow tables
+   - Implement photo upload to Supabase Storage
+   - Build approval/rejection logic
+   - Add staff assignment system
+
+3. Rider Features
+   - Create rider assignment tables
+   - Implement route optimization
+   - Add location tracking
+   - Build delivery confirmation flow
+
+4. Supply Inventory
+   - Move supplies from mock to Supabase table
+   - Add CRUD operations
+   - Implement low-stock alerts
+
+================================================================================
+END OF REPORT
+================================================================================
+
+For questions or clarifications, review the source files mentioned above.
+To track progress, mark items as complete and update the status indicators.
+
+Last Updated: September 16, 2026
+Report Version: 1.0
