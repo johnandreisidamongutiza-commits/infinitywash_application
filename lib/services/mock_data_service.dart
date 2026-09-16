@@ -157,4 +157,15 @@ class MockDataService {
     // STUB: Returns empty list. Customer history not migrated yet.
     return [];
   }
+
+  // Service request approval/decline methods
+  void declineRequest(String requestId) {
+    // STUB: Does nothing. Service request decline not migrated yet.
+    print('📝 STUB: Declined service request $requestId');
+  }
+
+  void approveRequest(String requestId, List<OrderLoad> loads, String rfidTag) {
+    // STUB: Does nothing. Service request approval not migrated yet.
+    print('📝 STUB: Approved service request $requestId with ${loads.length} loads, RFID: $rfidTag');
+  }
 }

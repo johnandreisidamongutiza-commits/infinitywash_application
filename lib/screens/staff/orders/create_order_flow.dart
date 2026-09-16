@@ -52,7 +52,22 @@ class _LoadEntry {
 }
 
 class _CreateOrderFlowState extends State<CreateOrderFlow> {
-  final CollectionMethod _selectedCollection = CollectionMethod.dropOff;
+  // Services
+  final CustomerService _customerService = CustomerService();
+  final ServiceCatalogService _catalogService = ServiceCatalogService();
+  final OrderService _orderService = OrderService();
+  final RfidService _rfidService = RfidService();
+
+  // Form controllers
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _landmarkController = TextEditingController();
+  final TextEditingController _instructionsController = TextEditingController();
+  final TextEditingController _notesController = TextEditingController();
+
+  // State variables
   ReturnMethod _selectedReturn = ReturnMethod.shopPickup;
   List<String> _availableRfidTags = [];
   bool _loadingRfidTags = false;
@@ -60,12 +75,6 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   bool _addExtraFabCon = false;
   bool _addExtraDetergent = false;
   bool _isSubmitting = false; // Loading state for order creation
-  
-  // Services
-  final CustomerService _customerService = CustomerService();
-  final ServiceCatalogService _catalogService = ServiceCatalogService();
-  final OrderService _orderService = OrderService();
-  final RfidService _rfidService = RfidService();
   
   // Section expansion state - only one can be expanded at a time (accordion behavior)
   int? _expandedStep = 1;  // null = all collapsed, 1/2/3 = that step expanded
@@ -172,14 +181,6 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       instructions: 'Extra fabric softener please',
     ),
   ];
-
-  final TextEditingController _firstNameController = TextEditingController();
-  final TextEditingController _lastNameController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _addressController = TextEditingController();
-  final TextEditingController _landmarkController = TextEditingController();
-  final TextEditingController _instructionsController = TextEditingController();
-  final TextEditingController _notesController = TextEditingController();
 
   final Map<String, Map<String, dynamic>> _categories = {
     'Regular Clothing': {
@@ -804,7 +805,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           duration: const Duration(seconds: 3),
         ),
       );
-      Navigator.pop(context);
+      Navigator.pop(context, true); // Return true to indicate successful order creation
     } catch (e) {
       setState(() {
         _isSubmitting = false;
