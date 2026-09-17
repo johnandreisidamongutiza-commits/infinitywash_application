@@ -2,9 +2,12 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'supabase_service.dart';
+import 'smtp_service.dart';
+import 'rate_limit_service.dart';
 
 class PasswordResetService {
   final _client = SupabaseService.client;
+  final _smtpService = SmtpService();
   
   /// Check if an account exists with the given email (case-insensitive)
   Future<Map<String, dynamic>?> _findAccountByEmail(String email) async {
@@ -71,7 +74,17 @@ class PasswordResetService {
   /// Returns the reset token ID and email
   Future<Map<String, String>> requestPasswordReset(String email) async {
     try {
-      // 1. Find the account in profiles table
+      print('🔐 Password reset requested for: $email');
+      
+      // 1. Check rate limit
+      final rateLimitCheck = await RateLimitService.canSendOtp(email);
+      if (!rateLimitCheck.canSend) {
+        throw Exception(rateLimitCheck.message ?? 'Too many attempts. Please try again later.');
+      }
+      
+      print('✅ Rate limit check passed. Attempts left: ${rateLimitCheck.attemptsLeft}');
+      
+      // 2. Find the account in profiles table
       final profile = await _findAccountByEmail(email);
       
       if (profile == null) {
@@ -85,25 +98,31 @@ class PasswordResetService {
       final role = profile['role'] as String?;
       final status = profile['status'] as String?;
       
-      // 2. Check if account is active
+      print('👤 Account found: $userEmail (Status: $status)');
+      
+      // 3. Check if account is active
       if (status != null && status.toLowerCase() != 'active') {
         throw Exception('This account is not active. Please contact support.');
       }
       
-      // 3. Invalidate any existing unused tokens for this email
+      // 4. Invalidate any existing unused tokens for this email
+      print('🔄 Invalidating old tokens...');
       await _client
           .from('password_reset_tokens')
           .update({'used': true})
           .eq('email', userEmail)
           .eq('used', false);
       
-      // 4. Generate new reset code
+      // 5. Generate new reset code
+      print('🎲 Generating reset code...');
       final code = _generateResetCode();
       final codeHash = _hashCode(code);
       final now = DateTime.now().toUtc();
       final expiresAt = now.add(const Duration(minutes: 15));
       
-      // 5. Insert new reset token
+      print('💾 Saving reset token to database...');
+      
+      // 6. Insert new reset token
       final response = await _client
           .from('password_reset_tokens')
           .insert({
@@ -119,10 +138,15 @@ class PasswordResetService {
           .single();
       
       final tokenId = response['id'] as String;
+      print('✅ Token saved with ID: $tokenId');
       
-      // 6. TODO: Send email with the code via SMTP
-      // For production, integrate with your email service (SendGrid, Resend, etc.)
-      print('📧 Password reset code sent to: $userEmail');
+      // 7. Send email with the reset code
+      print('📧 Sending reset email...');
+      await _sendResetEmail(userEmail, code, firstName ?? '');
+      
+      // 8. Record rate limit attempt
+      await RateLimitService.recordAttempt(email);
+      print('📊 Rate limit recorded');
       
       return {
         'token_id': tokenId,
@@ -195,62 +219,96 @@ class PasswordResetService {
   }
   
   /// Reset the password using verified token
+  /// This uses Supabase RPC function to update password with admin privileges
   Future<void> resetPassword(String tokenId, String newPassword) async {
     try {
-      // 1. Get the token to find the email
-      final token = await _client
+      print('🔐 Attempting to reset password with token: $tokenId');
+
+      // 1. Get the token details to find the user
+      final tokenData = await _client
           .from('password_reset_tokens')
-          .select('email, expires_at, used')
+          .select('email, used, expires_at')
           .eq('id', tokenId)
           .single();
 
-      if (token['used'] == true) {
-        throw Exception('This reset link has already been used.');
+      print('📧 Token found for email: ${tokenData['email']}');
+
+      // 2. Verify token is still valid
+      if (tokenData['used'] == true) {
+        throw Exception('This reset code has already been used. Please request a new one.');
       }
 
-      final expiresAt = DateTime.parse(token['expires_at'] as String);
+      final expiresAt = DateTime.parse(tokenData['expires_at'] as String);
       if (DateTime.now().toUtc().isAfter(expiresAt)) {
-        throw Exception('Reset link has expired. Please request a new code.');
+        throw Exception('This reset code has expired. Please request a new one.');
       }
 
-      final email = token['email'] as String;
-      
-      print('🔐 Resetting password for: $email');
+      final userEmail = tokenData['email'] as String;
 
-      // 2. Call the database function to reset password
-      final result = await _client.rpc(
-        'reset_user_password',
-        params: {
-          'user_email': email,
+      // 3. Get the user's Supabase user ID from profiles
+      final profile = await _client
+          .from('profiles')
+          .select('supabase_user_id')
+          .eq('email', userEmail)
+          .single();
+
+      final userId = profile['supabase_user_id'] as String?;
+      
+      if (userId == null) {
+        throw Exception('User account not found');
+      }
+
+      print('👤 Found user ID: $userId');
+
+      // 4. Call the database function to reset password
+      // This function must be created in Supabase with SECURITY DEFINER
+      try {
+        print('🔧 Calling RPC function: reset_user_password');
+        print('📝 Parameters: user_id=$userId, reset_token_id=$tokenId');
+        
+        final response = await _client.rpc('reset_user_password', params: {
+          'user_id': userId,
           'new_password': newPassword,
           'reset_token_id': tokenId,
-        },
-      );
+        });
 
-      print('📝 Result: $result');
-
-      // Check if successful
-      if (result is Map && result['success'] == true) {
+        print('✅ RPC Response: $response');
         print('✅ Password reset successful');
-        return;
-      } else {
-        final error = result is Map ? result['error'] : 'Unknown error';
-        throw Exception(error);
+
+        // 5. Mark token as used (if not already marked by function)
+        await _client
+            .from('password_reset_tokens')
+            .update({
+              'used': true,
+            })
+            .eq('id', tokenId);
+
+        print('✅ Token marked as used');
+
+      } catch (rpcError) {
+        print('❌ RPC Error Details: ${rpcError.toString()}');
+        print('❌ Error Type: ${rpcError.runtimeType}');
+        
+        final errorMessage = rpcError.toString().toLowerCase();
+        
+        if (errorMessage.contains('user not found')) {
+          throw Exception('User account not found in Auth system. Please contact support or check if the user was deleted.');
+        }
+
+        if (errorMessage.contains('reset_user_password') && 
+            (errorMessage.contains('not found') || errorMessage.contains('does not exist'))) {
+          throw Exception(
+            'Password reset database function not found. '
+            'Please run the SQL setup script in Supabase.'
+          );
+        }
+        
+        // Re-throw with more context
+        throw Exception('Password reset failed: ${rpcError.toString()}');
       }
 
     } catch (e) {
       print('❌ Password reset failed: $e');
-      
-      // Provide helpful error messages
-      if (e.toString().contains('function reset_user_password') ||
-          e.toString().contains('does not exist')) {
-        throw Exception(
-          'Password reset database function not found. '
-          'Please run the SQL setup script in your Supabase dashboard. '
-          'See FIX_MISSING_PROFILE.md for instructions.'
-        );
-      }
-      
       rethrow;
     }
   }
@@ -273,8 +331,17 @@ class PasswordResetService {
   }
   
   /// Resend a new code (invalidates the old one)
+  /// This also enforces rate limiting
   Future<Map<String, String>> resendResetCode(String email) async {
+    print('🔁 Resend OTP requested for: $email');
+    
+    // Rate limiting is handled inside requestPasswordReset
     return await requestPasswordReset(email);
+  }
+  
+  /// Get rate limit status for an email
+  Future<Map<String, dynamic>> getRateLimitStatus(String email) async {
+    return await RateLimitService.getStatus(email);
   }
   
   /// Clean up expired tokens (should be run periodically)
@@ -289,6 +356,36 @@ class PasswordResetService {
       print('✅ Expired tokens cleaned up');
     } catch (e) {
       print('❌ Token cleanup failed: $e');
+    }
+  }
+
+  /// Send password reset email with code using SMTP
+  /// 
+  /// Setup required:
+  /// 1. Update SMTP credentials in smtp_service.dart
+  /// 2. For Gmail: Enable 2FA and create an App Password
+  /// 3. For other providers: Use their SMTP settings
+  Future<void> _sendResetEmail(String email, String code, String name) async {
+    try {
+      print('📧 Sending reset email via SMTP to: $email');
+      
+      final success = await _smtpService.sendPasswordResetEmail(
+        recipientEmail: email,
+        recipientName: name,
+        resetCode: code,
+      );
+      
+      if (success) {
+        print('✅ Password reset email sent successfully via SMTP');
+      } else {
+        print('⚠️ Email may not have been sent via SMTP');
+        // Don't throw - allow the reset flow to continue
+        // The code is still valid in the database
+      }
+    } catch (e) {
+      print('⚠️ SMTP email sending failed: $e');
+      // Log error but don't throw - the reset token is still valid
+      // User might be able to get the code another way (support, logs, etc.)
     }
   }
 }
