@@ -120,9 +120,8 @@ class PasswordResetService {
       
       final tokenId = response['id'] as String;
       
-      // 6. TODO: Send email with the code via SMTP
-      // For production, integrate with your email service (SendGrid, Resend, etc.)
-      print('📧 Password reset code sent to: $userEmail');
+      // 6. Send email with the reset code
+      await _sendResetEmail(userEmail, code, firstName ?? '');
       
       return {
         'token_id': tokenId,
@@ -197,44 +196,36 @@ class PasswordResetService {
   /// Reset the password using verified token
   Future<void> resetPassword(String tokenId, String newPassword) async {
     try {
-      // 1. Get the token to find the email
-      final token = await _client
-          .from('password_reset_tokens')
-          .select('email, expires_at, used')
-          .eq('id', tokenId)
-          .single();
+      print('🔐 Attempting to reset password with token: $tokenId');
 
-      if (token['used'] == true) {
-        throw Exception('This reset link has already been used.');
-      }
-
-      final expiresAt = DateTime.parse(token['expires_at'] as String);
-      if (DateTime.now().toUtc().isAfter(expiresAt)) {
-        throw Exception('Reset link has expired. Please request a new code.');
-      }
-
-      final email = token['email'] as String;
-      
-      print('🔐 Resetting password for: $email');
-
-      // 2. Call the database function to reset password
-      final result = await _client.rpc(
-        'reset_user_password',
-        params: {
-          'user_email': email,
+      // Call the Supabase Edge Function to reset password
+      // Edge Functions have admin privileges to update user passwords
+      final response = await _client.functions.invoke(
+        'reset-password',
+        body: {
+          'token_id': tokenId,
           'new_password': newPassword,
-          'reset_token_id': tokenId,
         },
       );
 
-      print('📝 Result: $result');
+      print('📝 Edge Function Response Status: ${response.status}');
 
-      // Check if successful
-      if (result is Map && result['success'] == true) {
+      // Check for HTTP errors
+      if (response.status != 200) {
+        final errorData = response.data;
+        final errorMessage = errorData is Map 
+            ? (errorData['error'] ?? 'Password reset failed')
+            : 'Password reset failed';
+        throw Exception(errorMessage);
+      }
+
+      // Check response data
+      final data = response.data;
+      if (data is Map && data['success'] == true) {
         print('✅ Password reset successful');
         return;
       } else {
-        final error = result is Map ? result['error'] : 'Unknown error';
+        final error = data is Map ? (data['error'] ?? 'Unknown error') : 'Unknown error';
         throw Exception(error);
       }
 
@@ -242,12 +233,13 @@ class PasswordResetService {
       print('❌ Password reset failed: $e');
       
       // Provide helpful error messages
-      if (e.toString().contains('function reset_user_password') ||
-          e.toString().contains('does not exist')) {
+      if (e.toString().contains('FunctionsException') ||
+          e.toString().contains('404') ||
+          e.toString().contains('not found')) {
         throw Exception(
-          'Password reset database function not found. '
-          'Please run the SQL setup script in your Supabase dashboard. '
-          'See FIX_MISSING_PROFILE.md for instructions.'
+          'Password reset function not deployed. '
+          'Please deploy the reset-password Edge Function to Supabase. '
+          'Run: supabase functions deploy reset-password'
         );
       }
       
@@ -289,6 +281,39 @@ class PasswordResetService {
       print('✅ Expired tokens cleaned up');
     } catch (e) {
       print('❌ Token cleanup failed: $e');
+    }
+  }
+
+  /// Send password reset email with code
+  /// 
+  /// Setup required:
+  /// 1. Deploy: supabase functions deploy send-reset-email
+  /// 2. API Key: supabase secrets set RESEND_API_KEY=re_xxx (get from resend.com)
+  /// 3. Test in app - user will receive email with 6-character code
+  Future<void> _sendResetEmail(String email, String code, String name) async {
+    try {
+      print('📧 Sending reset email to: $email');
+      
+      final response = await _client.functions.invoke(
+        'send-reset-email',
+        body: {
+          'to': email,
+          'name': name,
+          'code': code,
+        },
+      );
+      
+      if (response.status == 200) {
+        print('✅ Password reset email sent successfully');
+      } else {
+        print('⚠️ Email may not have been sent. Status: ${response.status}');
+        // Don't throw - allow the reset flow to continue
+        // The code is still valid in the database
+      }
+    } catch (e) {
+      print('⚠️ Email sending failed: $e');
+      // Log error but don't throw - the reset token is still valid
+      // User might be able to get the code another way (support, logs, etc.)
     }
   }
 }
