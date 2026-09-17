@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
-import '../../../services/mock_data_service.dart';
+import '../../../services/service_request_service.dart';
 
 class ServiceRequestsScreen extends StatefulWidget {
   const ServiceRequestsScreen({super.key});
@@ -11,10 +11,48 @@ class ServiceRequestsScreen extends StatefulWidget {
 }
 
 class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
+  final ServiceRequestService _serviceRequestService = ServiceRequestService();
+  List<LaundryOrder> _requests = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPendingRequests();
+  }
+
+  Future<void> _loadPendingRequests() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final requests = await _serviceRequestService.getPendingServiceRequests();
+      
+      if (mounted) {
+        setState(() {
+          _requests = requests;
+          _isLoading = false;
+        });
+      }
+      
+      print('✅ Loaded ${requests.length} pending service requests');
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+          _isLoading = false;
+        });
+      }
+      
+      print('❌ Error loading pending requests: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final requests = MockDataService().pendingRequests;
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -23,14 +61,49 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
         elevation: 0,
         centerTitle: true,
       ),
-      body: requests.isEmpty
-          ? _buildEmptyState()
-          : ListView.separated(
-              padding: const EdgeInsets.all(24),
-              itemCount: requests.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 16),
-              itemBuilder: (context, index) => _buildRequestCard(requests[index]),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? _buildErrorState()
+              : _requests.isEmpty
+                  ? _buildEmptyState()
+                  : RefreshIndicator(
+                      onRefresh: _loadPendingRequests,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.all(24),
+                        itemCount: _requests.length,
+                        separatorBuilder: (context, index) => const SizedBox(height: 16),
+                        itemBuilder: (context, index) => _buildRequestCard(_requests[index]),
+                      ),
+                    ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, size: 64, color: Colors.red),
+          const SizedBox(height: 16),
+          Text('Error loading requests', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              _errorMessage ?? 'Unknown error',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppTheme.textLight, fontSize: 12),
             ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _loadPendingRequests,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -70,21 +143,66 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
           const SizedBox(height: 12),
           Text(request.customerName, style: AppTheme.lightTheme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          if (request.instructions != null && request.instructions!.isNotEmpty)
-            Text(
-              'Note: ${request.instructions}',
-              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
+          if (request.deliveryAddress != null && request.deliveryAddress!.isNotEmpty)
+            Row(
+              children: [
+                const Icon(Icons.location_on_outlined, size: 16, color: AppTheme.textLight),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    request.deliveryAddress!,
+                    style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(color: AppTheme.textLight),
+                  ),
+                ),
+              ],
             ),
+          if (request.customerPhone != null && request.customerPhone!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.phone_outlined, size: 16, color: AppTheme.textLight),
+                const SizedBox(width: 4),
+                Text(
+                  request.customerPhone!,
+                  style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(color: AppTheme.textLight),
+                ),
+              ],
+            ),
+          ],
+          if (request.laundryPhotoUrls != null && request.laundryPhotoUrls!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${request.laundryPhotoUrls!.length} photo(s) attached',
+              style: const TextStyle(fontSize: 11, color: AppTheme.accentBlue, fontStyle: FontStyle.italic),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.lightBlue,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, size: 16, color: AppTheme.accentBlue),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Accept/Decline functionality coming soon. For now, use the main orders management.',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textDark),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          /* TODO: Implement Accept/Decline with real database operations
           const SizedBox(height: 20),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () {
-                    setState(() {
-                      MockDataService().declineRequest(request.id);
-                    });
-                  },
+                  onPressed: () => _handleDeclineRequest(request),
                   style: OutlinedButton.styleFrom(foregroundColor: AppTheme.errorRed, side: const BorderSide(color: AppTheme.errorRed)),
                   child: const Text('Decline'),
                 ),
@@ -98,6 +216,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
               ),
             ],
           ),
+          */
         ],
       ),
     );
@@ -117,300 +236,44 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
     );
   }
 
-  void _showApproveDialog(LaundryOrder request) {
-    final weightController = TextEditingController(text: '5.0');
-    String? selectedRfidTag;
-    String selectedCategory = 'Regular Clothing';
-    final availableTags = MockDataService().availableRfidTags;
-
-    final Map<String, Map<String, dynamic>> categories = {
-      'Regular Clothing': {'limit': 8.0, 'unit': 'kg', 'desc': 'T-shirts, shorts, sleeveless, socks, underwear'},
-      'Heavy Clothing': {'limit': 6.0, 'unit': 'kg', 'desc': 'Jeans, cargo, jackets, sweaters, corduroy'},
-      'Beddings & Towels': {'limit': 5.0, 'unit': 'kg', 'desc': 'Bedsheets, blankets, towels, curtains'},
-      'Heavyweight Beddings': {'limit': 1.0, 'unit': 'pc', 'desc': 'Comforter, heavy fleece blanket, duvet'},
-    };
-
-    showDialog(
+  /* TODO: Implement approve/decline with real database operations
+  
+  Future<void> _handleDeclineRequest(LaundryOrder request) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final double weight = double.tryParse(weightController.text) ?? 0.0;
-          final categoryData = categories[selectedCategory]!;
-          final double limit = categoryData['limit'] as double;
-          final String unit = categoryData['unit'] as String;
-          final bool isOver = weight > limit;
-          
-          // Calculate loads and pricing
-          final int numLoads = isOver ? (weight / limit).ceil() : 1;
-          final double totalPrice = 170.0 * numLoads;
-
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Text('Accept & Verify Request', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Confirm scale weight, category, and RFID tag to send bill to customer.',
-                      style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
-                  const SizedBox(height: 16),
-
-                  // Category Dropdown
-                  DropdownButtonFormField<String>(
-                    initialValue: selectedCategory,
-                    decoration: const InputDecoration(
-                      labelText: 'Laundry Category',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    ),
-                    items: categories.entries.map((e) {
-                      final catData = e.value;
-                      return DropdownMenuItem<String>(
-                        value: e.key,
-                        child: Text('${e.key} (≤ ${catData['limit']} ${catData['unit']})',
-                            style: const TextStyle(fontSize: 13)),
-                      );
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setDialogState(() => selectedCategory = val);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Scale Weight Input
-                  TextField(
-                    controller: weightController,
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) => setDialogState(() {}),
-                    decoration: InputDecoration(
-                      labelText: 'Scale Weight ($unit)',
-                      border: const OutlineInputBorder(),
-                      suffixIcon: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        child: Text(
-                          isOver ? 'EXCEEDS' : 'OK',
-                          style: TextStyle(
-                            color: isOver ? Colors.red : Colors.green,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (isOver) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.info_outline, size: 16, color: Colors.orange),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    'Exceeds $limit $unit limit by ${(weight - limit).toStringAsFixed(1)} $unit',
-                                    style: const TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Will be processed as $numLoads separate load${numLoads > 1 ? 's' : ''} (₱170 each)',
-                              style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 14),
-
-                  // RFID Tag
-                  if (availableTags.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppTheme.errorRed.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 16),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'No RFID tags available',
-                              style: TextStyle(color: AppTheme.errorRed, fontSize: 12),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedRfidTag,
-                      decoration: const InputDecoration(
-                        labelText: 'Assign RFID Tag (Shared for all loads)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.nfc_outlined),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                      items: availableTags.map((tag) {
-                        return DropdownMenuItem<String>(
-                          value: tag,
-                          child: Text(tag, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setDialogState(() => selectedRfidTag = value);
-                      },
-                    ),
-
-                  const SizedBox(height: 18),
-
-                  // Official Bill Card
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppTheme.softGray,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              numLoads > 1 
-                                ? 'Full Service ($numLoads loads):'
-                                : 'Full Service (Wash, Dry, Fold):',
-                              style: const TextStyle(fontSize: 12, color: AppTheme.textDark),
-                            ),
-                            Text(
-                              '₱${totalPrice.toStringAsFixed(2)}',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        if (numLoads > 1) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '  ₱170 × $numLoads loads',
-                                style: const TextStyle(fontSize: 11, color: AppTheme.textLight, fontStyle: FontStyle.italic),
-                              ),
-                            ],
-                          ),
-                        ],
-                        const SizedBox(height: 4),
-                        const Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Detergent + Fab Con:', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
-                            Text('INCLUDED', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green)),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Pick Up & Delivery:', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
-                            Text('INCLUDED', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green)),
-                          ],
-                        ),
-                        const Divider(height: 14),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Total Bill Sent to App:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                            Text(
-                              '₱${totalPrice.toStringAsFixed(2)}',
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-              ElevatedButton(
-                onPressed: (selectedRfidTag == null || availableTags.isEmpty)
-                    ? null
-                    : () {
-                        final double verifiedWeight = double.tryParse(weightController.text) ?? 1.0;
-                        
-                        // Create loads (auto-split if over limit)
-                        final List<OrderLoad> loads = [];
-                        if (numLoads > 1) {
-                          // Split into multiple loads
-                          final double weightPerLoad = verifiedWeight / numLoads;
-                          for (int i = 0; i < numLoads; i++) {
-                            loads.add(OrderLoad(
-                              loadNumber: i + 1,
-                              category: selectedCategory,
-                              weight: weightPerLoad,
-                              categoryLimit: limit,
-                              unit: unit,
-                              description: categoryData['desc'] as String,
-                              isOverLimit: false,
-                              loadStatus: LoadStatus.queued,
-                            ));
-                          }
-                        } else {
-                          // Single load
-                          loads.add(OrderLoad(
-                            loadNumber: 1,
-                            category: selectedCategory,
-                            weight: verifiedWeight,
-                            categoryLimit: limit,
-                            unit: unit,
-                            description: categoryData['desc'] as String,
-                            isOverLimit: false,
-                            loadStatus: LoadStatus.queued,
-                          ));
-                        }
-                        
-                        setState(() {
-                          MockDataService().approveRequest(request.id, loads, selectedRfidTag!);
-                        });
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              numLoads > 1
-                                ? 'Order #${request.id} accepted! $numLoads loads, ₱${totalPrice.toStringAsFixed(0)} bill sent to customer.'
-                                : 'Order #${request.id} accepted! ₱${totalPrice.toStringAsFixed(0)} bill sent to customer.',
-                            ),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      },
-                child: Text('Accept & Push Bill (₱${totalPrice.toStringAsFixed(0)})'),
-              ),
-            ],
-          );
-        },
+      builder: (context) => AlertDialog(
+        title: const Text('Decline Request?'),
+        content: Text('Are you sure you want to decline order #${request.orderNumber}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Decline'),
+          ),
+        ],
       ),
     );
+
+    if (confirmed == true) {
+      // TODO: Call service to update order status to 'rejected'
+      // await _orderService.rejectOrder(request.id, reason: 'Staff declined');
+      _loadPendingRequests();
+    }
   }
+
+  void _showApproveDialog(LaundryOrder request) {
+    // TODO: Implement full approval flow with:
+    // - Weight verification
+    // - Category selection
+    // - RFID tag assignment
+    // - Load creation
+    // - Order status update to 'processing'
+    // - Bill calculation and push notification to customer
+  }
+  */
 }

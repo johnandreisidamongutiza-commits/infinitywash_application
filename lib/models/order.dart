@@ -1,3 +1,4 @@
+import 'dart:convert';
 
 enum OrderStatus { pending_approval, rejected, cancelled, pending_pickup, processing, ready, out_for_delivery, completed }
 enum CollectionMethod { dropOff, riderPickup }
@@ -95,7 +96,7 @@ class OrderLoad {
 
 class LaundryOrder {
   final String id;
-  final String? orderNumber; // Human-readable order number (ORD-YYYYMMDD-00001)
+  final String? orderNumber; // Human-readable order number (ORD-YYMMDD-001)
   final String customerName;
   final String? customerPhone;
   final String? deliveryAddress;
@@ -153,6 +154,25 @@ class LaundryOrder {
   });
 
   // Computed properties
+  /// Human-readable ticket shown in the UI (REQ-/ORD- codes, never a full UUID).
+  String get displayNumber => formatDisplayNumber(id: id, orderNumber: orderNumber);
+
+  static String formatDisplayNumber({required String id, String? orderNumber}) {
+    final n = orderNumber?.trim();
+    if (n != null && n.isNotEmpty && !_looksLikeUuid(n)) return n;
+    if (!_looksLikeUuid(id)) return id;
+    final shortId = id.replaceAll('-', '');
+    final prefix = shortId.length >= 8 ? shortId.substring(0, 8) : shortId;
+    return 'REQ-${prefix.toUpperCase()}';
+  }
+
+  static bool _looksLikeUuid(String value) {
+    final uuid = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    );
+    return uuid.hasMatch(value);
+  }
+
   double get totalWeight => loads.fold(0.0, (sum, load) => sum + load.weight);
   
   int get totalLoads => loads.length;
@@ -230,7 +250,7 @@ class LaundryOrder {
       'customer_description': customerDescription,
       'estimated_loads': estimatedLoads,
       'rejection_reason': rejectionReason,
-      'staff_message': staffMessage,
+      'staff_notes': staffMessage,
       'reviewed_at': reviewedAt?.toIso8601String(),
       'reviewed_by': reviewedBy,
       'expires_at': expiresAt?.toIso8601String(),
@@ -245,8 +265,8 @@ class LaundryOrder {
       orderNumber: json['order_number'] as String?, // Get order number from database
       customerName: json['customer_name'] as String? ?? 'Unknown',
       customerPhone: json['customer_phone'] as String?,
-      deliveryAddress: json['delivery_address'] as String?,
-      deliveryLandmark: json['delivery_landmark'] as String?,
+      deliveryAddress: (json['delivery_address'] ?? json['pickup_address']) as String?,
+      deliveryLandmark: (json['delivery_landmark'] ?? json['landmark']) as String?,
       channel: (json['source'] as String?) == 'walk_in' ? OrderChannel.walkIn : OrderChannel.online,
       collectionMethod: (json['pickup_requested'] as bool?) == true 
           ? CollectionMethod.riderPickup 
@@ -264,11 +284,11 @@ class LaundryOrder {
       createdAt: DateTime.parse(json['created_at'] as String),
       paymentMethod: json['payment_method'] as String?,
       paidAt: json['paid_at'] != null ? DateTime.parse(json['paid_at'] as String) : null,
-      laundryPhotoUrls: (json['laundry_photo_urls'] as List?)?.cast<String>(),
+      laundryPhotoUrls: _parsePhotoUrls(json['laundry_photo_urls']),
       customerDescription: json['customer_description'] as String?,
       estimatedLoads: json['estimated_loads'] as int?,
       rejectionReason: json['rejection_reason'] as String?,
-      staffMessage: json['staff_message'] as String?,
+      staffMessage: (json['staff_notes'] ?? json['staff_message']) as String?,
       reviewedAt: json['reviewed_at'] != null ? DateTime.parse(json['reviewed_at'] as String) : null,
       reviewedBy: json['reviewed_by'] as String?,
       expiresAt: json['expires_at'] != null ? DateTime.parse(json['expires_at'] as String) : null,
@@ -303,5 +323,27 @@ class LaundryOrder {
       case 'completed': return OrderStatus.completed;
       default: return OrderStatus.processing;
     }
+  }
+
+  // Helper method to reliably parse laundry_photo_urls from various formats
+  static List<String>? _parsePhotoUrls(dynamic value) {
+    if (value == null) return null;
+    if (value is List) {
+      return value.map((e) => e.toString()).toList();
+    }
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        try {
+          final decoded = jsonDecode(trimmed);
+          if (decoded is List) {
+            return decoded.map((e) => e.toString()).toList();
+          }
+        } catch (_) {}
+      }
+      return [trimmed];
+    }
+    return null;
   }
 }

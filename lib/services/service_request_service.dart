@@ -64,7 +64,7 @@ class ServiceRequestService {
         'delivery_fee': 0,
         'total_amount': basePrice,
         'payment_status': 'pending',
-        'status': 'pending_intake',
+        'status': 'pending_approval',
         
         // Service request specific fields
         'laundry_photo_urls': photoUrls ?? [],
@@ -158,7 +158,7 @@ class ServiceRequestService {
         'delivery_fee': 0, // Free delivery
         'total_amount': basePrice, // Will be updated after staff review
         'payment_status': 'pending', // Payment pending until staff approval
-        'status': 'pending_intake', // Waiting for staff review
+        'status': 'pending_approval', // Waiting for staff review
         
         // Service request specific fields
         'laundry_photo_urls': photoUrls ?? [],
@@ -320,10 +320,13 @@ class ServiceRequestService {
     }
   }
 
-  /// Generate unique service request number (REQ-YYYYMMDD-00001)
+  /// Generate unique service request number (REQ-YYMMDD-001, up to 999/day)
   Future<String> _generateServiceRequestNumber() async {
     final now = DateTime.now();
-    final datePrefix = 'REQ-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final yy = (now.year % 100).toString().padLeft(2, '0');
+    final mm = now.month.toString().padLeft(2, '0');
+    final dd = now.day.toString().padLeft(2, '0');
+    final datePrefix = 'REQ-$yy$mm$dd';
     
     // Find the highest number for today
     final response = await _client
@@ -341,7 +344,7 @@ class ServiceRequestService {
       nextNumber = lastNumber + 1;
     }
 
-    return '$datePrefix-${nextNumber.toString().padLeft(5, '0')}';
+    return '$datePrefix-${nextNumber.toString().padLeft(3, '0')}';
   }
 
   /// Build customer full name from first and last name
@@ -355,8 +358,10 @@ class ServiceRequestService {
   /// Map database status to OrderStatus enum
   OrderStatus _mapDatabaseStatus(String status) {
     switch (status) {
-      case 'pending_intake':
+      case 'pending_approval':
         return OrderStatus.pending_approval;
+      case 'pending_pickup':
+        return OrderStatus.pending_pickup;
       case 'processing':
         return OrderStatus.processing;
       case 'ready':
@@ -427,7 +432,7 @@ class ServiceRequestService {
             customers!inner(first_name, last_name, phone, address, landmark)
           ''')
           .eq('source', 'mobile_app')
-          .eq('status', 'pending_intake')
+          .eq('status', 'pending_approval')
           .or('expires_at.is.null,expires_at.gt.$now') // Include non-expired requests
           .order('created_at', ascending: true); // Oldest first
 
@@ -482,6 +487,120 @@ class ServiceRequestService {
       return requests;
     } catch (e) {
       print('❌ Error fetching pending service requests: $e');
+      rethrow;
+    }
+  }
+
+  /// Approve service request by staff
+  /// Get current user's employee ID if exists in the employees table
+  Future<String?> _getCurrentEmployeeId() async {
+    try {
+      final user = _client.auth.currentUser;
+      if (user == null) return null;
+
+      final profile = await _client
+          .from('profiles')
+          .select('id')
+          .eq('supabase_user_id', user.id)
+          .maybeSingle();
+
+      if (profile == null) return null;
+
+      final employee = await _client
+          .from('employees')
+          .select('id')
+          .eq('profile_id', profile['id'])
+          .maybeSingle();
+
+      return employee?['id'] as String?;
+    } catch (e) {
+      print('⚠️ Could not resolve employee ID for reviewed_by: $e');
+      return null;
+    }
+  }
+
+  /// Transitions status to 'processing' upon staff approval
+  Future<void> approveServiceRequest({
+    required String orderId,
+    required bool isRiderPickup,
+    int? estimatedLoads,
+    String? staffMessage,
+  }) async {
+    try {
+      const newStatus = 'processing';
+      print('🔄 Approving service request $orderId -> $newStatus');
+
+      // Get current user's employee record ID for reviewed_by (foreign key to employees.id)
+      final employeeId = await _getCurrentEmployeeId();
+
+      final updates = <String, dynamic>{
+        'status': newStatus,
+        'reviewed_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      // Only set reviewed_by if an employee record exists in employees table
+      if (employeeId != null) {
+        updates['reviewed_by'] = employeeId;
+      }
+
+      if (estimatedLoads != null) {
+        updates['estimated_loads'] = estimatedLoads;
+      }
+
+      if (staffMessage != null && staffMessage.trim().isNotEmpty) {
+        updates['staff_notes'] = staffMessage.trim();
+      }
+
+      await _client
+          .from('orders')
+          .update(updates)
+          .eq('id', orderId);
+
+      print('✅ Service request $orderId approved successfully as $newStatus');
+    } catch (e) {
+      print('❌ Error approving service request: $e');
+      rethrow;
+    }
+  }
+
+  /// Reject service request by staff
+  /// Transitions status to 'rejected' with reason
+  Future<void> rejectServiceRequest({
+    required String orderId,
+    required String reason,
+    String? staffMessage,
+  }) async {
+    try {
+      print('🔄 Rejecting service request $orderId (Reason: $reason)');
+
+      // Get current user's employee record ID for reviewed_by (foreign key to employees.id)
+      final employeeId = await _getCurrentEmployeeId();
+
+      final updates = <String, dynamic>{
+        'status': 'rejected',
+        'rejection_reason': reason,
+        'reviewed_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      // Only set reviewed_by if an employee record exists in employees table
+      if (employeeId != null) {
+        updates['reviewed_by'] = employeeId;
+      }
+
+      if (staffMessage != null && staffMessage.trim().isNotEmpty) {
+        updates['staff_notes'] = staffMessage.trim();
+      }
+
+      await _client
+          .from('orders')
+          .update(updates)
+          .eq('id', orderId);
+
+      print('✅ Service request $orderId rejected successfully');
+    } catch (e) {
+      print('❌ Error rejecting service request: $e');
       rethrow;
     }
   }

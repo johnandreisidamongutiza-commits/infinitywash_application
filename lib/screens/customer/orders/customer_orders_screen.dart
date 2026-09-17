@@ -96,6 +96,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
       order.status == OrderStatus.pending_approval).toList();
   
   List<LaundryOrder> get _activeOrders => _customerOrders.where((order) => 
+      order.status == OrderStatus.pending_pickup ||
       order.status == OrderStatus.processing || 
       order.status == OrderStatus.ready || 
       order.status == OrderStatus.out_for_delivery).toList();
@@ -127,7 +128,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                         recipientName: 'InfinityWash Support',
                         recipientRole: 'Customer Support Helpdesk',
                         recipientType: ChatRecipientType.support,
-                        orderId: _activeOrders.first.id,
+                        orderId: _activeOrders.first.displayNumber,
                         phoneNumber: '0912-345-6789',
                       ),
                     ),
@@ -160,6 +161,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _loadCustomerOrders,
+        color: AppTheme.accentBlue,
         child: Column(
           children: [
             _buildTabBar(),
@@ -398,7 +400,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Order #${order.id}',
+                          'Order #${order.displayNumber}',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
                         ),
                         const SizedBox(height: 2),
@@ -675,7 +677,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                           children: [
                             Flexible(
                               child: Text(
-                                'Order #${order.id}',
+                                'Order #${order.displayNumber}',
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -1171,7 +1173,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                         recipientName: 'Support',
                         recipientRole: 'Customer Support',
                         recipientType: ChatRecipientType.support,
-                        orderId: order.id,
+                        orderId: order.displayNumber,
                         phoneNumber: '0912-345-6789',
                       ),
                     ),
@@ -1342,7 +1344,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Order #${order.id}',
+                          'Order #${order.displayNumber}',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
                         ),
                         const SizedBox(height: 2),
@@ -1455,25 +1457,33 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     required String title,
     required String subtitle,
   }) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 80, color: AppTheme.textLight.withValues(alpha: 0.3)),
-            const SizedBox(height: 20),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(40),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 80, color: AppTheme.textLight.withValues(alpha: 0.3)),
+                  const SizedBox(height: 20),
+                  Text(
+                    title,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    subtitle,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 13, color: AppTheme.textLight),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: AppTheme.textLight),
-            ),
-          ],
+          ),
         ),
       ),
     );

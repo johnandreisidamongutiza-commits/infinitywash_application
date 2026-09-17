@@ -456,7 +456,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            order.orderNumber ?? 'REQ-${order.id.substring(0, 8)}',
+                            order.displayNumber,
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
                           ),
                           const SizedBox(height: 2),
@@ -540,6 +540,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     switch (status) {
       case OrderStatus.pending_approval:
         return Colors.orange;
+      case OrderStatus.pending_pickup:
+        return Colors.blue;
       case OrderStatus.processing:
         return AppTheme.accentBlue;
       case OrderStatus.ready:
@@ -552,8 +554,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return Colors.red;
       case OrderStatus.cancelled:
         return Colors.grey;
-      default:
-        return AppTheme.textLight;
     }
   }
 
@@ -562,6 +562,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     switch (status) {
       case OrderStatus.pending_approval:
         return Icons.pending_outlined;
+      case OrderStatus.pending_pickup:
+        return Icons.two_wheeler;
       case OrderStatus.processing:
         return Icons.sync;
       case OrderStatus.ready:
@@ -574,8 +576,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return Icons.cancel_outlined;
       case OrderStatus.cancelled:
         return Icons.block;
-      default:
-        return Icons.local_laundry_service;
     }
   }
 
@@ -584,6 +584,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     switch (status) {
       case OrderStatus.pending_approval:
         return 'Pending Review';
+      case OrderStatus.pending_pickup:
+        return 'Waiting for Pickup';
       case OrderStatus.processing:
         return 'Processing';
       case OrderStatus.ready:
@@ -596,8 +598,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return 'Declined';
       case OrderStatus.cancelled:
         return 'Cancelled';
-      default:
-        return 'Unknown';
     }
   }
 }

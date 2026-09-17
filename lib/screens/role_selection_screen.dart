@@ -49,8 +49,6 @@ class RoleSelectionScreen extends StatelessWidget {
                 'Choose how you want to continue',
                 style: AppTheme.lightTheme.textTheme.bodyMedium,
               ),
-              const SizedBox(height: 16),
-              const Icon(Icons.auto_awesome, color: AppTheme.accentBlue, size: 24),
               const SizedBox(height: 40),
               RoleCard(
                 title: 'Customer',

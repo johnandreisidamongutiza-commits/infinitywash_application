@@ -7,12 +7,14 @@ class OrderService {
   final SupabaseClient _client = SupabaseService.client;
   final RfidService _rfidService = RfidService();
 
-  /// Generate next sequential order number for today (ORD-YYYYMMDD-00001)
+  /// Generate next sequential order number for today (ORD-YYMMDD-001, up to 999/day)
   Future<String> generateOrderNumber() async {
     try {
-      // Get today's date in YYYYMMDD format
       final now = DateTime.now();
-      final dateStr = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+      final yy = (now.year % 100).toString().padLeft(2, '0');
+      final mm = now.month.toString().padLeft(2, '0');
+      final dd = now.day.toString().padLeft(2, '0');
+      final dateStr = '$yy$mm$dd';
       
       // Query for orders created today with this date prefix
       final prefix = 'ORD-$dateStr-';
@@ -25,8 +27,8 @@ class OrderService {
           .limit(1);
 
       if (response.isEmpty) {
-        // No orders today, start with 00001
-        return '${prefix}00001';
+        // No orders today, start with 001
+        return '${prefix}001';
       }
 
       // Extract the sequence number from the last order
@@ -36,13 +38,16 @@ class OrderService {
 
       // Increment and format with leading zeros
       final nextSequence = lastSequence + 1;
-      return '$prefix${nextSequence.toString().padLeft(5, '0')}';
+      return '$prefix${nextSequence.toString().padLeft(3, '0')}';
     } catch (e) {
       print('Error generating order number: $e');
       // Fallback to timestamp-based if query fails
       final now = DateTime.now();
-      final dateStr = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
-      return 'ORD-$dateStr-${now.millisecondsSinceEpoch.toString().substring(8)}';
+      final yy = (now.year % 100).toString().padLeft(2, '0');
+      final mm = now.month.toString().padLeft(2, '0');
+      final dd = now.day.toString().padLeft(2, '0');
+      final dateStr = '$yy$mm$dd';
+      return 'ORD-$dateStr-${(now.millisecondsSinceEpoch % 1000).toString().padLeft(3, '0')}';
     }
   }
 
@@ -260,12 +265,48 @@ class OrderService {
   }) async {
     try {
       // Build base query with customer information and RFID tags
+      // Use explicit column selection to avoid id collision between orders and order_loads
       var query = _client
           .from('orders')
           .select('''
-            *,
+            id,
+            order_number,
+            customer_id,
+            source,
+            service_id,
+            service_name,
+            weight_kg,
+            loads_count,
+            customer_notes,
+            staff_notes,
+            assigned_staff_id,
+            assigned_rider_id,
+            pickup_requested,
+            delivery_requested,
+            pickup_address,
+            delivery_address,
+            landmark,
+            subtotal,
+            delivery_fee,
+            total_amount,
+            payment_status,
+            status,
+            received_at,
+            processing_at,
+            ready_at,
+            out_for_delivery_at,
+            completed_at,
+            created_at,
+            updated_at,
+            laundry_photo_urls,
+            customer_description,
+            estimated_loads,
+            rejection_reason,
+            reviewed_at,
+            reviewed_by,
+            expires_at,
             order_loads(*),
-            customers!inner(first_name, last_name, customer_code, phone),
+            customers!inner(first_name, last_name, customer_code, phone, address, landmark),
             rfid_tags(tag_code)
           ''');
 
@@ -314,10 +355,10 @@ class OrderService {
         final orderWithLoads = LaundryOrder(
           id: order.id,
           orderNumber: orderData['order_number'] as String?, // Add order number
-          customerName: customerName, // Use customer name from joined data
-          customerPhone: customerPhone, // Use customer phone from joined data
-          deliveryAddress: order.deliveryAddress,
-          deliveryLandmark: order.deliveryLandmark,
+          customerName: customerName.isNotEmpty && customerName != 'Unknown' ? customerName : order.customerName, // Prefer customer name from joined data
+          customerPhone: customerPhone?.isNotEmpty == true ? customerPhone : order.customerPhone, // Prefer customer phone from joined data
+          deliveryAddress: order.deliveryAddress ?? (customerData?['address'] as String?),
+          deliveryLandmark: order.deliveryLandmark ?? (customerData?['landmark'] as String?),
           channel: order.channel,
           collectionMethod: order.collectionMethod,
           returnMethod: order.returnMethod,
@@ -329,6 +370,15 @@ class OrderService {
           createdAt: order.createdAt,
           paymentMethod: order.paymentMethod,
           paidAt: order.paidAt,
+          laundryPhotoUrls: order.laundryPhotoUrls,
+          customerDescription: order.customerDescription,
+          estimatedLoads: order.estimatedLoads,
+          rejectionReason: order.rejectionReason,
+          staffMessage: order.staffMessage ?? (orderData['staff_notes'] as String?),
+          reviewedAt: order.reviewedAt,
+          reviewedBy: order.reviewedBy,
+          expiresAt: order.expiresAt,
+          underReviewBy: null,
         );
 
         orders.add(orderWithLoads);
@@ -431,6 +481,15 @@ class OrderService {
         createdAt: order.createdAt,
         paymentMethod: order.paymentMethod,
         paidAt: order.paidAt,
+        laundryPhotoUrls: order.laundryPhotoUrls,
+        customerDescription: order.customerDescription,
+        estimatedLoads: order.estimatedLoads,
+        rejectionReason: order.rejectionReason,
+        staffMessage: order.staffMessage ?? (response['staff_notes'] as String?),
+        reviewedAt: order.reviewedAt,
+        reviewedBy: order.reviewedBy,
+        expiresAt: order.expiresAt,
+        underReviewBy: null,
       );
     } catch (e) {
       print('❌ Error getting order: $e');

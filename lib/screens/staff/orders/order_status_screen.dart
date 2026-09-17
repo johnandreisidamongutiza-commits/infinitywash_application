@@ -65,11 +65,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildStatusTracker() {
+    final isDelivery = widget.order.returnMethod == ReturnMethod.delivery;
+    final isCurrentlyPendingPickup = _currentStatus == OrderStatus.pending_pickup;
+
     return Column(
       children: [
+        if (isCurrentlyPendingPickup) ...[
+          _buildStatusStep(OrderStatus.pending_pickup, 'Waiting for Rider Pickup', Icons.two_wheeler),
+          _buildConnector(),
+        ],
         _buildStatusStep(OrderStatus.processing, 'Processing', Icons.sync),
         _buildConnector(),
-        _buildStatusStep(OrderStatus.ready, 'Ready for Pickup', Icons.check_circle_outline),
+        _buildStatusStep(
+          OrderStatus.ready,
+          isDelivery ? 'Ready for Delivery' : 'Ready for Pickup',
+          Icons.inventory_2_outlined,
+        ),
+        if (isDelivery) ...[
+          _buildConnector(),
+          _buildStatusStep(OrderStatus.out_for_delivery, 'Out for Delivery', Icons.local_shipping_outlined),
+        ],
+        _buildConnector(),
+        _buildStatusStep(OrderStatus.completed, 'Completed', Icons.check_circle_outline),
       ],
     );
   }
@@ -266,10 +283,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: AppTheme.lightTheme.textTheme.bodyMedium),
-          Text(value, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 14)),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 14),
+            ),
+          ),
         ],
       ),
     );

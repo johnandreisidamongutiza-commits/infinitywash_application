@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../models/order.dart';
 
 class CustomerPaymentScreen extends StatefulWidget {
   final String orderId;
@@ -29,6 +30,7 @@ class _CustomerPaymentScreenState extends State<CustomerPaymentScreen> {
   final TextEditingController _refController = TextEditingController(text: '902834195723');
 
   double get _finalTotal => widget.totalAmount ?? (widget.servicePrice + widget.deliveryFee);
+  String get _orderDisplay => LaundryOrder.formatDisplayNumber(id: widget.orderId);
 
   @override
   void dispose() {
@@ -175,7 +177,7 @@ class _CustomerPaymentScreenState extends State<CustomerPaymentScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'Order #${widget.orderId}',
+                  'Order #$_orderDisplay',
                   style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ),
@@ -436,7 +438,7 @@ class _CustomerPaymentScreenState extends State<CustomerPaymentScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Order Number', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
-              Text('#${widget.orderId}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+              Text('#$_orderDisplay', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
             ],
           ),
           const SizedBox(height: 8),

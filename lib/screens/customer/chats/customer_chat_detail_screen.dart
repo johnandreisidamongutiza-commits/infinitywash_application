@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/top_notification.dart';
+import '../../../models/order.dart';
 
 enum ChatRecipientType { rider, support }
 
@@ -46,6 +47,12 @@ class _CustomerChatDetailScreenState extends State<CustomerChatDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   late List<CustomerChatMessage> _messages;
   bool _isTyping = false;
+
+  String? get _orderDisplay {
+    final id = widget.orderId;
+    if (id == null || id.isEmpty) return null;
+    return LaundryOrder.formatDisplayNumber(id: id);
+  }
 
   @override
   void initState() {
@@ -284,7 +291,7 @@ class _CustomerChatDetailScreenState extends State<CustomerChatDetailScreen> {
                     children: [
                       const Icon(Icons.receipt_long, size: 18, color: AppTheme.accentBlue),
                       const SizedBox(width: 10),
-                      Text('Order #${widget.orderId} Info'),
+                      Text('Order #${_orderDisplay!} Info'),
                     ],
                   ),
                 ),
@@ -354,7 +361,7 @@ class _CustomerChatDetailScreenState extends State<CustomerChatDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Active Order #${widget.orderId}',
+                  'Active Order #$_orderDisplay',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textDark),
                 ),
                 const Text(

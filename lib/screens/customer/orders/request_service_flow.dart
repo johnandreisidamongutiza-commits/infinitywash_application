@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:convert';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_text_field.dart';
 import '../../../models/order.dart';
@@ -999,6 +1000,18 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     print('✅ Saved address to customer profile');
                   }
 
+                  // Convert photos to base64 data URIs so they can be viewed across all devices
+                  final photoDataUrls = <String>[];
+                  for (final file in _laundryPhotos) {
+                    try {
+                      final bytes = await file.readAsBytes();
+                      photoDataUrls.add('data:image/jpeg;base64,${base64Encode(bytes)}');
+                    } catch (e) {
+                      print('⚠️ Error encoding photo: $e');
+                      photoDataUrls.add(file.path);
+                    }
+                  }
+
                   // Submit the request using authenticated method
                   await ServiceRequestService().submitAuthenticatedServiceRequest(
                     collectionMethod: _selectedCollection,
@@ -1007,7 +1020,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     landmark: _landmark.isNotEmpty ? _landmark : null,
                     instructions: 'Pickup Address: $_pickupAddress${fullNote.isNotEmpty ? ' ($fullNote)' : ''}',
                     paymentPreference: _selectedPaymentPreference,
-                    photoUrls: _laundryPhotos.map((file) => file.path).toList(),
+                    photoUrls: photoDataUrls,
                     customerDescription: _descriptionController.text.trim().isNotEmpty 
                         ? _descriptionController.text.trim() 
                         : null,
