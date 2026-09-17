@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/password_reset_service.dart';
+import '../services/rate_limit_service.dart';
 
 enum ForgotPasswordStep { identity, otp, reset, success }
 
@@ -28,6 +29,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   String? _userEmail;
   int _resendCountdown = 60;
   bool _canResend = false;
+  int _resendAttemptsLeft = 3;
 
   @override
   void dispose() {
@@ -167,6 +169,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _tokenId = result['token_id'];
       _userEmail = result['email'];
       
+      // Get rate limit status
+      await _updateRateLimitStatus();
+      
       if (mounted) {
         setState(() {
           _currentStep = ForgotPasswordStep.otp;
@@ -236,17 +241,32 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 20),
         Center(
-          child: TextButton(
-            onPressed: _canResend ? _handleResendCode : null,
-            child: Text(
-              _canResend 
-                  ? 'Resend Code' 
-                  : 'Resend Code in 00:${_resendCountdown.toString().padLeft(2, '0')}',
-              style: TextStyle(
-                color: _canResend ? AppTheme.accentBlue : Colors.grey,
-                fontWeight: FontWeight.bold,
+          child: Column(
+            children: [
+              TextButton(
+                onPressed: _canResend ? _handleResendCode : null,
+                child: Text(
+                  _canResend 
+                      ? 'Resend Code ($_resendAttemptsLeft left)' 
+                      : 'Resend Code in 00:${_resendCountdown.toString().padLeft(2, '0')}',
+                  style: TextStyle(
+                    color: _canResend ? AppTheme.accentBlue : Colors.grey,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-            ),
+              if (_resendAttemptsLeft < 3)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '⚠️ You have $_resendAttemptsLeft resend${_resendAttemptsLeft == 1 ? '' : 's'} remaining',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.orange,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ],
@@ -289,6 +309,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
   
   Future<void> _handleResendCode() async {
+    // Check rate limit first
+    final rateLimitCheck = await RateLimitService.canSendOtp(_userEmail!);
+    if (!rateLimitCheck.canSend) {
+      _showError(rateLimitCheck.message ?? 'Too many attempts');
+      return;
+    }
+    
     setState(() => _isLoading = true);
     
     try {
@@ -301,14 +328,28 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         }
         _otpFocusNodes[0].requestFocus();
         
+        // Update rate limit status
+        await _updateRateLimitStatus();
+        
         setState(() => _isLoading = false);
-        _showSuccess('A new code has been sent to your email!');
+        _showSuccess('A new code has been sent to your email! (${_resendAttemptsLeft} resends left)');
         _startResendCountdown();
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
         _showError(e.toString().replaceAll('Exception: ', ''));
+      }
+    }
+  }
+  
+  Future<void> _updateRateLimitStatus() async {
+    if (_userEmail != null) {
+      final status = await _passwordResetService.getRateLimitStatus(_userEmail!);
+      if (mounted) {
+        setState(() {
+          _resendAttemptsLeft = status['attemptsLeft'] ?? 3;
+        });
       }
     }
   }
