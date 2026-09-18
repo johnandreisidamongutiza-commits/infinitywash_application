@@ -257,6 +257,95 @@ class OrderService {
     }
   }
 
+  /// Weigh, categorize, and tag an accepted app request that already exists.
+  Future<void> checkInExistingOrder({
+    required String orderId,
+    required List<OrderLoad> loads,
+    required double subtotal,
+    required double totalAmount,
+    required String rfidTag,
+    List<Map<String, dynamic>> addons = const [],
+    String? staffNotes,
+    String? assignedStaffId,
+  }) async {
+    try {
+      if (loads.isEmpty) {
+        throw Exception('At least one load is required');
+      }
+      if (rfidTag.isEmpty) {
+        throw Exception('RFID tag is required');
+      }
+
+      final isRfidAvailable = await _rfidService.isRfidTagAvailable(rfidTag);
+      if (!isRfidAvailable) {
+        throw Exception('RFID tag "$rfidTag" is not available');
+      }
+
+      final existingLoads = await _client
+          .from('order_loads')
+          .select('id')
+          .eq('order_id', orderId);
+
+      if (existingLoads.isNotEmpty) {
+        throw Exception('This order has already been checked in');
+      }
+
+      final now = DateTime.now().toIso8601String();
+      final totalWeight = loads.fold(0.0, (sum, load) => sum + load.weight);
+
+      final loadsData = loads.map((load) {
+        final loadJson = load.toJson();
+        loadJson['order_id'] = orderId;
+        loadJson['created_at'] = now;
+        loadJson['updated_at'] = now;
+        return loadJson;
+      }).toList();
+
+      await _client.from('order_loads').insert(loadsData);
+
+      if (addons.isNotEmpty) {
+        final addonsData = addons.map((addon) {
+          return {
+            'order_id': orderId,
+            'addon_id': addon['addon_id'],
+            'addon_name': addon['addon_name'],
+            'quantity': addon['quantity'] ?? 1,
+            'unit_price': addon['unit_price'],
+            'line_total': addon['line_total'],
+            'created_at': now,
+          };
+        }).toList();
+        await _client.from('order_addons').insert(addonsData);
+      }
+
+      await _rfidService.assignRfidTagToOrder(orderId, rfidTag);
+
+      final updates = <String, dynamic>{
+        'weight_kg': totalWeight,
+        'loads_count': loads.length,
+        'subtotal': subtotal,
+        'total_amount': totalAmount,
+        'status': 'processing',
+        'received_at': now,
+        'processing_at': now,
+        'updated_at': now,
+      };
+
+      if (staffNotes != null && staffNotes.trim().isNotEmpty) {
+        updates['staff_notes'] = staffNotes.trim();
+      }
+      if (assignedStaffId != null) {
+        updates['assigned_staff_id'] = assignedStaffId;
+      }
+
+      await _client.from('orders').update(updates).eq('id', orderId);
+      print('✅ Checked in order $orderId with ${loads.length} loads and RFID $rfidTag');
+    } catch (e) {
+      print('❌ Error checking in order: $e');
+      rethrow;
+    }
+  }
+
   /// Fetch orders with optional status filter
   Future<List<LaundryOrder>> fetchOrders({
     List<String>? statuses,

@@ -73,7 +73,7 @@ class ChatService {
         lastMessage: 'On my way to pick up the order now',
         lastMessageTime: now.subtract(const Duration(minutes: 15)),
         unreadCount: 0,
-        orderStatus: 'Ready',
+        orderStatus: 'Processing',
       ),
       StaffConversation(
         id: 'conv_3',

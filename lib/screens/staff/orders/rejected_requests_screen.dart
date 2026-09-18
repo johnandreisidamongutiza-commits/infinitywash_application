@@ -157,7 +157,7 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
   }
 
   Widget _buildRejectedCard(LaundryOrder order) {
-    final orderDisplay = order.orderNumber ?? order.id;
+    final orderDisplay = order.displayNumber;
     final isRiderPickup = order.collectionMethod == CollectionMethod.riderPickup;
     final photos = order.laundryPhotoUrls ?? [];
 

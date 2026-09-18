@@ -374,11 +374,10 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
       case 'completed':
         return Colors.green;
       case 'processing':
+      case 'ready':
         return AppTheme.teamMemberIconOrange;
       case 'pending':
         return AppTheme.accentBlue;
-      case 'ready':
-        return const Color(0xFF00897B);
       case 'out for delivery':
         return Colors.purple;
       default:

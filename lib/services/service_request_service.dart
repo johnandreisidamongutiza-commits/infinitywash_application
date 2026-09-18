@@ -218,7 +218,7 @@ class ServiceRequestService {
             loads: [],
             instructions: orderData['customer_notes'] as String?,
             rfidTag: null,
-            createdAt: DateTime.parse(orderData['created_at'] as String),
+            createdAt: _parseLocalDateTime(orderData['created_at'])!,
             paymentMethod: null,
             paidAt: null,
             
@@ -228,9 +228,9 @@ class ServiceRequestService {
             estimatedLoads: orderData['estimated_loads'] as int?,
             rejectionReason: orderData['rejection_reason'] as String?,
             staffMessage: null,
-            reviewedAt: orderData['reviewed_at'] != null ? DateTime.parse(orderData['reviewed_at'] as String) : null,
+            reviewedAt: _parseLocalDateTime(orderData['reviewed_at']),
             reviewedBy: orderData['reviewed_by'] as String?,
-            expiresAt: orderData['expires_at'] != null ? DateTime.parse(orderData['expires_at'] as String) : null,
+            expiresAt: _parseLocalDateTime(orderData['expires_at']),
             underReviewBy: null,
           );
 
@@ -289,7 +289,7 @@ class ServiceRequestService {
             loads: [], // Service requests don't have loads until approved
             instructions: orderData['customer_notes'] as String?,
             rfidTag: null, // RFID assigned after approval
-            createdAt: DateTime.parse(orderData['created_at'] as String),
+            createdAt: _parseLocalDateTime(orderData['created_at'])!,
             paymentMethod: null, // Payment method set after approval
             paidAt: null,
             
@@ -299,9 +299,9 @@ class ServiceRequestService {
             estimatedLoads: orderData['estimated_loads'] as int?,
             rejectionReason: orderData['rejection_reason'] as String?,
             staffMessage: null, // Staff message not implemented yet
-            reviewedAt: orderData['reviewed_at'] != null ? DateTime.parse(orderData['reviewed_at'] as String) : null,
+            reviewedAt: _parseLocalDateTime(orderData['reviewed_at']),
             reviewedBy: orderData['reviewed_by'] as String?,
-            expiresAt: orderData['expires_at'] != null ? DateTime.parse(orderData['expires_at'] as String) : null,
+            expiresAt: _parseLocalDateTime(orderData['expires_at']),
             underReviewBy: null, // Under review feature not implemented yet
           );
 
@@ -345,6 +345,12 @@ class ServiceRequestService {
     }
 
     return '$datePrefix-${nextNumber.toString().padLeft(3, '0')}';
+  }
+
+  DateTime? _parseLocalDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value.toLocal();
+    return DateTime.parse(value.toString()).toLocal();
   }
 
   /// Build customer full name from first and last name
@@ -460,7 +466,7 @@ class ServiceRequestService {
             loads: [],
             instructions: orderData['customer_notes'] as String?,
             rfidTag: null,
-            createdAt: DateTime.parse(orderData['created_at'] as String),
+            createdAt: _parseLocalDateTime(orderData['created_at'])!,
             paymentMethod: null,
             paidAt: null,
             
@@ -470,9 +476,9 @@ class ServiceRequestService {
             estimatedLoads: orderData['estimated_loads'] as int?,
             rejectionReason: orderData['rejection_reason'] as String?,
             staffMessage: null,
-            reviewedAt: orderData['reviewed_at'] != null ? DateTime.parse(orderData['reviewed_at'] as String) : null,
+            reviewedAt: _parseLocalDateTime(orderData['reviewed_at']),
             reviewedBy: orderData['reviewed_by'] as String?,
-            expiresAt: orderData['expires_at'] != null ? DateTime.parse(orderData['expires_at'] as String) : null,
+            expiresAt: _parseLocalDateTime(orderData['expires_at']),
             underReviewBy: null,
           );
 
@@ -527,7 +533,7 @@ class ServiceRequestService {
     String? staffMessage,
   }) async {
     try {
-      const newStatus = 'processing';
+      final newStatus = isRiderPickup ? 'pending_pickup' : 'processing';
       print('🔄 Approving service request $orderId -> $newStatus');
 
       // Get current user's employee record ID for reviewed_by (foreign key to employees.id)

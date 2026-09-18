@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_text_field.dart';
 import '../../../models/order.dart';
+import '../../../models/laundry_intake.dart';
 import '../../../services/customer_service.dart';
 import '../../../services/service_catalog_service.dart';
 import '../../../services/order_service.dart';
@@ -37,20 +38,6 @@ class CreateOrderFlow extends StatefulWidget {
   State<CreateOrderFlow> createState() => _CreateOrderFlowState();
 }
 
-class _LoadEntry {
-  String category;
-  TextEditingController weightController;
-
-  _LoadEntry({
-    this.category = 'Regular Clothing',
-    String initialWeight = '',
-  }) : weightController = TextEditingController(text: initialWeight);
-
-  void dispose() {
-    weightController.dispose();
-  }
-}
-
 class _CreateOrderFlowState extends State<CreateOrderFlow> {
   // Services
   final CustomerService _customerService = CustomerService();
@@ -83,7 +70,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   bool _dismissedSuggestion = false;
 
   // Multiple loads support
-  final List<_LoadEntry> _loads = [];
+  final List<LoadDraft> _loads = [];
 
   @override
   void initState() {
@@ -93,7 +80,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     _loadAvailableRfidTags();
     
     // Start with one load
-    _loads.add(_LoadEntry(initialWeight: '5.0'));
+    _loads.add(LoadDraft(initialWeight: '5.0'));
     _firstNameController.addListener(_checkForCustomerSuggestion);
     _lastNameController.addListener(_checkForCustomerSuggestion);
   }
@@ -182,35 +169,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     ),
   ];
 
-  final Map<String, Map<String, dynamic>> _categories = {
-    'Regular Clothing': {
-      'limit': 8.0,
-      'unit': 'kg',
-      'icon': Icons.checkroom_outlined,
-      'desc': 'T-shirts, shorts, sleeveless, socks, underwear',
-    },
-    'Heavy Clothing': {
-      'limit': 6.0,
-      'unit': 'kg',
-      'icon': Icons.dry_cleaning_outlined,
-      'desc': 'Jeans, cargo, jackets, sweaters, corduroy',
-    },
-    'Beddings & Towels': {
-      'limit': 5.0,
-      'unit': 'kg',
-      'icon': Icons.bed_outlined,
-      'desc': 'Bedsheets, blankets, towels, curtains',
-    },
-    'Heavyweight Beddings': {
-      'limit': 1.0,
-      'unit': 'pc',
-      'icon': Icons.hotel_outlined,
-      'desc': 'Comforter, heavy fleece blanket, duvet',
-    },
-  };
+  Map<String, Map<String, dynamic>> get _categories => LaundryIntake.categories;
 
-  static const double _basePricePerLoad = 170.0;
-  double get _addOnsTotal => (_addExtraFabCon ? 20.0 : 0.0) + (_addExtraDetergent ? 20.0 : 0.0);
+  static const double _basePricePerLoad = LaundryIntake.basePricePerLoad;
+  double get _addOnsTotal =>
+      (_addExtraFabCon ? LaundryIntake.addonPrice : 0.0) +
+      (_addExtraDetergent ? LaundryIntake.addonPrice : 0.0);
   double get _finalTotal => (_basePricePerLoad * _loads.length) + _addOnsTotal;
 
   String get _customerFullName {
@@ -252,7 +216,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   void _addLoad() {
     setState(() {
-      _loads.add(_LoadEntry());
+      _loads.add(LoadDraft());
     });
   }
 
@@ -333,7 +297,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 _loads[loadIndex].weightController.text = weightPerLoad.toStringAsFixed(1);
                 // Add additional loads
                 for (int i = 1; i < suggestedLoads; i++) {
-                  _loads.add(_LoadEntry(
+                  _loads.add(LoadDraft(
                     category: category,
                     initialWeight: weightPerLoad.toStringAsFixed(1),
                   ));
@@ -1730,7 +1694,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     );
   }
 
-  Widget _buildCompactCategoryTile(MapEntry<String, Map<String, dynamic>> entry, _LoadEntry load, int loadIndex) {
+  Widget _buildCompactCategoryTile(MapEntry<String, Map<String, dynamic>> entry, LoadDraft load, int loadIndex) {
     final isSelected = load.category == entry.key;
 
     return InkWell(

@@ -492,11 +492,14 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
 
   Widget _buildOrderCard(LaundryOrder order) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        final result = await Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => OrderStatusScreen(order: order)),
         );
+        if (result == true) {
+          await _loadOrders();
+        }
       },
       child: Container(
         padding: const EdgeInsets.all(20),
@@ -518,7 +521,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
               children: [
                 Flexible(
                   child: Text(
-                    order.orderNumber ?? order.id,
+                    order.displayNumber,
                     style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
@@ -535,8 +538,14 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
             ),
             const SizedBox(height: 4),
             Text(
-              '${order.loads.length} load(s) • ${order.weightDisplay}',
-              style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+              order.needsCheckIn
+                  ? 'Needs check-in'
+                  : '${order.loads.length} load(s) • ${order.weightDisplay}',
+              style: TextStyle(
+                fontSize: 12,
+                color: order.needsCheckIn ? Colors.orange : AppTheme.textLight,
+                fontWeight: order.needsCheckIn ? FontWeight.w600 : FontWeight.normal,
+              ),
             ),
             if (order.rfidTag != null) ...[
               const SizedBox(height: 4),
@@ -557,12 +566,13 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
 
     switch (status) {
       case OrderStatus.processing:
+      case OrderStatus.ready:
         color = Colors.blue;
         label = 'Processing';
         break;
-      case OrderStatus.ready:
-        color = Colors.green;
-        label = 'Ready';
+      case OrderStatus.out_for_delivery:
+        color = Colors.purple;
+        label = 'Out for Delivery';
         break;
       case OrderStatus.completed:
         color = Colors.grey;

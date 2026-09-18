@@ -70,10 +70,10 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
       _allOrders.where((o) => o.status == OrderStatus.pending_approval).toList();
   
   List<LaundryOrder> get _processingOrders => 
-      _allOrders.where((o) => o.status == OrderStatus.processing).toList();
+      _allOrders.where((o) => o.status == OrderStatus.processing || o.status == OrderStatus.ready).toList();
   
-  List<LaundryOrder> get _readyOrders => 
-      _allOrders.where((o) => o.status == OrderStatus.ready).toList();
+  List<LaundryOrder> get _outForDeliveryOrders => 
+      _allOrders.where((o) => o.status == OrderStatus.out_for_delivery).toList();
   
   List<LaundryOrder> get _completedOrders => 
       _allOrders.where((o) => o.status == OrderStatus.completed).toList();
@@ -234,7 +234,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   Widget _buildTodayQueue() {
     final requestCount = _pendingRequests.length;
     final processingCount = _processingOrders.length;
-    final readyCount = _readyOrders.length;
+    final outForDeliveryCount = _outForDeliveryOrders.length;
     final completedCount = _completedOrders.length;
 
     if (_isLoading) {
@@ -289,7 +289,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
             children: [
               Expanded(child: _buildQueueCard(requestCount.toString(), 'Requests', Icons.online_prediction, AppTheme.lightBlue, AppTheme.accentBlue)),
               Expanded(child: _buildQueueCard(processingCount.toString(), 'Processing', Icons.sync, AppTheme.teamMemberOrange, AppTheme.teamMemberIconOrange)),
-              Expanded(child: _buildQueueCard(readyCount.toString(), 'Ready', Icons.check_circle_outline, const Color(0xFFE8F5E9), Colors.green)),
+              Expanded(child: _buildQueueCard(outForDeliveryCount.toString(), 'Out for Delivery', Icons.local_shipping_outlined, const Color(0xFFE8F5E9), Colors.green)),
               Expanded(child: _buildQueueCard(completedCount.toString(), 'Completed', Icons.verified_outlined, const Color(0xFFE3F2FD), const Color(0xFF1565C0))),
             ],
           ),
@@ -503,11 +503,14 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          Navigator.push(
+        onTap: () async {
+          final result = await Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => OrderStatusScreen(order: order)),
           );
+          if (result == true) {
+            await _loadOrders();
+          }
         },
         borderRadius: BorderRadius.circular(20),
         child: Container(
@@ -535,7 +538,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                       children: [
                         Flexible(
                           child: Text(
-                            order.orderNumber ?? order.id,
+                            order.displayNumber,
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               color: AppTheme.accentBlue,
@@ -565,17 +568,30 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                       runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.scale_outlined, size: 14, color: AppTheme.textLight.withValues(alpha: 0.7)),
-                            const SizedBox(width: 4),
-                            Text(
-                              order.weightDisplay,
-                              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(fontSize: 12),
+                        if (order.needsCheckIn)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
                             ),
-                          ],
-                        ),
+                            child: const Text(
+                              'Needs check-in',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange),
+                            ),
+                          )
+                        else
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.scale_outlined, size: 14, color: AppTheme.textLight.withValues(alpha: 0.7)),
+                              const SizedBox(width: 4),
+                              Text(
+                                order.weightDisplay,
+                                style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(fontSize: 12),
+                              ),
+                            ],
+                          ),
                         if (order.rfidTag != null) ...[
                           Row(
                             mainAxisSize: MainAxisSize.min,

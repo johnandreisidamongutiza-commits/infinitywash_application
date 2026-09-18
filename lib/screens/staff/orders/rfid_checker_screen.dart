@@ -541,7 +541,6 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
 
   Widget _buildAssignedOrderCard(LaundryOrder order) {
     Color statusColor = AppTheme.accentBlue;
-    if (order.status == OrderStatus.ready) statusColor = Colors.green;
     if (order.status == OrderStatus.completed) statusColor = Colors.grey;
 
     final bool isDelivery = order.returnMethod == ReturnMethod.delivery;
@@ -591,7 +590,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark),
                       ),
                       Text(
-                        'Order ${order.id}',
+                        'Order ${order.displayNumber}',
                         style: const TextStyle(fontSize: 12, color: AppTheme.textLight, fontWeight: FontWeight.w600),
                       ),
                     ],

@@ -239,8 +239,12 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Request accepted! Order moved to processing.'),
+            SnackBar(
+              content: Text(
+                isRiderPickup
+                    ? 'Request accepted. Waiting for rider pickup — check in laundry when bags return.'
+                    : 'Request accepted. Open the order to check in laundry when it arrives.',
+              ),
               backgroundColor: Colors.green,
             ),
           );

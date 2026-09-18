@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
+import 'check_in_request_screen.dart';
 
 class OrderStatusScreen extends StatefulWidget {
   final LaundryOrder order;
@@ -24,7 +25,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text('Order ${widget.order.id}'),
+        title: Text('Order ${widget.order.displayNumber}'),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -37,25 +38,31 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             const SizedBox(height: 40),
             _buildOrderDetails(),
             const SizedBox(height: 40),
-            if (_currentStatus == OrderStatus.ready)
-              Container(
+            if (widget.order.needsCheckIn)
+              SizedBox(
                 width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.check_circle, color: Colors.green, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'Customer has been notified!',
-                      style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                    ),
-                  ],
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final done = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => CheckInRequestScreen(order: widget.order),
+                      ),
+                    );
+                    if (done == true && context.mounted) {
+                      Navigator.pop(context, true);
+                    }
+                  },
+                  icon: const Icon(Icons.scale_outlined, color: Colors.white),
+                  label: const Text(
+                    'Check in laundry',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.accentBlue,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
               ),
           ],
@@ -64,36 +71,43 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
+  List<OrderStatus> get _trackerSteps {
+    return [
+      if (_currentStatus == OrderStatus.pending_pickup) OrderStatus.pending_pickup,
+      OrderStatus.processing,
+      if (widget.order.returnMethod == ReturnMethod.delivery) OrderStatus.out_for_delivery,
+      OrderStatus.completed,
+    ];
+  }
+
+  OrderStatus get _trackerStatus {
+    if (_currentStatus == OrderStatus.ready) return OrderStatus.processing;
+    return _currentStatus;
+  }
+
   Widget _buildStatusTracker() {
-    final isDelivery = widget.order.returnMethod == ReturnMethod.delivery;
-    final isCurrentlyPendingPickup = _currentStatus == OrderStatus.pending_pickup;
+    final steps = _trackerSteps;
 
     return Column(
       children: [
-        if (isCurrentlyPendingPickup) ...[
-          _buildStatusStep(OrderStatus.pending_pickup, 'Waiting for Rider Pickup', Icons.two_wheeler),
-          _buildConnector(),
+        for (int i = 0; i < steps.length; i++) ...[
+          if (steps[i] == OrderStatus.pending_pickup)
+            _buildStatusStep(OrderStatus.pending_pickup, 'Waiting for Rider Pickup', Icons.two_wheeler)
+          else if (steps[i] == OrderStatus.processing)
+            _buildStatusStep(OrderStatus.processing, 'Processing', Icons.sync)
+          else if (steps[i] == OrderStatus.out_for_delivery)
+            _buildStatusStep(OrderStatus.out_for_delivery, 'Out for Delivery', Icons.local_shipping_outlined)
+          else
+            _buildStatusStep(OrderStatus.completed, 'Completed', Icons.check_circle_outline),
+          if (i < steps.length - 1) _buildConnector(),
         ],
-        _buildStatusStep(OrderStatus.processing, 'Processing', Icons.sync),
-        _buildConnector(),
-        _buildStatusStep(
-          OrderStatus.ready,
-          isDelivery ? 'Ready for Delivery' : 'Ready for Pickup',
-          Icons.inventory_2_outlined,
-        ),
-        if (isDelivery) ...[
-          _buildConnector(),
-          _buildStatusStep(OrderStatus.out_for_delivery, 'Out for Delivery', Icons.local_shipping_outlined),
-        ],
-        _buildConnector(),
-        _buildStatusStep(OrderStatus.completed, 'Completed', Icons.check_circle_outline),
       ],
     );
   }
 
   Widget _buildStatusStep(OrderStatus status, String label, IconData icon) {
     bool isDone = _isStatusDone(status);
-    bool isCurrent = _currentStatus == status;
+    bool isCurrent = _trackerStatus == status;
     Color color = isDone || isCurrent ? AppTheme.accentBlue : AppTheme.textLight.withValues(alpha: 0.3);
 
     return Row(
@@ -145,7 +159,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           const Divider(),
           _buildDetailRow('Return', widget.order.returnText),
           const Divider(),
-          _buildDetailRow('Total Weight', widget.order.weightDisplay),
+          _buildDetailRow(
+            'Total Weight',
+            widget.order.needsCheckIn ? 'Needs check-in' : widget.order.weightDisplay,
+          ),
           if (widget.order.hasMultipleLoads) ...[
             const Divider(),
             _buildDetailRow('Multiple Loads', '${widget.order.totalLoads} loads'),
@@ -301,6 +318,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   bool _isStatusDone(OrderStatus status) {
-    return _currentStatus.index > status.index;
+    final steps = _trackerSteps;
+    final currentIndex = steps.indexOf(_trackerStatus);
+    final stepIndex = steps.indexOf(status);
+    if (currentIndex < 0 || stepIndex < 0) return false;
+    return currentIndex > stepIndex;
   }
 }

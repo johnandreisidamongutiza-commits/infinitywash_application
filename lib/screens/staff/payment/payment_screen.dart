@@ -19,7 +19,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       id: 'IW-101',
       customerName: 'Alice Green',
       channel: OrderChannel.walkIn,
-      status: OrderStatus.ready,
+      status: OrderStatus.processing,
       paymentStatus: PaymentStatus.unpaid,
       loads: [
         OrderLoad(
@@ -143,7 +143,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(order.customerName, style: AppTheme.lightTheme.textTheme.titleMedium),
-                Text('Order ${order.id}', style: AppTheme.lightTheme.textTheme.bodyMedium),
+                Text('Order ${order.displayNumber}', style: AppTheme.lightTheme.textTheme.bodyMedium),
               ],
             ),
           ),

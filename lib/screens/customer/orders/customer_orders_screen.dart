@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/top_notification.dart';
@@ -524,16 +527,31 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
               scrollDirection: Axis.horizontal,
               itemCount: order.laundryPhotoUrls!.length,
               itemBuilder: (context, index) {
-                return Container(
-                  width: 80,
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.softGray,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.borderGray),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.photo, color: AppTheme.textLight, size: 32),
+                final photos = order.laundryPhotoUrls!;
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => _CustomerRequestPhotoViewer(
+                          photoUrls: photos,
+                          initialIndex: index,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    width: 80,
+                    margin: const EdgeInsets.only(right: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.softGray,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.borderGray),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: _buildThumbnailImage(photos[index]),
+                    ),
                   ),
                 );
               },
@@ -909,81 +927,90 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     );
   }
 
+  int _customerProgressStepIndex(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.processing:
+      case OrderStatus.ready:
+      case OrderStatus.out_for_delivery:
+        return 1;
+      case OrderStatus.completed:
+        return 2;
+      default:
+        return 0;
+    }
+  }
+
   Widget _buildCompactProgressTracker(OrderStatus status) {
     final steps = [
-      {'label': 'Booked', 'icon': Icons.check_circle, 'status': OrderStatus.pending_pickup},
-      {'label': 'Pick-up', 'icon': Icons.home, 'status': OrderStatus.pending_pickup},
-      {'label': 'Processing', 'icon': Icons.water_drop, 'status': OrderStatus.processing},
-      {'label': 'Delivering', 'icon': Icons.delivery_dining, 'status': OrderStatus.out_for_delivery},
-      {'label': 'Done', 'icon': Icons.check_circle, 'status': OrderStatus.completed},
+      {'label': 'Booked', 'icon': Icons.check_circle},
+      {'label': 'Processing', 'icon': Icons.sync},
+      {'label': 'Done', 'icon': Icons.check_circle},
     ];
 
-    int currentStepIndex = 0;
-    if (status == OrderStatus.pending_pickup) {
-      currentStepIndex = 1;
-    } else if (status == OrderStatus.processing || status == OrderStatus.ready) {
-      currentStepIndex = 2; // Both processing and ready show as "Washing" step
-    } else if (status == OrderStatus.out_for_delivery) {
-      currentStepIndex = 3;
-    } else if (status == OrderStatus.completed) {
-      currentStepIndex = 4;
-    }
+    final currentStepIndex = _customerProgressStepIndex(status);
 
     return SizedBox(
       height: 50,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: steps.length,
-        itemBuilder: (context, stepIndex) {
-          final step = steps[stepIndex];
-          final isActive = stepIndex <= currentStepIndex;
-          final isCurrent = stepIndex == currentStepIndex;
-
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: isActive ? AppTheme.accentBlue : Colors.transparent,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isActive ? AppTheme.accentBlue : AppTheme.borderGray,
-                        width: 2,
-                      ),
-                    ),
-                    child: Icon(
-                      step['icon'] as IconData,
-                      size: 16,
-                      color: isActive ? Colors.white : AppTheme.textLight,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    step['label'] as String,
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                      color: isActive ? AppTheme.accentBlue : AppTheme.textLight,
-                    ),
-                  ),
-                ],
+      width: double.infinity,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (int stepIndex = 0; stepIndex < steps.length; stepIndex++) ...[
+            _buildCompactProgressStep(
+              label: steps[stepIndex]['label'] as String,
+              icon: steps[stepIndex]['icon'] as IconData,
+              isActive: stepIndex <= currentStepIndex,
+              isCurrent: stepIndex == currentStepIndex,
+            ),
+            if (stepIndex < steps.length - 1)
+              Container(
+                width: 40,
+                height: 2,
+                margin: const EdgeInsets.only(bottom: 14, left: 8, right: 8),
+                color: stepIndex < currentStepIndex ? AppTheme.accentBlue : AppTheme.borderGray,
               ),
-              if (stepIndex < steps.length - 1)
-                Container(
-                  width: 24,
-                  height: 2,
-                  margin: const EdgeInsets.only(bottom: 14),
-                  color: stepIndex < currentStepIndex ? AppTheme.accentBlue : AppTheme.borderGray,
-                ),
-            ],
-          );
-        },
+          ],
+        ],
       ),
+    );
+  }
+
+  Widget _buildCompactProgressStep({
+    required String label,
+    required IconData icon,
+    required bool isActive,
+    required bool isCurrent,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: isActive ? AppTheme.accentBlue : Colors.transparent,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: isActive ? AppTheme.accentBlue : AppTheme.borderGray,
+              width: 2,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: isActive ? Colors.white : AppTheme.textLight,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+            color: isActive ? AppTheme.accentBlue : AppTheme.textLight,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1090,6 +1117,18 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                         ],
                       ),
                     )),
+              if (order.customerDescription != null && order.customerDescription!.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'Your Notes',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  order.customerDescription!,
+                  style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                ),
+              ],
               if (order.instructions != null && order.instructions!.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -1216,14 +1255,12 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
 
   Widget _buildProgressTracker(OrderStatus status) {
     final steps = [
-      {'label': 'Pickup', 'icon': Icons.home_outlined, 'status': OrderStatus.pending_pickup},
-      {'label': 'Washing', 'icon': Icons.water_drop_outlined, 'status': OrderStatus.processing},
-      {'label': 'Ready', 'icon': Icons.check_circle_outline, 'status': OrderStatus.ready},
-      {'label': 'Delivering', 'icon': Icons.delivery_dining, 'status': OrderStatus.out_for_delivery},
+      {'label': 'Booked', 'icon': Icons.check_circle_outline},
+      {'label': 'Processing', 'icon': Icons.sync},
+      {'label': 'Done', 'icon': Icons.check_circle_outline},
     ];
 
-    int currentStepIndex = steps.indexWhere((s) => s['status'] == status);
-    if (currentStepIndex == -1) currentStepIndex = 0;
+    final currentStepIndex = _customerProgressStepIndex(status);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1521,16 +1558,18 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
         icon = Icons.home;
         break;
       case OrderStatus.processing:
-        bgColor = Colors.purple.withValues(alpha: 0.12);
-        textColor = Colors.purple;
-        text = 'Washing';
-        icon = Icons.water_drop;
+        const processingTeal = Color(0xFF0F766E);
+        bgColor = processingTeal.withValues(alpha: 0.12);
+        textColor = processingTeal;
+        text = 'Processing';
+        icon = Icons.sync;
         break;
       case OrderStatus.ready:
-        bgColor = Colors.orange.withValues(alpha: 0.12);
-        textColor = Colors.orange;
-        text = 'Ready';
-        icon = Icons.check_circle;
+        const processingTeal = Color(0xFF0F766E);
+        bgColor = processingTeal.withValues(alpha: 0.12);
+        textColor = processingTeal;
+        text = 'Processing';
+        icon = Icons.sync;
         break;
       case OrderStatus.out_for_delivery:
         bgColor = AppTheme.accentBlue.withValues(alpha: 0.12);
@@ -1596,9 +1635,9 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
       case OrderStatus.pending_pickup:
         return Icons.home_outlined;
       case OrderStatus.processing:
-        return Icons.water_drop_outlined;
+        return Icons.sync;
       case OrderStatus.ready:
-        return Icons.check_circle_outline;
+        return Icons.sync;
       case OrderStatus.out_for_delivery:
         return Icons.delivery_dining;
       default:
@@ -1611,9 +1650,9 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
       case OrderStatus.pending_pickup:
         return 'Waiting for rider pickup';
       case OrderStatus.processing:
-        return 'Your laundry is being washed';
+        return 'Your laundry is being processed';
       case OrderStatus.ready:
-        return 'Ready for delivery';
+        return 'Your laundry is being processed';
       case OrderStatus.out_for_delivery:
         return 'On the way to you';
       default:
@@ -1663,6 +1702,161 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
       return '${diff.inDays}d ago';
     } else {
       return '${dt.day}/${dt.month}/${dt.year}';
+    }
+  }
+
+  Widget _buildThumbnailImage(String path) {
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            const Icon(Icons.photo, color: AppTheme.textLight, size: 32),
+      );
+    } else if (path.startsWith('data:image') ||
+        (path.length > 100 && !path.startsWith('/') && !path.contains('\\'))) {
+      try {
+        final base64String = path.contains(',') ? path.split(',').last : path;
+        final bytes = base64Decode(base64String.trim());
+        return Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              const Icon(Icons.photo, color: AppTheme.textLight, size: 32),
+        );
+      } catch (e) {
+        return const Icon(Icons.photo, color: AppTheme.textLight, size: 32);
+      }
+    } else {
+      final file = File(path);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              const Icon(Icons.photo, color: AppTheme.textLight, size: 32),
+        );
+      } else {
+        return const Icon(Icons.photo, color: AppTheme.textLight, size: 32);
+      }
+    }
+  }
+}
+
+class _CustomerRequestPhotoViewer extends StatefulWidget {
+  final List<String> photoUrls;
+  final int initialIndex;
+
+  const _CustomerRequestPhotoViewer({
+    required this.photoUrls,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_CustomerRequestPhotoViewer> createState() => _CustomerRequestPhotoViewerState();
+}
+
+class _CustomerRequestPhotoViewerState extends State<_CustomerRequestPhotoViewer> {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black.withValues(alpha: 0.8),
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
+        title: Text(
+          'Photo ${_currentIndex + 1} of ${widget.photoUrls.length}',
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        centerTitle: true,
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: widget.photoUrls.length,
+        onPageChanged: (index) => setState(() => _currentIndex = index),
+        itemBuilder: (context, index) {
+          final path = widget.photoUrls[index];
+          return Center(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4.0,
+              child: _buildFullImage(path),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFullImage(String path) {
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return Image.network(
+        path,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return const Center(child: CircularProgressIndicator(color: Colors.white));
+        },
+        errorBuilder: (context, error, stackTrace) => const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.broken_image, color: Colors.white54, size: 48),
+              SizedBox(height: 8),
+              Text('Unable to load photo', style: TextStyle(color: Colors.white54)),
+            ],
+          ),
+        ),
+      );
+    } else if (path.startsWith('data:image') ||
+        (path.length > 100 && !path.startsWith('/') && !path.contains('\\'))) {
+      try {
+        final base64String = path.contains(',') ? path.split(',').last : path;
+        final bytes = base64Decode(base64String.trim());
+        return Image.memory(
+          bytes,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) => const Center(
+            child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+          ),
+        );
+      } catch (e) {
+        return const Center(
+          child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+        );
+      }
+    } else {
+      final file = File(path);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) => const Center(
+            child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+          ),
+        );
+      } else {
+        return const Center(
+          child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+        );
+      }
     }
   }
 }

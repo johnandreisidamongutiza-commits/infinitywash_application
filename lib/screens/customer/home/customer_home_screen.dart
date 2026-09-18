@@ -419,6 +419,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   /// Build a card for a recent order
   Widget _buildRecentOrderCard(LaundryOrder order) {
+    final description = order.customerDescription?.trim();
+    final hasDescription = description != null && description.isNotEmpty;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
@@ -491,7 +494,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
                 
                 // Show additional details for service requests
-                if (order.customerDescription != null || order.laundryPhotoUrls?.isNotEmpty == true) ...[
+                if (hasDescription || order.laundryPhotoUrls?.isNotEmpty == true) ...[
                   const Divider(height: 20),
                   Row(
                     children: [
@@ -502,13 +505,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                              style: const TextStyle(fontSize: 12, color: AppTheme.textDark, fontWeight: FontWeight.w600)),
                         const SizedBox(width: 12),
                       ],
-                      if (order.customerDescription != null) ...[
+                      if (hasDescription) ...[
                         const Icon(Icons.description_outlined, size: 15, color: AppTheme.textLight),
                         const SizedBox(width: 4),
-                        const Expanded(
-                          child: Text('Description provided', 
-                               style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                               overflow: TextOverflow.ellipsis),
+                        Expanded(
+                          child: Text(
+                            description,
+                            style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
                         ),
                       ],
                     ],
@@ -545,7 +551,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       case OrderStatus.processing:
         return AppTheme.accentBlue;
       case OrderStatus.ready:
-        return Colors.green;
+        return AppTheme.accentBlue;
       case OrderStatus.out_for_delivery:
         return Colors.purple;
       case OrderStatus.completed:
@@ -567,7 +573,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       case OrderStatus.processing:
         return Icons.sync;
       case OrderStatus.ready:
-        return Icons.check_circle_outline;
+        return Icons.sync;
       case OrderStatus.out_for_delivery:
         return Icons.local_shipping_outlined;
       case OrderStatus.completed:
@@ -589,7 +595,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       case OrderStatus.processing:
         return 'Processing';
       case OrderStatus.ready:
-        return 'Ready';
+        return 'Processing';
       case OrderStatus.out_for_delivery:
         return 'Out for Delivery';
       case OrderStatus.completed:

@@ -182,6 +182,12 @@ class LaundryOrder {
   bool get allLoadsReady => true; // Order-level status only, no per-load status
   
   bool get hasMultipleLoads => loads.length > 1;
+
+  /// App request that was accepted but laundry has not been weighed/tagged yet.
+  bool get needsCheckIn =>
+      channel == OrderChannel.online &&
+      loads.isEmpty &&
+      (status == OrderStatus.processing || status == OrderStatus.pending_pickup);
   
   String get weightDisplay {
     // Check if there are any piece-based loads (heavyweight beddings)
@@ -206,7 +212,7 @@ class LaundryOrder {
       case OrderStatus.cancelled: return 'Cancelled';
       case OrderStatus.pending_pickup: return 'Waiting for Rider';
       case OrderStatus.processing: return 'Processing';
-      case OrderStatus.ready: return 'Ready for Pickup';
+      case OrderStatus.ready: return 'Processing';
       case OrderStatus.out_for_delivery: return 'Out for Delivery';
       case OrderStatus.completed: return 'Completed';
     }
@@ -281,17 +287,17 @@ class LaundryOrder {
       loads: [], // Loads loaded separately via join
       instructions: json['customer_notes'] as String?,
       rfidTag: json['rfid_tag'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: _parseLocalDateTime(json['created_at'])!,
       paymentMethod: json['payment_method'] as String?,
-      paidAt: json['paid_at'] != null ? DateTime.parse(json['paid_at'] as String) : null,
+      paidAt: _parseLocalDateTime(json['paid_at']),
       laundryPhotoUrls: _parsePhotoUrls(json['laundry_photo_urls']),
       customerDescription: json['customer_description'] as String?,
       estimatedLoads: json['estimated_loads'] as int?,
       rejectionReason: json['rejection_reason'] as String?,
       staffMessage: (json['staff_notes'] ?? json['staff_message']) as String?,
-      reviewedAt: json['reviewed_at'] != null ? DateTime.parse(json['reviewed_at'] as String) : null,
+      reviewedAt: _parseLocalDateTime(json['reviewed_at']),
       reviewedBy: json['reviewed_by'] as String?,
-      expiresAt: json['expires_at'] != null ? DateTime.parse(json['expires_at'] as String) : null,
+      expiresAt: _parseLocalDateTime(json['expires_at']),
       underReviewBy: json['under_review_by'] as String?,
     );
   }
@@ -323,6 +329,12 @@ class LaundryOrder {
       case 'completed': return OrderStatus.completed;
       default: return OrderStatus.processing;
     }
+  }
+
+  static DateTime? _parseLocalDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value.toLocal();
+    return DateTime.parse(value.toString()).toLocal();
   }
 
   // Helper method to reliably parse laundry_photo_urls from various formats

@@ -83,7 +83,7 @@ class OrderHistoryScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(order.customerName, style: AppTheme.lightTheme.textTheme.titleMedium),
-                      Text('Order ${order.id} • ${order.weightDisplay}', style: AppTheme.lightTheme.textTheme.bodyMedium),
+                      Text('Order ${order.displayNumber} • ${order.weightDisplay}', style: AppTheme.lightTheme.textTheme.bodyMedium),
                     ],
                   ),
                 ),
