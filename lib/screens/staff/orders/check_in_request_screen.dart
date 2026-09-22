@@ -96,7 +96,7 @@ class _CheckInRequestScreenState extends State<CheckInRequestScreen> {
         loads: result.loads,
         subtotal: result.subtotal,
         totalAmount: result.subtotal,
-        rfidTag: result.rfidTag,
+        loyaltyCardUid: result.loyaltyCardUid,
         addons: addons,
         staffNotes: staffNotes,
         assignedStaffId: await _currentEmployeeId(),
@@ -106,7 +106,7 @@ class _CheckInRequestScreenState extends State<CheckInRequestScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Checked in ${widget.order.displayNumber}: ${result.loads.length} load(s), RFID ${result.rfidTag}.',
+            'Checked in ${widget.order.displayNumber}: ${result.loads.length} load(s)${result.loyaltyCardUid != null ? ', Card ${result.loyaltyCardUid}' : ''}.',
           ),
           backgroundColor: Colors.green,
         ),
@@ -160,7 +160,7 @@ class _CheckInRequestScreenState extends State<CheckInRequestScreen> {
           ),
           const SizedBox(height: 16),
           const Text(
-            'Laundry & RFID',
+            'Laundry & Loyalty Card',
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark),
           ),
           const SizedBox(height: 12),

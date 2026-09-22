@@ -17,14 +17,14 @@ class LoadDraft {
 
 class CheckInFormResult {
   final List<OrderLoad> loads;
-  final String rfidTag;
+  final String? loyaltyCardUid;  // Optional — customer may not have a card
   final bool extraFabCon;
   final bool extraDetergent;
   final String notes;
 
   const CheckInFormResult({
     required this.loads,
-    required this.rfidTag,
+    this.loyaltyCardUid,
     required this.extraFabCon,
     required this.extraDetergent,
     required this.notes,

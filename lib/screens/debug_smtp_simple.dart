@@ -100,7 +100,7 @@ class _DebugSmtpSimpleState extends State<DebugSmtpSimple> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _statusColor.withOpacity(0.1),
+                color: _statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: _statusColor),
               ),

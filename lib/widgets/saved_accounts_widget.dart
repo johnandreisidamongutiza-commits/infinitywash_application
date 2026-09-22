@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
-import '../models/saved_account.dart';
 import '../screens/account_management_screen.dart';
 
 /// A widget that displays saved accounts count and provides quick access to account management
@@ -55,7 +54,7 @@ class _SavedAccountsWidgetState extends State<SavedAccountsWidget> {
         leading: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: AppTheme.accentBlue.withOpacity(0.1),
+            color: AppTheme.accentBlue.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
           child: const Icon(

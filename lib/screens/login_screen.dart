@@ -299,7 +299,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: isSelected ? 2 : 1,
                         ),
                         borderRadius: BorderRadius.circular(12),
-                        color: isSelected ? AppTheme.accentBlue.withOpacity(0.05) : Colors.white,
+                        color: isSelected ? AppTheme.accentBlue.withValues(alpha: 0.05) : Colors.white,
                       ),
                       child: ListTile(
                         leading: CircleAvatar(

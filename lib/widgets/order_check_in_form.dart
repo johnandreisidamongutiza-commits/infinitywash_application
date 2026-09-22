@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/laundry_intake.dart';
-import '../models/order.dart';
-import '../services/rfid_service.dart';
+import '../services/loyalty_service.dart';
 import '../theme/app_theme.dart';
 
 class OrderCheckInForm extends StatefulWidget {
@@ -17,53 +16,71 @@ class OrderCheckInForm extends StatefulWidget {
 }
 
 class OrderCheckInFormState extends State<OrderCheckInForm> {
-  final RfidService _rfidService = RfidService();
+  final LoyaltyService _loyaltyService = LoyaltyService();
   final TextEditingController notesController = TextEditingController();
-  final List<LoadDraft> _loads = [LoadDraft(initialWeight: '5.0')];
+  final TextEditingController _loyaltyCardController = TextEditingController();
+  final List<LoadDraft> _loads = [LoadDraft(initialWeight: '')];
 
-  List<String> _availableRfidTags = [];
-  bool _loadingRfidTags = false;
-  String? _selectedRfidTag;
+  String? _loyaltyCardUid;
+  LoyaltyCardInfo? _loyaltyCardInfo;
+  bool _lookingUpCard = false;
   bool _addExtraFabCon = false;
   bool _addExtraDetergent = false;
 
   @override
   void initState() {
     super.initState();
-    _loadAvailableRfidTags();
   }
 
   @override
   void dispose() {
     notesController.dispose();
+    _loyaltyCardController.dispose();
     for (final load in _loads) {
       load.dispose();
     }
     super.dispose();
   }
 
-  Future<void> _loadAvailableRfidTags() async {
-    setState(() => _loadingRfidTags = true);
+  Future<void> _lookupLoyaltyCard(String uid) async {
+    final cleanUid = uid.trim().toUpperCase();
+    if (cleanUid.isEmpty) return;
+
+    setState(() {
+      _lookingUpCard = true;
+      _loyaltyCardUid = cleanUid;
+      _loyaltyCardInfo = null;
+    });
+
     try {
-      final tags = await _rfidService.getAvailableRfidTags();
+      final card = await _loyaltyService.lookupCardByUid(cleanUid);
       if (!mounted) return;
       setState(() {
-        _availableRfidTags = tags;
-        _loadingRfidTags = false;
+        _loyaltyCardInfo = card;
+        _lookingUpCard = false;
       });
+
+      if (card == null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Card UID "$cleanUid" not found in the loyalty database.'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _availableRfidTags = [];
-        _loadingRfidTags = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error loading RFID tags: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      setState(() => _lookingUpCard = false);
     }
+  }
+
+  void _clearLoyaltyCard() {
+    setState(() {
+      _loyaltyCardUid = null;
+      _loyaltyCardInfo = null;
+      _loyaltyCardController.clear();
+    });
   }
 
   void _notifyChanged() => widget.onChanged?.call();
@@ -91,14 +108,10 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
       (_addExtraDetergent ? LaundryIntake.addonPrice : 0);
 
   bool get isComplete =>
-      _selectedRfidTag != null &&
       _loads.isNotEmpty &&
       _loads.every((load) => LaundryIntake.weightOf(load) > 0);
 
   Future<String?> validate() async {
-    if (_selectedRfidTag == null || _availableRfidTags.isEmpty) {
-      return 'Please select an RFID tag before confirming.';
-    }
     if (_loads.isEmpty) return 'Please add at least one load.';
     for (int i = 0; i < _loads.length; i++) {
       final weight = LaundryIntake.weightOf(_loads[i]);
@@ -120,19 +133,13 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
         if (confirmed != true) return 'Check-in cancelled.';
       }
     }
-    final stillAvailable = await _rfidService.isRfidTagAvailable(_selectedRfidTag!);
-    if (!stillAvailable) {
-      await _loadAvailableRfidTags();
-      setState(() => _selectedRfidTag = null);
-      return 'RFID tag is no longer available. Please select another tag.';
-    }
     return null;
   }
 
   CheckInFormResult collect() {
     return CheckInFormResult(
       loads: LaundryIntake.toOrderLoads(_loads),
-      rfidTag: _selectedRfidTag!,
+      loyaltyCardUid: _loyaltyCardUid,
       extraFabCon: _addExtraFabCon,
       extraDetergent: _addExtraDetergent,
       notes: notesController.text.trim(),
@@ -236,7 +243,7 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
                 Icon(Icons.nfc_outlined, size: 16, color: AppTheme.accentBlue),
                 SizedBox(width: 6),
                 Text(
-                  'RFID Tag Assignment (Shared)',
+                  'Loyalty Card Assignment (Permanent)',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
                 ),
               ],
@@ -244,52 +251,118 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: _availableRfidTags.isEmpty
-                    ? AppTheme.errorRed.withValues(alpha: 0.1)
+                color: _loyaltyCardUid != null
+                    ? Colors.green.withValues(alpha: 0.1)
                     : AppTheme.accentBlue.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                '${_availableRfidTags.length} Available',
+                _loyaltyCardUid != null ? 'Linked' : 'Optional',
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
-                  color: _availableRfidTags.isEmpty ? AppTheme.errorRed : AppTheme.accentBlue,
+                  color: _loyaltyCardUid != null ? Colors.green : AppTheme.accentBlue,
                 ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        DropdownButtonFormField<String>(
-          initialValue: _selectedRfidTag,
-          hint: Text(
-            _loadingRfidTags
-                ? 'Loading RFID tags...'
-                : _availableRfidTags.isEmpty
-                    ? 'No RFID tags available'
-                    : 'Select RFID Tag',
-            style: const TextStyle(fontSize: 13),
-          ),
-          decoration: InputDecoration(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: AppTheme.borderGray),
+        if (_loyaltyCardUid != null)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
             ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.credit_card, size: 20, color: Colors.green),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Card UID: $_loyaltyCardUid',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _loyaltyCardInfo != null
+                            ? '${_loyaltyCardInfo!.ownerName} • ⭐ ${_loyaltyCardInfo!.pointsBalance} pts balance'
+                            : 'Card linked',
+                        style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18, color: AppTheme.textLight),
+                  tooltip: 'Unlink card',
+                  onPressed: _clearLoyaltyCard,
+                ),
+              ],
+            ),
+          )
+        else
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _loyaltyCardController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    hintText: 'Scan or enter Card UID (e.g. CARD-001)',
+                    hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textLight),
+                    prefixIcon: const Icon(Icons.credit_card_outlined, size: 18, color: AppTheme.accentBlue),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AppTheme.borderGray),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AppTheme.accentBlue, width: 2),
+                    ),
+                  ),
+                  onSubmitted: (val) {
+                    if (val.trim().isNotEmpty) _lookupLoyaltyCard(val);
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: _lookingUpCard
+                    ? null
+                    : () {
+                        final uid = _loyaltyCardController.text.trim();
+                        if (uid.isNotEmpty) _lookupLoyaltyCard(uid);
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentBlue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: _lookingUpCard
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Link', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              ),
+            ],
           ),
-          items: _loadingRfidTags
-              ? []
-              : _availableRfidTags
-                  .map((tag) => DropdownMenuItem(value: tag, child: Text(tag, style: const TextStyle(fontSize: 13))))
-                  .toList(),
-          onChanged: (_loadingRfidTags || _availableRfidTags.isEmpty)
-              ? null
-              : (value) {
-                  setState(() => _selectedRfidTag = value);
-                  _notifyChanged();
-                },
-        ),
         const Divider(height: 24),
         const Text(
           'Optional Add-ons',
@@ -408,16 +481,21 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
           const SizedBox(height: 10),
           const Text('Category:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textLight)),
           const SizedBox(height: 6),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 6,
-            crossAxisSpacing: 6,
-            childAspectRatio: 2.2,
-            children: [
-              for (final entry in categoriesList) _buildCategoryTile(entry, load),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final tileWidth = (constraints.maxWidth - 6) / 2;
+              return Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final entry in categoriesList)
+                    SizedBox(
+                      width: tileWidth,
+                      child: _buildCategoryTile(entry, load),
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 10),
           Row(
@@ -487,6 +565,7 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
 
   Widget _buildCategoryTile(MapEntry<String, Map<String, dynamic>> entry, LoadDraft load) {
     final isSelected = load.category == entry.key;
+    final icon = entry.value['icon'] as IconData;
     return InkWell(
       onTap: () {
         setState(() => load.category = entry.key);
@@ -494,6 +573,7 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
       },
       borderRadius: BorderRadius.circular(8),
       child: Container(
+        constraints: const BoxConstraints(minHeight: 52),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? AppTheme.accentBlue.withValues(alpha: 0.12) : Colors.white,
@@ -503,18 +583,23 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
             width: isSelected ? 1.5 : 1,
           ),
         ),
-        child: Center(
-          child: Text(
-            entry.key,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: isSelected ? AppTheme.accentBlue : AppTheme.textDark,
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: isSelected ? AppTheme.accentBlue : AppTheme.textLight),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                entry.key,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? AppTheme.accentBlue : AppTheme.textDark,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-          ),
+          ],
         ),
       ),
     );

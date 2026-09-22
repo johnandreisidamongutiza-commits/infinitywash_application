@@ -1,11 +1,11 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
 import 'supabase_service.dart';
-import 'rfid_service.dart';
+import 'loyalty_service.dart';
 
 class OrderService {
   final SupabaseClient _client = SupabaseService.client;
-  final RfidService _rfidService = RfidService();
+  final LoyaltyService _loyaltyService = LoyaltyService();
 
   /// Generate next sequential order number for today (ORD-YYMMDD-001, up to 999/day)
   Future<String> generateOrderNumber() async {
@@ -106,15 +106,7 @@ class OrderService {
     String? paymentMethod,
   }) async {
     try {
-      // Validation for RFID tag
-      if (rfidTag != null) {
-        final isRfidAvailable = await _rfidService.isRfidTagAvailable(rfidTag);
-        if (!isRfidAvailable) {
-          throw Exception('RFID tag "$rfidTag" is not available');
-        }
-      }
-
-      // Other validations
+      // Validations
       if (customerId.isEmpty) {
         throw Exception('Customer ID is required');
       }
@@ -240,12 +232,6 @@ class OrderService {
         print('✅ Payment recorded: $transactionNumber ($paymentMethod)');
       }
 
-      // Step 5: Assign RFID tag (if provided)
-      if (rfidTag != null) {
-        await _rfidService.assignRfidTagToOrder(orderId, rfidTag);
-        print('✅ RFID tag assigned: $rfidTag');
-      }
-
       print('🎉 Order creation complete: $orderNumber');
       return orderId;
     } catch (e) {
@@ -257,13 +243,13 @@ class OrderService {
     }
   }
 
-  /// Weigh, categorize, and tag an accepted app request that already exists.
+  /// Weigh, categorize, and check in an accepted app request that already exists.
   Future<void> checkInExistingOrder({
     required String orderId,
     required List<OrderLoad> loads,
     required double subtotal,
     required double totalAmount,
-    required String rfidTag,
+    String? loyaltyCardUid,   // Optional — customer may present their loyalty card
     List<Map<String, dynamic>> addons = const [],
     String? staffNotes,
     String? assignedStaffId,
@@ -271,14 +257,6 @@ class OrderService {
     try {
       if (loads.isEmpty) {
         throw Exception('At least one load is required');
-      }
-      if (rfidTag.isEmpty) {
-        throw Exception('RFID tag is required');
-      }
-
-      final isRfidAvailable = await _rfidService.isRfidTagAvailable(rfidTag);
-      if (!isRfidAvailable) {
-        throw Exception('RFID tag "$rfidTag" is not available');
       }
 
       final existingLoads = await _client
@@ -318,8 +296,6 @@ class OrderService {
         await _client.from('order_addons').insert(addonsData);
       }
 
-      await _rfidService.assignRfidTagToOrder(orderId, rfidTag);
-
       final updates = <String, dynamic>{
         'weight_kg': totalWeight,
         'loads_count': loads.length,
@@ -339,7 +315,7 @@ class OrderService {
       }
 
       await _client.from('orders').update(updates).eq('id', orderId);
-      print('✅ Checked in order $orderId with ${loads.length} loads and RFID $rfidTag');
+      print('✅ Checked in order $orderId with ${loads.length} loads${loyaltyCardUid != null ? ' and Loyalty Card $loyaltyCardUid' : ''}');
     } catch (e) {
       print('❌ Error checking in order: $e');
       rethrow;
@@ -395,8 +371,7 @@ class OrderService {
             reviewed_by,
             expires_at,
             order_loads(*),
-            customers!inner(first_name, last_name, customer_code, phone, address, landmark),
-            rfid_tags(tag_code)
+            customers!inner(first_name, last_name, customer_code, phone, address, landmark)
           ''');
 
       // Apply status filter if provided
@@ -434,12 +409,6 @@ class OrderService {
         final customerName = lastName.isNotEmpty ? '$firstName $lastName' : firstName.isNotEmpty ? firstName : 'Unknown';
         final customerPhone = customerData?['phone'] as String?;
         
-        // Extract RFID tag information from joined data
-        final rfidTagData = orderData['rfid_tags'] as List?;
-        final rfidTag = rfidTagData?.isNotEmpty == true 
-            ? (rfidTagData!.first as Map<String, dynamic>)['tag_code'] as String?
-            : null;
-        
         // Since fromJson doesn't handle loads (they come from join), we need to create new order with loads
         final orderWithLoads = LaundryOrder(
           id: order.id,
@@ -455,7 +424,7 @@ class OrderService {
           paymentStatus: order.paymentStatus,
           loads: loads,
           instructions: order.instructions,
-          rfidTag: rfidTag, // Use RFID tag from rfid_tags table
+          rfidTag: null, // Loyalty cards are permanent per-customer, not per-order
           createdAt: order.createdAt,
           paymentMethod: order.paymentMethod,
           paidAt: order.paidAt,
@@ -502,12 +471,10 @@ class OrderService {
           break;
         case 'completed':
           updates['completed_at'] = DateTime.now().toIso8601String();
-          // Release RFID tag when order is completed
-          await _rfidService.releaseRfidTag(orderId);
+          // Award loyalty points if linked to a loyalty card
+          await _awardLoyaltyPointsForOrder(orderId);
           break;
         case 'cancelled':
-          // Release RFID tag when order is cancelled
-          await _rfidService.releaseRfidTag(orderId);
           break;
       }
 
@@ -523,6 +490,58 @@ class OrderService {
     }
   }
 
+  /// Award loyalty points for completed order if a card UID or customer profile is linked
+  Future<void> _awardLoyaltyPointsForOrder(String orderId) async {
+    try {
+      final orderRow = await _client
+          .from('orders')
+          .select('customer_id, loads_count, order_number, staff_notes, customers(profile_id)')
+          .eq('id', orderId)
+          .maybeSingle();
+
+      if (orderRow == null) return;
+
+      final loadsCount = (orderRow['loads_count'] as num?)?.toInt() ?? 1;
+      final orderNumber = orderRow['order_number'] as String?;
+      final staffNotes = orderRow['staff_notes'] as String? ?? '';
+
+      // 1. Check if card UID was noted in staff notes (e.g. "Loyalty Card: CARD-001")
+      String? cardUid;
+      if (staffNotes.contains('Loyalty Card: ')) {
+        final match = RegExp(r'Loyalty Card:\s*([^\s|]+)').firstMatch(staffNotes);
+        cardUid = match?.group(1);
+      }
+
+      LoyaltyCardInfo? card;
+      if (cardUid != null && cardUid.isNotEmpty) {
+        card = await _loyaltyService.lookupCardByUid(cardUid);
+      }
+
+      // 2. If not found by UID, check if customer has a profile_id with linked card
+      if (card == null) {
+        final customerData = orderRow['customers'] as Map<String, dynamic>?;
+        final profileId = customerData?['profile_id'] as String?;
+        if (profileId != null) {
+          final cards = await _loyaltyService.getCardsForCustomer(profileId);
+          if (cards.isNotEmpty) card = cards.first;
+        }
+      }
+
+      if (card != null) {
+        await _loyaltyService.awardPoints(
+          cardId: card.cardId,
+          customerId: card.customerId,
+          orderId: orderId,
+          loadsCompleted: loadsCount,
+          orderNumber: orderNumber,
+        );
+        print('⭐ Awarded $loadsCount points to loyalty card ${card.uid} for order $orderNumber');
+      }
+    } catch (e) {
+      print('⚠️ Failed to award loyalty points for order $orderId: $e');
+    }
+  }
+
   /// Get order by ID with loads
   Future<LaundryOrder?> getOrderById(String orderId) async {
     try {
@@ -530,8 +549,7 @@ class OrderService {
           .from('orders')
           .select('''
             *,
-            order_loads(*),
-            rfid_tags(tag_code)
+            order_loads(*)
           ''')
           .eq('id', orderId)
           .maybeSingle();
@@ -543,12 +561,6 @@ class OrderService {
       final loads = loadsData?.map((loadJson) {
         return OrderLoad.fromJson(loadJson as Map<String, dynamic>);
       }).toList() ?? [];
-
-      // Extract RFID tag information
-      final rfidTagData = response['rfid_tags'] as List?;
-      final rfidTag = rfidTagData?.isNotEmpty == true 
-          ? (rfidTagData!.first as Map<String, dynamic>)['tag_code'] as String?
-          : null;
 
       final order = LaundryOrder.fromJson(response);
 
@@ -566,7 +578,7 @@ class OrderService {
         paymentStatus: order.paymentStatus,
         loads: loads,
         instructions: order.instructions,
-        rfidTag: rfidTag, // Use RFID tag from rfid_tags table
+        rfidTag: null, // Loyalty cards are permanent per-customer, not per-order
         createdAt: order.createdAt,
         paymentMethod: order.paymentMethod,
         paidAt: order.paidAt,

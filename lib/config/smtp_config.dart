@@ -2,6 +2,7 @@
 /// 
 /// This file contains instructions for setting up SMTP with different email providers.
 /// Copy the appropriate settings to smtp_service.dart
+library;
 
 class SmtpConfigGuide {
   // ============================================

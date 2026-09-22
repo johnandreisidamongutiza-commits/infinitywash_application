@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
-import '../../../models/order.dart';
-import '../../../services/mock_data_service.dart';
-import 'order_status_screen.dart';
-import 'create_order_flow.dart';
+import '../../../services/loyalty_service.dart';
 
 class RfidCheckerScreen extends StatefulWidget {
   final String? initialTag;
@@ -15,19 +12,25 @@ class RfidCheckerScreen extends StatefulWidget {
 
 class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
   final TextEditingController _manualTagController = TextEditingController();
+  final LoyaltyService _loyaltyService = LoyaltyService();
 
-  String? _scannedTag;
-  LaundryOrder? _matchedOrder;
+  String? _scannedUid;
+  LoyaltyCardInfo? _cardInfo;
   bool _isSearching = false;
+  String? _error;
+
+  // Registration flow state
+  bool _showingRegisterFlow = false;
+  final TextEditingController _searchController = TextEditingController();
+  List<Map<String, dynamic>> _searchResults = [];
+  bool _isSearchingCustomers = false;
 
   @override
   void initState() {
     super.initState();
     if (widget.initialTag != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _scanTag(widget.initialTag!);
-        }
+        if (mounted) _scanCard(widget.initialTag!);
       });
     }
   }
@@ -35,75 +38,175 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
   @override
   void dispose() {
     _manualTagController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  void _scanTag(String tag) {
-    final cleanTag = tag.trim().toUpperCase();
-    if (cleanTag.isEmpty) return;
+  // ─── Scanner Logic ───────────────────────────────────────────────────────────
+
+  void _scanCard(String uid) async {
+    final cleanUid = uid.trim().toUpperCase();
+    if (cleanUid.isEmpty) return;
 
     setState(() {
       _isSearching = true;
-      _scannedTag = cleanTag;
+      _scannedUid = cleanUid;
+      _cardInfo = null;
+      _error = null;
+      _showingRegisterFlow = false;
     });
+    _manualTagController.clear();
 
-    // Simulate instant NFC reader detection
-    Future.delayed(const Duration(milliseconds: 350), () {
+    try {
+      final card = await _loyaltyService.lookupCardByUid(cleanUid);
       if (!mounted) return;
-
-      final allOrders = [
-        ...MockDataService().activeOrders,
-        ...MockDataService().completedOrders,
-      ];
-
-      LaundryOrder? found;
-      for (final order in allOrders) {
-        if (order.rfidTag != null && order.rfidTag!.toUpperCase() == cleanTag) {
-          found = order;
-          break;
-        }
-      }
-
+      setState(() {
+        _cardInfo = card;
+        _isSearching = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isSearching = false;
-        _matchedOrder = found;
+        _error = 'Failed to look up card: $e';
       });
-
-      _manualTagController.clear();
-    });
+    }
   }
 
   void _resetScanner() {
     setState(() {
-      _scannedTag = null;
-      _matchedOrder = null;
+      _scannedUid = null;
+      _cardInfo = null;
       _isSearching = false;
+      _error = null;
+      _showingRegisterFlow = false;
+      _searchResults = [];
       _manualTagController.clear();
+      _searchController.clear();
     });
   }
 
-  Color _getLoadStatusColor(LoadStatus? status) {
-    if (status == null) return Colors.grey;
-    switch (status) {
-      case LoadStatus.queued:
-        return Colors.grey;
-      case LoadStatus.washing:
-        return AppTheme.accentBlue;
-      case LoadStatus.drying:
-        return Colors.orange;
-      case LoadStatus.folded:
-        return Colors.green;
+  // ─── Registration Flow ───────────────────────────────────────────────────────
+
+  void _searchCustomers(String query) async {
+    if (query.trim().length < 2) {
+      setState(() => _searchResults = []);
+      return;
+    }
+    setState(() => _isSearchingCustomers = true);
+    final results = await _loyaltyService.searchCustomers(query);
+    if (!mounted) return;
+    setState(() {
+      _searchResults = results;
+      _isSearchingCustomers = false;
+    });
+  }
+
+  void _registerCardToCustomer(Map<String, dynamic> customer) async {
+    final customerId = customer['id'] as String;
+    final firstName = customer['first_name'] as String? ?? '';
+    final lastName = customer['last_name'] as String? ?? '';
+    final name = '$firstName $lastName'.trim();
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.credit_card, color: AppTheme.accentBlue),
+            SizedBox(width: 8),
+            Text('Register Card', style: TextStyle(fontSize: 17)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Assign card UID:'),
+            const SizedBox(height: 4),
+            Text(
+              _scannedUid ?? '',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                color: AppTheme.accentBlue,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text('To customer:'),
+            const SizedBox(height: 4),
+            Text(
+              name,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            if ((customer['phone'] as String?) != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                customer['phone'] as String,
+                style: const TextStyle(color: AppTheme.textLight, fontSize: 13),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accentBlue,
+              minimumSize: const Size(80, 36),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Confirm', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      // Register the card to the customer
+      await _loyaltyService.registerCard(
+        uid: _scannedUid!,
+        customerId: customerId,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ Card registered to $name'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Re-scan to show fresh card info
+      _scanCard(_scannedUid!);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Registration failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
+  // ─── Build ───────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final availableTags = MockDataService().availableRfidTags;
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('RFID Tag Checker'),
+        title: const Text('Loyalty Card Scanner'),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -112,25 +215,12 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16, top: 12, bottom: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.accentBlue.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+          if (_scannedUid != null)
+            IconButton(
+              icon: const Icon(Icons.refresh, color: AppTheme.textLight),
+              tooltip: 'Reset scanner',
+              onPressed: _resetScanner,
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.nfc, size: 14, color: AppTheme.accentBlue),
-                const SizedBox(width: 4),
-                Text(
-                  '${availableTags.length} Free Tags',
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
       body: SafeArea(
@@ -139,25 +229,32 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Scanner Hero Panel (Reader Status & Manual Field)
               _buildScannerHero(),
               const SizedBox(height: 20),
 
-              // 2. Interactive Mock Scenarios
-              _buildMockScenariosSection(availableTags),
-              const SizedBox(height: 24),
-
-              // 3. Scan Results View (Matched Order, Available Tag, or Unrecognized)
+              // Result area
               if (_isSearching)
                 const Center(
                   child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 30),
-                    child: CircularProgressIndicator(),
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Column(
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('Reading loyalty card...',
+                            style: TextStyle(color: AppTheme.textLight)),
+                      ],
+                    ),
                   ),
                 )
-              else if (_scannedTag != null)
-                _buildScanResultView(availableTags)
-              else
+              else if (_error != null)
+                _buildErrorCard()
+              else if (_scannedUid != null) ...[
+                if (_cardInfo != null)
+                  _buildCardFoundResult()
+                else
+                  _buildCardNotFoundResult(),
+              ] else
                 _buildIdleGuide(),
             ],
           ),
@@ -166,72 +263,41 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
     );
   }
 
+  // ─── Scanner Hero Panel ───────────────────────────────────────────────────────
+
   Widget _buildScannerHero() {
+    final isActive = _scannedUid != null && !_isSearching;
+    final borderColor = _isSearching
+        ? Colors.orange
+        : isActive
+            ? (_cardInfo != null ? Colors.green : AppTheme.errorRed)
+            : AppTheme.accentBlue.withValues(alpha: 0.3);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            AppTheme.accentBlue.withValues(alpha: 0.08),
-            AppTheme.lightBlue.withValues(alpha: 0.28),
+            AppTheme.accentBlue.withValues(alpha: 0.06),
+            AppTheme.lightBlue.withValues(alpha: 0.22),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: _isSearching ? Colors.orange : AppTheme.accentBlue.withValues(alpha: 0.3),
-          width: _isSearching ? 2.0 : 1.0,
+          color: borderColor,
+          width: _isSearching || isActive ? 2.0 : 1.0,
         ),
       ),
       child: Column(
         children: [
-          // Live Reader Status LED Banner
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: _isSearching
-                  ? Colors.orange.withValues(alpha: 0.12)
-                  : const Color(0xFFE8F5E9),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: _isSearching ? Colors.orange : Colors.green.shade400,
-                width: 1.2,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: _isSearching ? Colors.orange : Colors.green,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    _isSearching
-                        ? 'READING RFID SIGNAL...'
-                        : 'READER ACTIVE • WAITING FOR SCAN',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: _isSearching ? Colors.orange.shade900 : Colors.green.shade900,
-                      letterSpacing: 0.6,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // Status LED
+          _buildStatusLed(),
           const SizedBox(height: 16),
 
-          // Layered Concentric Radar Graphic
+          // NFC Icon
           Stack(
             alignment: Alignment.center,
             children: [
@@ -242,54 +308,60 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                   shape: BoxShape.circle,
                   color: _isSearching
                       ? Colors.orange.withValues(alpha: 0.15)
-                      : AppTheme.accentBlue.withValues(alpha: 0.12),
+                      : AppTheme.accentBlue.withValues(alpha: 0.10),
                 ),
               ),
               Container(
-                width: 70,
-                height: 70,
+                width: 68,
+                height: 68,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
                       color: _isSearching
-                          ? Colors.orange.withValues(alpha: 0.35)
-                          : AppTheme.accentBlue.withValues(alpha: 0.25),
+                          ? Colors.orange.withValues(alpha: 0.3)
+                          : AppTheme.accentBlue.withValues(alpha: 0.2),
                       blurRadius: 16,
                       spreadRadius: 2,
                     ),
                   ],
                 ),
                 child: Icon(
-                  Icons.nfc,
-                  size: 38,
-                  color: _isSearching ? Colors.orange : AppTheme.accentBlue,
+                  Icons.credit_card_outlined,
+                  size: 34,
+                  color:
+                      _isSearching ? Colors.orange : AppTheme.accentBlue,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 14),
 
-          // Status Title & Subtitle
           Text(
             _isSearching
-                ? 'Scanning RFID Tag: $_scannedTag'
-                : 'Waiting for RFID Card or Fob',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                ? 'Scanning Card: $_scannedUid'
+                : _scannedUid != null
+                    ? 'Card UID: $_scannedUid'
+                    : 'Waiting for RFID Loyalty Card',
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textDark,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 4),
           Text(
             _isSearching
-                ? 'Connecting to database and fetching customer details...'
-                : 'Hold tag against counter reader, or tap a mock scenario below',
+                ? 'Looking up customer loyalty data...'
+                : 'Tap card to reader, or enter UID manually below',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
           ),
           const SizedBox(height: 16),
 
-          // Manual scan / USB barcode reader input
+          // Manual input row
           Row(
             children: [
               Expanded(
@@ -304,21 +376,23 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                     controller: _manualTagController,
                     textCapitalization: TextCapitalization.characters,
                     decoration: const InputDecoration(
-                      hintText: 'Enter Tag ID (e.g. RFID-001)...',
-                      hintStyle: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                      prefixIcon: Icon(Icons.qr_code_scanner, size: 18, color: AppTheme.textLight),
+                      hintText: 'Enter Card UID (e.g. A3F9C2)...',
+                      hintStyle:
+                          TextStyle(fontSize: 12, color: AppTheme.textLight),
+                      prefixIcon: Icon(Icons.qr_code_scanner,
+                          size: 18, color: AppTheme.textLight),
                       border: InputBorder.none,
                       isDense: true,
-                      contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                      contentPadding:
+                          EdgeInsets.symmetric(vertical: 12, horizontal: 10),
                     ),
-                    onSubmitted: _scanTag,
+                    onSubmitted: _scanCard,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: () => _scanTag(_manualTagController.text),
-                behavior: HitTestBehavior.opaque,
+                onTap: () => _scanCard(_manualTagController.text),
                 child: Container(
                   height: 44,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -328,7 +402,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                   ),
                   alignment: Alignment.center,
                   child: const Text(
-                    'Check',
+                    'Scan',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -344,809 +418,847 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
     );
   }
 
-  Widget _buildMockScenariosSection(List<String> availableTags) {
+  Widget _buildStatusLed() {
+    Color ledColor;
+    String ledText;
+
+    if (_isSearching) {
+      ledColor = Colors.orange;
+      ledText = 'READING CARD...';
+    } else if (_scannedUid != null) {
+      if (_cardInfo != null) {
+        ledColor = Colors.green;
+        ledText = 'CARD FOUND • LOYALTY DATA LOADED';
+      } else {
+        ledColor = AppTheme.errorRed;
+        ledText = 'CARD NOT REGISTERED';
+      }
+    } else {
+      ledColor = Colors.green;
+      ledText = 'READER ACTIVE • WAITING FOR CARD';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: ledColor.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: ledColor.withValues(alpha: 0.5), width: 1.2),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: ledColor, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              ledText,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: ledColor,
+                letterSpacing: 0.5,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Idle Guide ───────────────────────────────────────────────────────────────
+
+  Widget _buildIdleGuide() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Row(
+        const Text(
+          'How to use',
+          style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textDark),
+        ),
+        const SizedBox(height: 12),
+        _buildGuideItem(Icons.credit_card_outlined, 'Tap loyalty card to reader',
+            'Hold the customer\'s RFID card near the counter reader'),
+        const SizedBox(height: 8),
+        _buildGuideItem(Icons.search, 'Check loyalty balance',
+            'See points, total orders, and free load eligibility'),
+        const SizedBox(height: 8),
+        _buildGuideItem(Icons.person_add_outlined, 'Register new cards',
+            'Link an unregistered card to a customer account'),
+      ],
+    );
+  }
+
+  Widget _buildGuideItem(IconData icon, String title, String subtitle) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.softGray,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppTheme.accentBlue.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: AppTheme.accentBlue, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: AppTheme.textDark)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: const TextStyle(
+                        fontSize: 11, color: AppTheme.textLight)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Card Found Result ────────────────────────────────────────────────────────
+
+  Widget _buildCardFoundResult() {
+    final card = _cardInfo!;
+    final hasFreeLoas = card.freeLoadsAvailable > 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Card header
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppTheme.primaryBlue,
+                AppTheme.accentBlue,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.accentBlue.withValues(alpha: 0.3),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.credit_card,
+                        color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          card.ownerName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: Colors.white,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (card.ownerPhone != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            card.ownerPhone!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: card.isActive
+                          ? Colors.green.withValues(alpha: 0.25)
+                          : Colors.red.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      card.isActive ? 'ACTIVE' : 'INACTIVE',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Points balance big display
+              Row(
+                children: [
+                  const Text('⭐', style: TextStyle(fontSize: 28)),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${card.pointsBalance}',
+                    style: const TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'loyalty points',
+                        style:
+                            TextStyle(fontSize: 13, color: Colors.white70),
+                      ),
+                      if (hasFreeLoas)
+                        Container(
+                          margin: const EdgeInsets.only(top: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${card.freeLoadsAvailable} FREE LOAD${card.freeLoadsAvailable > 1 ? 'S' : ''} AVAILABLE',
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 4),
+              Text(
+                hasFreeLoas
+                    ? 'Can redeem ${card.freeLoadsAvailable} free load${card.freeLoadsAvailable > 1 ? 's' : ''} now!'
+                    : '${card.pointsToNextRedemption} more pts for a free load',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white.withValues(alpha: 0.75),
+                ),
+              ),
+
+              const SizedBox(height: 4),
+              Text(
+                'UID: ${card.uid}',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Stats row
+        Row(
           children: [
-            Icon(Icons.science_outlined, size: 16, color: AppTheme.accentBlue),
-            SizedBox(width: 6),
             Expanded(
-              child: Text(
-                'Mock Counter Scenarios (Hardware Simulator):',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-                overflow: TextOverflow.ellipsis,
+              child: _buildStatCard(
+                icon: Icons.receipt_long_outlined,
+                value: '${card.totalOrders}',
+                label: 'Orders',
+                color: AppTheme.accentBlue,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildStatCard(
+                icon: Icons.local_laundry_service_outlined,
+                value: '${card.totalLoads}',
+                label: 'Loads',
+                color: Colors.purple,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildStatCard(
+                icon: Icons.card_giftcard_outlined,
+                value: '${card.freeLoadsAvailable}',
+                label: 'Free Loads',
+                color: Colors.amber.shade700,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 4),
-        const Text(
-          'Tap any realistic scenario below to simulate tapping an RFID tag:',
-          style: TextStyle(fontSize: 11, color: AppTheme.textLight),
-        ),
-        const SizedBox(height: 10),
 
-        // Scenario 1: Customer Pickup (Carlos Reyes)
-        _buildScenarioCard(
-          tag: 'RFID-005',
-          title: 'Scenario 1: Customer Claiming Clean Laundry',
-          customer: 'Carlos Reyes • 4.0 kg • Paid',
-          badgeText: 'Claim Ready',
-          badgeColor: Colors.green,
-          icon: Icons.check_circle_outline,
-          description: 'Simulate customer presenting their bag tag at counter to claim finished order.',
-        ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
 
-        // Scenario 2: Active Wash Status (John Doe)
-        _buildScenarioCard(
-          tag: 'RFID-001',
-          title: 'Scenario 2: Customer Status Inquiry',
-          customer: 'John Doe • 5.5 kg • Unpaid',
-          badgeText: 'Processing',
-          badgeColor: AppTheme.accentBlue,
-          icon: Icons.local_laundry_service,
-          description: 'Simulate checking progress for an ongoing wash cycle.',
-        ),
-        const SizedBox(height: 8),
+        // Progress bar to next free load
+        _buildPointsProgressBar(card),
 
-        // Scenario 3: Rider Delivery with Landmark (Maria Santos)
-        _buildScenarioCard(
-          tag: 'RFID-003',
-          title: 'Scenario 3: Rider Dispatch (Delivery & Landmark)',
-          customer: 'Maria Santos • 456 Banilad Rd (Beside green pharmacy)',
-          badgeText: 'Delivery Order',
-          badgeColor: Colors.orange,
-          icon: Icons.delivery_dining,
-          description: 'Simulate checking delivery address & landmark notes before handing to rider.',
-        ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
 
-        // Scenario 4: Fresh Free Tag
-        _buildScenarioCard(
-          tag: availableTags.isNotEmpty ? availableTags.first : 'RFID-002',
-          title: 'Scenario 4: Fresh Unassigned Counter Tag',
-          customer: 'Free Tag in Inventory • Ready for New Laundry',
-          badgeText: 'Available',
-          badgeColor: Colors.teal,
-          icon: Icons.add_shopping_cart,
-          description: 'Simulate picking up an unassigned tag to attach to a new walk-in order.',
-        ),
-        const SizedBox(height: 8),
+        // Action buttons
+        if (hasFreeLoas) ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _showRedeemDialog(card),
+              icon: const Icon(Icons.card_giftcard, color: Colors.white),
+              label: Text(
+                'Redeem ${card.freeLoadsAvailable} Free Load${card.freeLoadsAvailable > 1 ? 's' : ''}',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber.shade700,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
 
-        // Scenario 5: Unrecognized / Unknown Tag
-        _buildScenarioCard(
-          tag: 'RFID-999',
-          title: 'Scenario 5: Unknown / Foreign RFID Tag',
-          customer: 'Tag not registered in database',
-          badgeText: 'Unrecognized',
-          badgeColor: Colors.red,
-          icon: Icons.warning_amber_rounded,
-          description: 'Simulate scanning an unprogrammed or foreign tag to test error handling.',
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _resetScanner,
+            icon: const Icon(Icons.nfc_outlined, size: 18),
+            label: const Text('Scan Another Card'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 46),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              side: const BorderSide(color: AppTheme.borderGray),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildScenarioCard({
-    required String tag,
-    required String title,
-    required String customer,
-    required String badgeText,
-    required Color badgeColor,
+  Widget _buildStatCard({
     required IconData icon,
-    required String description,
+    required String value,
+    required String label,
+    required Color color,
   }) {
-    final isSelected = _scannedTag == tag;
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _scanTag(tag),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isSelected ? badgeColor.withValues(alpha: 0.08) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? badgeColor : AppTheme.borderGray.withValues(alpha: 0.8),
-            width: isSelected ? 1.8 : 1.0,
-          ),
-          boxShadow: [
-            if (isSelected)
-              BoxShadow(
-                color: badgeColor.withValues(alpha: 0.12),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: badgeColor.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(icon, color: badgeColor, size: 16),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        customer,
-                        style: TextStyle(fontSize: 11, color: badgeColor, fontWeight: FontWeight.w600),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: badgeColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.touch_app, size: 10),
-                      const SizedBox(width: 3),
-                      Text(
-                        tag,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: badgeColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              description,
-              style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildScanResultView(List<String> availableTags) {
-    if (_matchedOrder != null) {
-      return _buildAssignedOrderCard(_matchedOrder!);
-    } else if (availableTags.contains(_scannedTag)) {
-      return _buildAvailableTagCard(_scannedTag!);
-    } else {
-      return _buildUnrecognizedTagCard(_scannedTag!);
-    }
-  }
-
-  Widget _buildAssignedOrderCard(LaundryOrder order) {
-    Color statusColor = AppTheme.accentBlue;
-    if (order.status == OrderStatus.completed) statusColor = Colors.grey;
-
-    final bool isDelivery = order.returnMethod == ReturnMethod.delivery;
-
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.accentBlue.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header: Tag & Order Status
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accentBlue.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.nfc, color: AppTheme.accentBlue, size: 20),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        order.rfidTag ?? 'RFID Tag',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark),
-                      ),
-                      Text(
-                        'Order ${order.displayNumber}',
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textLight, fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: statusColor.withValues(alpha: 0.4)),
-                ),
-                child: Text(
-                  order.statusText.toUpperCase(),
-                  style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-
-          const Divider(height: 24),
-
-          // 1. Customer Details
-          const Text('Customer Details', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textLight)),
+          Icon(icon, color: color, size: 22),
           const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppTheme.softGray,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: AppTheme.accentBlue.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.person, color: AppTheme.accentBlue, size: 20),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            order.customerName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (order.customerPhone != null && order.customerPhone!.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                const Icon(Icons.phone_outlined, size: 12, color: AppTheme.accentBlue),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    order.customerPhone!,
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textDark),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(
-                      order.channel == OrderChannel.walkIn ? Icons.storefront_outlined : Icons.smartphone_outlined,
-                      size: 13,
-                      color: AppTheme.textLight,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        order.channel == OrderChannel.walkIn ? 'Walk-in Counter Order' : 'Online Request',
-                        style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: color,
             ),
           ),
-
-          const SizedBox(height: 16),
-
-          // 2. Laundry Specs & Instructions
-          const Text('Laundry Specs', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textLight)),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppTheme.softGray,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text('Total Weight:', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
-                    ),
-                    Text(order.weightDisplay, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark)),
-                  ],
-                ),
-                if (order.hasMultipleLoads) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text('Multiple Loads:', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppTheme.accentBlue.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text('${order.totalLoads} loads', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppTheme.accentBlue)),
-                      ),
-                    ],
-                  ),
-                ],
-                if (order.instructions != null && order.instructions!.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Notes: ', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
-                      Expanded(
-                        child: Text(
-                          order.instructions!,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textDark),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Load Breakdown (if multiple loads)
-          if (order.hasMultipleLoads) ...[
-            const Text('Load Breakdown', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textLight)),
-            const SizedBox(height: 6),
-            ...order.loads.asMap().entries.map((entry) {
-              final load = entry.value;
-              final loadIndex = entry.key;
-              return Container(
-                margin: EdgeInsets.only(bottom: loadIndex < order.loads.length - 1 ? 8 : 0),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.5)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: _getLoadStatusColor(load.loadStatus).withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          load.statusIcon,
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Load ${load.loadNumber}: ${load.category}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textDark),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Text(
-                                '${load.weight.toStringAsFixed(1)} ${load.unit}',
-                                style: TextStyle(fontSize: 11, color: load.isOverLimit ? Colors.orange : AppTheme.textLight),
-                              ),
-                              const SizedBox(width: 4),
-                              const Text('•', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  load.statusText,
-                                  style: TextStyle(fontSize: 11, color: _getLoadStatusColor(load.loadStatus), fontWeight: FontWeight.bold),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (load.notes != null && load.notes!.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              load.notes!,
-                              style: const TextStyle(fontSize: 10, color: AppTheme.textLight, fontStyle: FontStyle.italic),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-            const SizedBox(height: 16),
-          ],
-
-          // 3. Fulfillment & Payment
-          const Text('Fulfillment & Payment', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textLight)),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppTheme.softGray,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Return Mode', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Icon(isDelivery ? Icons.delivery_dining : Icons.storefront, size: 15, color: AppTheme.accentBlue),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  order.returnText,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textDark),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Payment Status', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
-                          const SizedBox(height: 2),
-                          Text(
-                            order.paymentStatus == PaymentStatus.paid ? 'PAID ✓' : 'UNPAID (Claim)',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                              color: order.paymentStatus == PaymentStatus.paid ? Colors.green : Colors.orange.shade800,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                if (isDelivery && ((order.deliveryAddress != null && order.deliveryAddress!.isNotEmpty) || (order.deliveryLandmark != null && order.deliveryLandmark!.isNotEmpty))) ...[
-                  const Divider(height: 16),
-                  if (order.deliveryAddress != null && order.deliveryAddress!.isNotEmpty) ...[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.location_on_outlined, size: 14, color: AppTheme.accentBlue),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            order.deliveryAddress!,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textDark),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (order.deliveryLandmark != null && order.deliveryLandmark!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.flag_outlined, size: 14, color: Colors.orange),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            'Landmark: ${order.deliveryLandmark!}',
-                            style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Primary Actions
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: OutlinedButton.icon(
-                  onPressed: _resetScanner,
-                  icon: const Icon(Icons.refresh, size: 14),
-                  label: const Text('Scan Next', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11), overflow: TextOverflow.ellipsis),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 44),
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 3,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => OrderStatusScreen(order: order)),
-                    );
-                  },
-                  icon: const Icon(Icons.launch, size: 14),
-                  label: const Text('View Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11), overflow: TextOverflow.ellipsis),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(0, 44),
-                    backgroundColor: AppTheme.accentBlue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ),
-            ],
+          Text(
+            label,
+            style: const TextStyle(fontSize: 10, color: AppTheme.textLight),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAvailableTagCard(String tag) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.green.withValues(alpha: 0.4), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.green.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.check_circle_outline, color: Colors.green, size: 24),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tag,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark),
-                    ),
-                    const Text(
-                      'Tag Available & Ready for Use',
-                      style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'This RFID tag is currently unassigned and ready to be attached to a new walk-in or online laundry load.',
-            style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: OutlinedButton(
-                  onPressed: _resetScanner,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 44),
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: const Text('Scan Another', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11), overflow: TextOverflow.ellipsis),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 3,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const CreateOrderFlow()),
-                    );
-                  },
-                  icon: const Icon(Icons.add_shopping_cart, size: 14),
-                  label: const Text('Create Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11), overflow: TextOverflow.ellipsis),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(0, 44),
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildPointsProgressBar(LoyaltyCardInfo card) {
+    final int progress = card.pointsBalance % 10;
+    final double fraction = progress / 10.0;
 
-  Widget _buildUnrecognizedTagCard(String tag) {
     return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.3), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 24),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tag,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark),
-                    ),
-                    const Text(
-                      'Unrecognized Tag Code',
-                      style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'This tag is not registered in the laundry shop RFID database. Please verify the tag ID or try scanning again.',
-            style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: _resetScanner,
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(0, 44),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('Try Again', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIdleGuide() {
-    return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.softGray,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: const Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline, size: 18, color: AppTheme.textLight),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Tip: You can use any USB RFID reader plugged into the counter or tap a test tag above to simulate a scan.',
-              style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Progress to Next Free Load',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textDark),
+              ),
+              Text(
+                '$progress / 10 pts',
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.accentBlue),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: fraction,
+              minHeight: 10,
+              backgroundColor: AppTheme.borderGray,
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(AppTheme.accentBlue),
             ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            fraction >= 1.0 || progress == 0 && card.pointsBalance > 0
+                ? '🎉 Ready to redeem a free load!'
+                : '${10 - progress} more load${10 - progress > 1 ? 's' : ''} to earn a free load',
+            style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRedeemDialog(LoyaltyCardInfo card) {
+    int loadsToRedeem = 1;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.card_giftcard, color: Colors.amber),
+              SizedBox(width: 8),
+              Text('Redeem Free Loads', style: TextStyle(fontSize: 17)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Available: ${card.freeLoadsAvailable} free load${card.freeLoadsAvailable > 1 ? 's' : ''}',
+                style: const TextStyle(color: AppTheme.textLight),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: loadsToRedeem > 1
+                        ? () => setDialogState(() => loadsToRedeem--)
+                        : null,
+                    icon: const Icon(Icons.remove_circle_outline),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$loadsToRedeem',
+                      style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.accentBlue),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: loadsToRedeem < card.freeLoadsAvailable
+                        ? () => setDialogState(() => loadsToRedeem++)
+                        : null,
+                    icon: const Icon(Icons.add_circle_outline),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Cost: ${loadsToRedeem * 10} pts  •  Save ₱${(loadsToRedeem * 170).toStringAsFixed(0)}',
+                style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.amber),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child:
+                  const Text('Cancel', style: TextStyle(color: AppTheme.textLight)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        '✅ Redemption noted: $loadsToRedeem free load(s) for ${card.ownerName}. Apply discount when processing order.'),
+                    backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 5),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber.shade700,
+                minimumSize: const Size(90, 36),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Confirm Redemption',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Card Not Found / Register ────────────────────────────────────────────────
+
+  Widget _buildCardNotFoundResult() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: AppTheme.errorRed.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+                color: AppTheme.errorRed.withValues(alpha: 0.3), width: 1.5),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.errorRed.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.credit_card_off_outlined,
+                    color: AppTheme.errorRed, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Card Not Registered',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'UID: $_scannedUid',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textLight,
+                          fontFamily: 'monospace'),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'This card is not linked to any customer.',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Register button
+        if (!_showingRegisterFlow) ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => setState(() => _showingRegisterFlow = true),
+              icon: const Icon(Icons.person_add_outlined, color: Colors.white),
+              label: const Text(
+                'Register This Card to a Customer',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentBlue,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _resetScanner,
+              icon: const Icon(Icons.nfc_outlined, size: 18),
+              label: const Text('Scan Another Card'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 46),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                side: const BorderSide(color: AppTheme.borderGray),
+              ),
+            ),
+          ),
+        ] else
+          _buildRegisterFlow(),
+      ],
+    );
+  }
+
+  Widget _buildRegisterFlow() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.accentBlue.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.person_search_outlined,
+                  color: AppTheme.accentBlue, size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Search Customer',
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: AppTheme.textDark),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Search by name, phone, or email to link this card.',
+            style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+          ),
+          const SizedBox(height: 12),
+
+          // Search field
+          Container(
+            decoration: BoxDecoration(
+              color: AppTheme.softGray,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.borderGray),
+            ),
+            child: TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                hintText: 'e.g. Juan dela Cruz / 09xxxxxxxxx',
+                hintStyle:
+                    TextStyle(fontSize: 12, color: AppTheme.textLight),
+                prefixIcon:
+                    Icon(Icons.search, size: 18, color: AppTheme.textLight),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding:
+                    EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+              ),
+              onChanged: _searchCustomers,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          // Results
+          if (_isSearchingCustomers)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_searchResults.isEmpty &&
+              _searchController.text.length >= 2)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'No customers found. Try a different search.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                textAlign: TextAlign.center,
+              ),
+            )
+          else
+            ...(_searchResults.map((c) => _buildCustomerSearchResult(c))),
+
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () =>
+                setState(() => _showingRegisterFlow = false),
+            icon: const Icon(Icons.arrow_back, size: 16),
+            label: const Text('Cancel'),
+            style: TextButton.styleFrom(
+                foregroundColor: AppTheme.textLight),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerSearchResult(Map<String, dynamic> customer) {
+    final firstName = customer['first_name'] as String? ?? '';
+    final lastName = customer['last_name'] as String? ?? '';
+    final name = '$firstName $lastName'.trim();
+    final phone = customer['phone'] as String?;
+    final email = customer['email'] as String?;
+
+    return GestureDetector(
+      onTap: () => _registerCardToCustomer(customer),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppTheme.softGray,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: AppTheme.accentBlue.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.person,
+                  color: AppTheme.accentBlue, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name.isNotEmpty ? name : 'Unknown Name',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: AppTheme.textDark),
+                  ),
+                  if (phone != null)
+                    Text(phone,
+                        style: const TextStyle(
+                            fontSize: 11, color: AppTheme.textLight)),
+                  if (email != null && phone == null)
+                    Text(email,
+                        style: const TextStyle(
+                            fontSize: 11, color: AppTheme.textLight)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right,
+                color: AppTheme.textLight, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Error Card ───────────────────────────────────────────────────────────────
+
+  Widget _buildErrorCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.errorRed.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.errorRed.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: AppTheme.errorRed),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Error Reading Card',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.errorRed)),
+                const SizedBox(height: 4),
+                Text(_error!,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppTheme.textLight)),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: AppTheme.accentBlue),
+            onPressed: () => _scanCard(_scannedUid!),
           ),
         ],
       ),

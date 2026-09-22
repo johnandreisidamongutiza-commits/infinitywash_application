@@ -332,7 +332,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         await _updateRateLimitStatus();
         
         setState(() => _isLoading = false);
-        _showSuccess('A new code has been sent to your email! (${_resendAttemptsLeft} resends left)');
+        _showSuccess('A new code has been sent to your email! ($_resendAttemptsLeft resends left)');
         _startResendCountdown();
       }
     } catch (e) {

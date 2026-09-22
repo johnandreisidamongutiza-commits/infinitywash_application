@@ -6,7 +6,7 @@ import '../../../models/laundry_intake.dart';
 import '../../../services/customer_service.dart';
 import '../../../services/service_catalog_service.dart';
 import '../../../services/order_service.dart';
-import '../../../services/rfid_service.dart';
+import '../../../services/loyalty_service.dart';
 import '../../../services/supabase_service.dart';
 
 class _CustomerProfile {
@@ -43,7 +43,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   final CustomerService _customerService = CustomerService();
   final ServiceCatalogService _catalogService = ServiceCatalogService();
   final OrderService _orderService = OrderService();
-  final RfidService _rfidService = RfidService();
+  final LoyaltyService _loyaltyService = LoyaltyService();
+
+  // Loyalty card controller (manual entry / NFC tap)
+  final TextEditingController _loyaltyCardController = TextEditingController();
 
   // Form controllers
   final TextEditingController _firstNameController = TextEditingController();
@@ -56,15 +59,24 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   // State variables
   ReturnMethod _selectedReturn = ReturnMethod.shopPickup;
-  List<String> _availableRfidTags = [];
-  bool _loadingRfidTags = false;
-  String? _selectedRfidTag;
+
+  // Loyalty card state (optional — customer may not have a card yet)
+  String? _loyaltyCardUid;       // Raw UID from scan / manual entry
+  LoyaltyCardInfo? _loyaltyCardInfo; // Looked-up card data (null if not found / not scanned)
+  bool _lookingUpCard = false;
+
   bool _addExtraFabCon = false;
   bool _addExtraDetergent = false;
   bool _isSubmitting = false; // Loading state for order creation
-  
+
   // Section expansion state - only one can be expanded at a time (accordion behavior)
   int? _expandedStep = 1;  // null = all collapsed, 1/2/3 = that step expanded
+
+  // Scroll controller & section keys for auto-scroll on expand
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _step1Key = GlobalKey();
+  final GlobalKey _step2Key = GlobalKey();
+  final GlobalKey _step3Key = GlobalKey();
 
   _CustomerProfile? _suggestedCustomer;
   bool _dismissedSuggestion = false;
@@ -75,45 +87,69 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   @override
   void initState() {
     super.initState();
-    
-    // Load available RFID tags
-    _loadAvailableRfidTags();
-    
-    // Start with one load
-    _loads.add(LoadDraft(initialWeight: '5.0'));
+
+    // Start with one load (empty weight so it is not marked complete until staff enters weight)
+    _loads.add(LoadDraft(initialWeight: ''));
     _firstNameController.addListener(_checkForCustomerSuggestion);
     _lastNameController.addListener(_checkForCustomerSuggestion);
   }
 
-  /// Load available RFID tags from database (excluding assigned ones)
-  Future<void> _loadAvailableRfidTags() async {
+  /// Look up a loyalty card by UID and optionally auto-fill customer info.
+  Future<void> _lookupLoyaltyCard(String uid) async {
+    final cleanUid = uid.trim().toUpperCase();
+    if (cleanUid.isEmpty) return;
+
     setState(() {
-      _loadingRfidTags = true;
+      _lookingUpCard = true;
+      _loyaltyCardUid = cleanUid;
+      _loyaltyCardInfo = null;
     });
 
     try {
-      final tags = await _rfidService.getAvailableRfidTags();
+      final card = await _loyaltyService.lookupCardByUid(cleanUid);
+      if (!mounted) return;
       setState(() {
-        _availableRfidTags = tags;
-        _loadingRfidTags = false;
+        _loyaltyCardInfo = card;
+        _lookingUpCard = false;
       });
-      print('✅ Loaded ${tags.length} available RFID tags: $tags');
-    } catch (e) {
-      print('❌ Error loading RFID tags: $e');
-      setState(() {
-        _availableRfidTags = []; // Empty list on error
-        _loadingRfidTags = false;
-      });
-      
-      if (mounted) {
+
+      // Auto-fill customer name/phone if fields are blank and card has an owner
+      if (card != null && card.hasOwner) {
+        final nameParts = card.ownerName.split(' ');
+        if (_firstNameController.text.trim().isEmpty) {
+          _firstNameController.text = nameParts.first;
+          if (nameParts.length > 1) {
+            _lastNameController.text = nameParts.sublist(1).join(' ');
+          }
+        }
+        if (_phoneController.text.trim().isEmpty &&
+            card.ownerPhone != null) {
+          _phoneController.text = card.ownerPhone!;
+        }
+      }
+
+      if (card == null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading RFID tags: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text('Card UID "$cleanUid" not found in the loyalty database.'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
+    } catch (e) {
+      print('❌ Error looking up loyalty card: \$e');
+      if (!mounted) return;
+      setState(() => _lookingUpCard = false);
     }
+  }
+
+  void _clearLoyaltyCard() {
+    setState(() {
+      _loyaltyCardUid = null;
+      _loyaltyCardInfo = null;
+      _loyaltyCardController.clear();
+    });
   }
 
   static const List<_CustomerProfile> _knownCustomers = [
@@ -174,7 +210,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   static const double _basePricePerLoad = LaundryIntake.basePricePerLoad;
   double get _addOnsTotal =>
       (_addExtraFabCon ? LaundryIntake.addonPrice : 0.0) +
-      (_addExtraDetergent ? LaundryIntake.addonPrice : 0.0);
+          (_addExtraDetergent ? LaundryIntake.addonPrice : 0.0);
   double get _finalTotal => (_basePricePerLoad * _loads.length) + _addOnsTotal;
 
   String get _customerFullName {
@@ -189,16 +225,16 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   double _getLoadWeight(int index) => double.tryParse(_loads[index].weightController.text) ?? 0.0;
   double _getLoadLimit(int index) => _categories[_loads[index].category]!['limit'] as double;
   bool _isLoadOverLimit(int index) => _getLoadWeight(index) > _getLoadLimit(index);
-  
+
   double get _totalWeight => _loads.fold(0.0, (sum, load) => sum + _getLoadWeight(_loads.indexOf(load)));
 
   double _calculateTotalPrice() {
     double basePrice = 170.0 * _loads.length;
     double addOnsPrice = 0.0;
-    
+
     if (_addExtraFabCon) addOnsPrice += 20.0;
     if (_addExtraDetergent) addOnsPrice += 20.0;
-    
+
     return basePrice + addOnsPrice;
   }
 
@@ -206,12 +242,11 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   bool get _isStep1Complete {
     return _customerFullName.isNotEmpty && _customerFullName != 'Walk-in Customer';
   }
-  
+
   bool get _isStep2Complete {
-    return _selectedRfidTag != null && 
-           _loads.isNotEmpty && 
-           _loads.every((load) => _getLoadWeight(_loads.indexOf(load)) > 0) &&
-           (_selectedReturn != ReturnMethod.delivery || _addressController.text.trim().isNotEmpty);
+    return _loads.isNotEmpty &&
+        _loads.every((load) => _getLoadWeight(_loads.indexOf(load)) > 0) &&
+        (_selectedReturn != ReturnMethod.delivery || _addressController.text.trim().isNotEmpty);
   }
 
   void _addLoad() {
@@ -234,9 +269,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     final String category = _loads[loadIndex].category;
     final double limit = _categories[category]!['limit'] as double;
     final String unit = _categories[category]!['unit'] as String;
-    
+
     if (weight <= limit) return;
-    
+
     final int suggestedLoads = (weight / limit).ceil();
     final double weightPerLoad = weight / suggestedLoads;
 
@@ -394,16 +429,16 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               shape: BoxShape.circle,
             ),
             child: Center(
-              child: isComplete 
-                ? const Icon(Icons.check, color: Colors.white, size: 18)
-                : Text(
-                    '$stepNumber',
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
+              child: isComplete
+                  ? const Icon(Icons.check, color: Colors.white, size: 18)
+                  : Text(
+                '$stepNumber',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 4),
@@ -483,46 +518,34 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     _landmarkController.dispose();
     _instructionsController.dispose();
     _notesController.dispose();
+    _loyaltyCardController.dispose();
+    _scrollController.dispose();
     for (var load in _loads) {
       load.dispose();
     }
     super.dispose();
   }
 
+  void _scrollToStep(GlobalKey key) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.endOfFrame.then((_) {
+        final ctx = key.currentContext;
+        if (!mounted || ctx == null) return;
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+          alignment: 0.0, // align top of widget to top of viewport
+        );
+      });
+    });
+  }
+
   Future<void> _submitOrder({required bool isPaidImmediately, String? paymentMethod}) async {
     // Prevent duplicate submissions
     if (_isSubmitting) return;
-    
-    // Validation 1: RFID Tag
-    if (_selectedRfidTag == null || _availableRfidTags.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select an RFID tag before confirming.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
 
-    // Validation 2: Double-check RFID availability (real-time check)
-    final isRfidStillAvailable = await _rfidService.isRfidTagAvailable(_selectedRfidTag!);
-    if (!isRfidStillAvailable) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('RFID tag "$_selectedRfidTag" is no longer available. Please select another tag.'),
-          duration: const Duration(seconds: 4),
-          backgroundColor: Colors.red,
-        ),
-      );
-      // Refresh available tags and clear selection
-      await _loadAvailableRfidTags();
-      setState(() {
-        _selectedRfidTag = null;
-      });
-      return;
-    }
-
-    // Validation 2: Customer name
+    // Validation 1: Customer name (required)
     if (_customerFullName.trim().isEmpty || _customerFullName == 'Walk-in Customer') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -567,7 +590,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         );
         return;
       }
-      
+
       // Warning for very high weights (possible typo)
       if (weight > 50) {
         final confirmed = await showDialog<bool>(
@@ -587,7 +610,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             ],
           ),
         );
-        
+
         if (confirmed != true) return;
       }
     }
@@ -600,12 +623,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     try {
       // Step 1: Create customer
       print('🔄 Creating customer...');
-      
+
       // Split customer name into first and last name
       final nameParts = _customerFullName.trim().split(' ');
       final firstName = nameParts.first;
       final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : null;
-      
+
       final customerId = await _customerService.createCustomer(
         firstName: firstName,
         lastName: lastName,
@@ -614,15 +637,15 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         address: _selectedReturn == ReturnMethod.delivery ? _addressController.text.trim() : null,
         landmark: _selectedReturn == ReturnMethod.delivery ? _landmarkController.text.trim() : null,
       );
-      
+
       print('✅ Customer created: $customerId');
 
       // Step 2: Get service and pricing information
       print('🔄 Loading service catalog...');
-      
+
       // Debug: Test connection first
       await _catalogService.testConnection();
-      
+
       final service = await _catalogService.getFullService();
       final serviceId = service['id'] as String;
       final serviceName = service['service_name'] as String;
@@ -630,7 +653,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
       // Step 3: Get add-ons if selected
       final List<Map<String, dynamic>> addons = [];
-      
+
       if (_addExtraFabCon) {
         final fabConAddon = await _catalogService.getAddonByName('Extra Fab Con');
         addons.add({
@@ -641,7 +664,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           'line_total': (fabConAddon['price'] as num).toDouble(),
         });
       }
-      
+
       if (_addExtraDetergent) {
         final detergentAddon = await _catalogService.getAddonByName('Extra Detergent');
         addons.add({
@@ -662,7 +685,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         final limit = _categories[category]!['limit'] as double;
         final unit = _categories[category]!['unit'] as String;
         final desc = _categories[category]!['desc'] as String;
-        
+
         orderLoads.add(OrderLoad(
           loadNumber: i + 1,
           category: category,
@@ -680,14 +703,15 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       final totalAmount = subtotal; // delivery_fee is always 0
 
       // Step 6: Build customer notes
-      final String? customerNotes = _instructionsController.text.trim().isNotEmpty 
-          ? _instructionsController.text.trim() 
+      final String? customerNotes = _instructionsController.text.trim().isNotEmpty
+          ? _instructionsController.text.trim()
           : null;
 
       // Step 7: Build staff notes with order details
       final String staffNotes = [
         if (_loads.length > 1) '${_loads.length} loads: ${orderLoads.map((l) => '${l.weight}${l.unit} ${l.category}').join(', ')}',
         if (_loads.length == 1) 'Load: ${orderLoads[0].weight}${orderLoads[0].unit} ${orderLoads[0].category}',
+        if (_loyaltyCardUid != null) 'Loyalty Card: $_loyaltyCardUid',
         if (_selectedReturn == ReturnMethod.delivery && _addressController.text.trim().isNotEmpty)
           'Delivery Address: ${_addressController.text.trim()}${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
         if (_addExtraFabCon) 'Extra Fab Con (+₱20)',
@@ -702,7 +726,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       // Step 9: Get current staff ID from auth
       final currentUser = SupabaseService.currentUser;
       String? assignedStaffId;
-      
+
       if (currentUser != null) {
         // Get staff profile_id from profiles table
         final profile = await SupabaseService.client
@@ -710,7 +734,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             .select('id')
             .eq('supabase_user_id', currentUser.id)
             .maybeSingle();
-        
+
         if (profile != null) {
           // Get employee record
           final employee = await SupabaseService.client
@@ -718,7 +742,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               .select('id')
               .eq('profile_id', profile['id'])
               .maybeSingle();
-          
+
           if (employee != null) {
             assignedStaffId = employee['id'] as String;
           }
@@ -742,12 +766,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         deliveryLandmark: _selectedReturn == ReturnMethod.delivery ? _landmarkController.text.trim() : null,
         customerNotes: customerNotes,
         staffNotes: staffNotes.isNotEmpty ? staffNotes : null,
-        rfidTag: _selectedRfidTag,
+        rfidTag: null,
         addons: addons,
         isPaid: isPaidImmediately,
         paymentMethod: paymentMethod,
       );
-      
+
       print('✅ Order created: $orderId');
 
       print('✅ Order created: $orderId');
@@ -778,10 +802,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       if (!mounted) return;
 
       print('❌ Error creating order: $e');
-      
+
       // Parse error for user-friendly messages
       String errorMessage = 'Error creating order';
-      
+
       if (e.toString().contains('connection')) {
         errorMessage = 'Connection error. Please check your internet and try again.';
       } else if (e.toString().contains('permission') || e.toString().contains('denied')) {
@@ -801,7 +825,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           errorMessage = 'Error: $errorStr';
         }
       }
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(errorMessage),
@@ -948,19 +972,19 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
-                  child: _isSubmitting 
+                  child: _isSubmitting
                       ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
                       : const Text(
-                          'Confirm Payment',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
+                    'Confirm Payment',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -980,7 +1004,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   @override
   Widget build(BuildContext context) {
-    final bool hasRfidSelected = _selectedRfidTag != null;
+    final bool hasCardLinked = _loyaltyCardUid != null;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -998,8 +1022,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             margin: const EdgeInsets.only(right: 16, top: 12, bottom: 12),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: _availableRfidTags.isEmpty
-                  ? AppTheme.errorRed.withValues(alpha: 0.1)
+              color: _lookingUpCard
+                  ? Colors.orange.withValues(alpha: 0.1)
+                  : _loyaltyCardInfo != null
+                  ? Colors.green.withValues(alpha: 0.1)
                   : AppTheme.accentBlue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
@@ -1007,17 +1033,31 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  Icons.nfc_outlined,
+                  _loyaltyCardInfo != null
+                      ? Icons.credit_card
+                      : Icons.credit_card_outlined,
                   size: 14,
-                  color: _availableRfidTags.isEmpty ? AppTheme.errorRed : AppTheme.accentBlue,
+                  color: _lookingUpCard
+                      ? Colors.orange
+                      : _loyaltyCardInfo != null
+                      ? Colors.green
+                      : AppTheme.accentBlue,
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  '${_availableRfidTags.length} Tags Available',
+                  _lookingUpCard
+                      ? 'Looking up...'
+                      : _loyaltyCardInfo != null
+                      ? '${_loyaltyCardInfo!.pointsBalance} pts'
+                      : 'No Card Scanned',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: _availableRfidTags.isEmpty ? AppTheme.errorRed : AppTheme.accentBlue,
+                    color: _lookingUpCard
+                        ? Colors.orange
+                        : _loyaltyCardInfo != null
+                        ? Colors.green
+                        : AppTheme.accentBlue,
                   ),
                 ),
               ],
@@ -1027,6 +1067,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       ),
       bottomNavigationBar: _buildStickyBottomBar(),
       body: SingleChildScrollView(
+        controller: _scrollController,
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1034,17 +1075,36 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             // Progress indicator
             _buildProgressIndicator(),
             const SizedBox(height: 20),
-            
+
             // 1. Customer Section (Step 1)
-            _buildCustomerSection(),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: KeyedSubtree(
+                key: _step1Key,
+                child: _buildCustomerSection(),
+              ),
+            ),
             const SizedBox(height: 14),
 
             // 2. Laundry & Intake Section (Step 2)
-            _buildLaundryIntakeSection(hasRfidSelected),
+            KeyedSubtree(
+              key: _step2Key,
+              child: _buildLaundryIntakeSection(hasCardLinked),
+            ),
             const SizedBox(height: 14),
-            
+
             // 3. Add-ons & Notes Section (Step 3)
-            _buildAddOnsSection(),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: KeyedSubtree(
+                key: _step3Key,
+                child: _buildAddOnsSection(),
+              ),
+            ),
             const SizedBox(height: 16),
           ],
         ),
@@ -1054,11 +1114,14 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   Widget _buildCustomerSection() {
     final isExpanded = _expandedStep == 1;
-    
+
     return Container(
+      // FIX: clip children to the card's rounded border so nothing inside can
+      // ever paint outside this card's bounds.
+      clipBehavior: Clip.antiAlias,
       decoration: AppStyles.cardDecoration.copyWith(
         border: Border.all(
-          color: isExpanded ? AppTheme.accentBlue.withValues(alpha: 0.3) : AppTheme.borderGray, 
+          color: isExpanded ? AppTheme.accentBlue.withValues(alpha: 0.3) : AppTheme.borderGray,
           width: isExpanded ? 2 : 1,
         ),
       ),
@@ -1066,7 +1129,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         children: [
           // Header - always visible and clickable
           InkWell(
-            onTap: () => setState(() => _expandedStep = isExpanded ? null : 1),
+            onTap: () {
+              setState(() => _expandedStep = isExpanded ? null : 1);
+              if (!isExpanded) _scrollToStep(_step1Key);
+            },
             child: Container(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -1075,17 +1141,17 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: _isStep1Complete 
-                        ? Colors.green.withValues(alpha: 0.12)
-                        : AppTheme.accentBlue.withValues(alpha: 0.12),
+                      color: _isStep1Complete
+                          ? Colors.green.withValues(alpha: 0.12)
+                          : AppTheme.accentBlue.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
                     child: _isStep1Complete
-                      ? const Icon(Icons.check, size: 16, color: Colors.green)
-                      : const Text('1', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue)),
+                        ? const Icon(Icons.check, size: 16, color: Colors.green)
+                        : const Text('1', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue)),
                   ),
                   const SizedBox(width: 12),
-                  
+
                   // Title and summary
                   Expanded(
                     child: Column(
@@ -1098,9 +1164,13 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                         if (!isExpanded && _isStep1Complete) ...[
                           const SizedBox(height: 2),
                           Text(
-                            _customerFullName + (_phoneController.text.trim().isNotEmpty 
-                              ? ' • ${_phoneController.text.trim()}' 
-                              : ''),
+                            _customerFullName +
+                                (_phoneController.text.trim().isNotEmpty
+                                    ? ' • ${_phoneController.text.trim()}'
+                                    : '') +
+                                (_loyaltyCardUid != null
+                                    ? ' • Card: $_loyaltyCardUid'
+                                    : ''),
                             style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1108,7 +1178,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                       ],
                     ),
                   ),
-                  
+
                   // Status indicators
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1134,7 +1204,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               ),
             ),
           ),
-          
+
           // Content - expandable
           if (isExpanded) ...[
             const Divider(height: 1),
@@ -1143,6 +1213,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Loyalty Card Banner / Quick Scanner
+                  _buildStep1LoyaltyCardWidget(),
+                  const SizedBox(height: 12),
+
                   // Customer suggestion banner
                   if (_suggestedCustomer != null && !_dismissedSuggestion)
                     Padding(
@@ -1288,11 +1362,13 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     );
   }
 
-  Widget _buildLaundryIntakeSection(bool hasRfidSelected) {
+  Widget _buildLaundryIntakeSection(bool hasCardLinked) {
     final isExpanded = _expandedStep == 2;
-    
+
     // Always accessible - no locked state
     return Container(
+      // FIX: clip children to the card's rounded border.
+      clipBehavior: Clip.antiAlias,
       decoration: AppStyles.cardDecoration.copyWith(
         border: Border.all(
           color: isExpanded ? AppTheme.accentBlue.withValues(alpha: 0.3) : AppTheme.borderGray,
@@ -1303,7 +1379,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         children: [
           // Header - always visible and clickable
           InkWell(
-            onTap: () => setState(() => _expandedStep = isExpanded ? null : 2),
+            onTap: () {
+              setState(() => _expandedStep = isExpanded ? null : 2);
+              if (!isExpanded) _scrollToStep(_step2Key);
+            },
             child: Container(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -1335,7 +1414,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                         if (!isExpanded && _isStep2Complete) ...[
                           const SizedBox(height: 2),
                           Text(
-                            '${_loads.length} load(s) • ${_totalWeight.toStringAsFixed(1)}kg • Tag: $_selectedRfidTag',
+                            '${_loads.length} load(s) • ${_totalWeight.toStringAsFixed(1)}kg${_loyaltyCardUid != null ? " • Card: $_loyaltyCardUid" : ""}',
                             style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1420,66 +1499,8 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
                   const Divider(height: 24),
 
-                  // RFID Tag Assignment Section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.nfc_outlined, size: 16, color: AppTheme.accentBlue),
-                          SizedBox(width: 6),
-                          Text(
-                            'RFID Tag Assignment (Shared)',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-                          ),
-                        ],
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: _availableRfidTags.isEmpty
-                              ? AppTheme.errorRed.withValues(alpha: 0.1)
-                              : AppTheme.accentBlue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '${_availableRfidTags.length} Available',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: _availableRfidTags.isEmpty ? AppTheme.errorRed : AppTheme.accentBlue,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    initialValue: _selectedRfidTag,
-                    hint: Text(
-                      _loadingRfidTags 
-                        ? 'Loading RFID tags...' 
-                        : _availableRfidTags.isEmpty 
-                          ? 'No RFID tags available'
-                          : 'Select RFID Tag',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                    decoration: InputDecoration(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: AppTheme.borderGray),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: AppTheme.accentBlue, width: 2),
-                      ),
-                    ),
-                    items: _loadingRfidTags ? [] : _availableRfidTags.map((tag) {
-                      return DropdownMenuItem(value: tag, child: Text(tag, style: const TextStyle(fontSize: 13)));
-                    }).toList(),
-                    onChanged: (_loadingRfidTags || _availableRfidTags.isEmpty) ? null : (value) => setState(() => _selectedRfidTag = value),
-                  ),
+                  // RFID Loyalty Card Section
+                  _buildStep2LoyaltyCardWidget(hasCardLinked),
 
                   const Divider(height: 24),
 
@@ -1535,6 +1556,285 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     );
   }
 
+  Widget _buildStep1LoyaltyCardWidget() {
+    if (_loyaltyCardUid != null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.green.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.credit_card, size: 18, color: Colors.green),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Card: $_loyaltyCardUid',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text('Linked', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _loyaltyCardInfo != null
+                        ? '${_loyaltyCardInfo!.ownerName} • ⭐ ${_loyaltyCardInfo!.pointsBalance} pts'
+                        : 'Unregistered Card',
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 18, color: AppTheme.textLight),
+              onPressed: _clearLoyaltyCard,
+              tooltip: 'Unlink card',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.accentBlue.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.nfc_outlined, size: 16, color: AppTheme.accentBlue),
+              SizedBox(width: 6),
+              Text(
+                'RFID Loyalty Card (Tap or Enter UID)',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _loyaltyCardController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    hintText: 'Enter Loyalty Card UID to auto-fill details',
+                    hintStyle: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                      borderSide: BorderSide(color: AppTheme.borderGray),
+                    ),
+                  ),
+                  onSubmitted: (val) {
+                    if (val.trim().isNotEmpty) _lookupLoyaltyCard(val);
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: _lookingUpCard
+                    ? null
+                    : () {
+                  final uid = _loyaltyCardController.text.trim();
+                  if (uid.isNotEmpty) _lookupLoyaltyCard(uid);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentBlue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  minimumSize: const Size(60, 36),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: _lookingUpCard
+                    ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+                    : const Text('Lookup', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStep2LoyaltyCardWidget(bool hasCardLinked) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // FIX: the title Row is wrapped in Expanded so the long label wraps
+            // instead of being laid out at its unconstrained intrinsic width,
+            // which is what let it run underneath the "Optional" badge.
+            const Expanded(
+              child: Row(
+                children: [
+                  Icon(Icons.nfc_outlined, size: 16, color: AppTheme.accentBlue),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Loyalty Card Assignment (Permanent)',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: hasCardLinked
+                    ? Colors.green.withValues(alpha: 0.1)
+                    : AppTheme.accentBlue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                hasCardLinked ? 'Linked' : 'Optional',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: hasCardLinked ? Colors.green : AppTheme.accentBlue,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (hasCardLinked)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.credit_card, size: 20, color: Colors.green),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Card UID: $_loyaltyCardUid',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _loyaltyCardInfo != null
+                            ? '${_loyaltyCardInfo!.ownerName} • ⭐ ${_loyaltyCardInfo!.pointsBalance} pts balance'
+                            : 'Checking balance...',
+                        style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18, color: AppTheme.textLight),
+                  tooltip: 'Unlink card',
+                  onPressed: _clearLoyaltyCard,
+                ),
+              ],
+            ),
+          )
+        else
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _loyaltyCardController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    hintText: 'Scan or enter Card UID (e.g. CARD-001)',
+                    hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textLight),
+                    prefixIcon: const Icon(Icons.credit_card_outlined, size: 18, color: AppTheme.accentBlue),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AppTheme.borderGray),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AppTheme.accentBlue, width: 2),
+                    ),
+                  ),
+                  onSubmitted: (val) {
+                    if (val.trim().isNotEmpty) _lookupLoyaltyCard(val);
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: _lookingUpCard
+                    ? null
+                    : () {
+                  final uid = _loyaltyCardController.text.trim();
+                  if (uid.isNotEmpty) _lookupLoyaltyCard(uid);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentBlue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: _lookingUpCard
+                    ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+                    : const Text('Link', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
   Widget _buildLoadCard(int index) {
     final load = _loads[index];
     final isOver = _isLoadOverLimit(index);
@@ -1575,22 +1875,23 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           ),
           const SizedBox(height: 10),
 
-          // Category Selection - Compact Grid
+          // Category Selection - 2-column wrap grid (natural height, no aspect ratio constraints)
           const Text('Category:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textLight)),
           const SizedBox(height: 6),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 6,
-            crossAxisSpacing: 6,
-            childAspectRatio: 2.2,
-            children: [
-              _buildCompactCategoryTile(categoriesList[0], load, index),
-              _buildCompactCategoryTile(categoriesList[1], load, index),
-              _buildCompactCategoryTile(categoriesList[2], load, index),
-              _buildCompactCategoryTile(categoriesList[3], load, index),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final tileWidth = (constraints.maxWidth - 6) / 2;
+              return Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  SizedBox(width: tileWidth, child: _buildCompactCategoryTile(categoriesList[0], load, index)),
+                  SizedBox(width: tileWidth, child: _buildCompactCategoryTile(categoriesList[1], load, index)),
+                  SizedBox(width: tileWidth, child: _buildCompactCategoryTile(categoriesList[2], load, index)),
+                  SizedBox(width: tileWidth, child: _buildCompactCategoryTile(categoriesList[3], load, index)),
+                ],
+              );
+            },
           ),
 
           const SizedBox(height: 10),
@@ -1696,11 +1997,13 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   Widget _buildCompactCategoryTile(MapEntry<String, Map<String, dynamic>> entry, LoadDraft load, int loadIndex) {
     final isSelected = load.category == entry.key;
+    final icon = entry.value['icon'] as IconData;
 
     return InkWell(
       onTap: () => setState(() => load.category = entry.key),
       borderRadius: BorderRadius.circular(8),
       child: Container(
+        constraints: const BoxConstraints(minHeight: 52),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? AppTheme.accentBlue.withValues(alpha: 0.12) : Colors.white,
@@ -1710,22 +2013,28 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             width: isSelected ? 1.5 : 1,
           ),
         ),
-        child: Center(
-          child: Text(
-            entry.key,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: isSelected ? AppTheme.accentBlue : AppTheme.textDark,
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: isSelected ? AppTheme.accentBlue : AppTheme.textLight),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                entry.key,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? AppTheme.accentBlue : AppTheme.textDark,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-          ),
+          ],
         ),
       ),
     );
   }
+
 
   Widget _buildReturnOption({
     required IconData icon,
@@ -1767,9 +2076,11 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   Widget _buildAddOnsSection() {
     final isExpanded = _expandedStep == 3;
-    
+
     // Always accessible - no locked state
     return Container(
+      // FIX: clip children to the card's rounded border.
+      clipBehavior: Clip.antiAlias,
       decoration: AppStyles.cardDecoration.copyWith(
         border: Border.all(
           color: isExpanded ? AppTheme.accentBlue.withValues(alpha: 0.3) : AppTheme.borderGray,
@@ -1780,7 +2091,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         children: [
           // Header - always visible and clickable
           InkWell(
-            onTap: () => setState(() => _expandedStep = isExpanded ? null : 3),
+            onTap: () {
+              setState(() => _expandedStep = isExpanded ? null : 3);
+              if (!isExpanded) _scrollToStep(_step3Key);
+            },
             child: Container(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -2047,11 +2361,11 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                     Icon(Icons.info_outline, size: 12, color: Colors.orange.shade800),
                     const SizedBox(width: 4),
                     Text(
-                      !_isStep1Complete 
-                        ? 'Complete customer details to continue'
-                        : !_isStep2Complete
-                        ? 'Complete laundry details to enable order creation'
-                        : 'All requirements met',
+                      !_isStep1Complete
+                          ? 'Complete customer details to continue'
+                          : !_isStep2Complete
+                          ? 'Complete laundry details to enable order creation'
+                          : 'All requirements met',
                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange.shade800),
                     ),
                   ],
@@ -2087,10 +2401,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.nfc, size: 12, color: Colors.green),
+                      const Icon(Icons.credit_card, size: 12, color: Colors.green),
                       const SizedBox(width: 4),
                       Text(
-                        'RFID: $_selectedRfidTag • ${_loads.length} load(s) • ${_totalWeight.toStringAsFixed(1)}kg',
+                        '${_loyaltyCardUid != null ? "Card: $_loyaltyCardUid • " : ""}${_loads.length} load(s) • ${_totalWeight.toStringAsFixed(1)}kg',
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green),
                       ),
                     ],
@@ -2102,7 +2416,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 ],
               ),
             ),
-            
+
             // Payment Buttons Row
             Row(
               children: [
@@ -2118,17 +2432,17 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                     ),
                     child: _isSubmitting
                         ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              color: AppTheme.accentBlue,
-                              strokeWidth: 2,
-                            ),
-                          )
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: AppTheme.accentBlue,
+                        strokeWidth: 2,
+                      ),
+                    )
                         : const Text(
-                            'Pay Later',
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                          ),
+                      'Pay Later',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),

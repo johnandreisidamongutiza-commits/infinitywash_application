@@ -320,7 +320,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
           width: isCurrentUser ? 2 : 1,
         ),
         borderRadius: BorderRadius.circular(12),
-        color: isCurrentUser ? AppTheme.accentBlue.withOpacity(0.05) : Colors.white,
+        color: isCurrentUser ? AppTheme.accentBlue.withValues(alpha: 0.05) : Colors.white,
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.all(12),
