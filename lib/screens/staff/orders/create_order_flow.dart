@@ -1004,8 +1004,6 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   @override
   Widget build(BuildContext context) {
-    final bool hasCardLinked = _loyaltyCardUid != null;
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -1077,33 +1075,23 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             const SizedBox(height: 20),
 
             // 1. Customer Section (Step 1)
-            AnimatedSize(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeInOut,
-              alignment: Alignment.topCenter,
-              child: KeyedSubtree(
-                key: _step1Key,
-                child: _buildCustomerSection(),
-              ),
+            KeyedSubtree(
+              key: _step1Key,
+              child: _buildCustomerSection(),
             ),
             const SizedBox(height: 14),
 
             // 2. Laundry & Intake Section (Step 2)
             KeyedSubtree(
               key: _step2Key,
-              child: _buildLaundryIntakeSection(hasCardLinked),
+              child: _buildLaundryIntakeSection(),
             ),
             const SizedBox(height: 14),
 
             // 3. Add-ons & Notes Section (Step 3)
-            AnimatedSize(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeInOut,
-              alignment: Alignment.topCenter,
-              child: KeyedSubtree(
-                key: _step3Key,
-                child: _buildAddOnsSection(),
-              ),
+            KeyedSubtree(
+              key: _step3Key,
+              child: _buildAddOnsSection(),
             ),
             const SizedBox(height: 16),
           ],
@@ -1362,7 +1350,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     );
   }
 
-  Widget _buildLaundryIntakeSection(bool hasCardLinked) {
+  Widget _buildLaundryIntakeSection() {
     final isExpanded = _expandedStep == 2;
 
     // Always accessible - no locked state
@@ -1496,11 +1484,6 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                       ],
                     ),
                   ),
-
-                  const Divider(height: 24),
-
-                  // RFID Loyalty Card Section
-                  _buildStep2LoyaltyCardWidget(hasCardLinked),
 
                   const Divider(height: 24),
 
@@ -1691,149 +1674,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     );
   }
 
-  Widget _buildStep2LoyaltyCardWidget(bool hasCardLinked) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // FIX: the title Row is wrapped in Expanded so the long label wraps
-            // instead of being laid out at its unconstrained intrinsic width,
-            // which is what let it run underneath the "Optional" badge.
-            const Expanded(
-              child: Row(
-                children: [
-                  Icon(Icons.nfc_outlined, size: 16, color: AppTheme.accentBlue),
-                  SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Loyalty Card Assignment (Permanent)',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: hasCardLinked
-                    ? Colors.green.withValues(alpha: 0.1)
-                    : AppTheme.accentBlue.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                hasCardLinked ? 'Linked' : 'Optional',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: hasCardLinked ? Colors.green : AppTheme.accentBlue,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (hasCardLinked)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.green.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.credit_card, size: 20, color: Colors.green),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Card UID: $_loyaltyCardUid',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _loyaltyCardInfo != null
-                            ? '${_loyaltyCardInfo!.ownerName} • ⭐ ${_loyaltyCardInfo!.pointsBalance} pts balance'
-                            : 'Checking balance...',
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 18, color: AppTheme.textLight),
-                  tooltip: 'Unlink card',
-                  onPressed: _clearLoyaltyCard,
-                ),
-              ],
-            ),
-          )
-        else
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _loyaltyCardController,
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: InputDecoration(
-                    hintText: 'Scan or enter Card UID (e.g. CARD-001)',
-                    hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textLight),
-                    prefixIcon: const Icon(Icons.credit_card_outlined, size: 18, color: AppTheme.accentBlue),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppTheme.borderGray),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppTheme.accentBlue, width: 2),
-                    ),
-                  ),
-                  onSubmitted: (val) {
-                    if (val.trim().isNotEmpty) _lookupLoyaltyCard(val);
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: _lookingUpCard
-                    ? null
-                    : () {
-                  final uid = _loyaltyCardController.text.trim();
-                  if (uid.isNotEmpty) _lookupLoyaltyCard(uid);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accentBlue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: _lookingUpCard
-                    ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
-                    : const Text('Link', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-      ],
-    );
-  }
+
 
   Widget _buildLoadCard(int index) {
     final load = _loads[index];

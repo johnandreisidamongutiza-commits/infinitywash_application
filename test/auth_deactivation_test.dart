@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:infinitywash_application/services/auth_service.dart';
+import 'package:infinitywash/services/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Account Deactivation Tests
@@ -279,7 +279,7 @@ void main() {
 
       // Assert
       expect(response, isNotNull);
-      expect(response!.user.id, equals(userId));
+      expect(response!.user!.id, equals(userId));
     });
   });
 

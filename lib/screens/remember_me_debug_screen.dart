@@ -3,7 +3,7 @@
 // Remove this file once remember me is working
 
 import 'package:flutter/material.dart';
-import 'package:path/path.dart';
+import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
@@ -102,7 +102,7 @@ class _RememberMeDebugScreenState extends State<RememberMeDebugScreen> {
       buffer.writeln('5. DATABASE LOCATION:');
       final dbPath = await getDatabasesPath();
       buffer.writeln('   Path: $dbPath');
-      buffer.writeln('   File: ${join(dbPath, 'saved_accounts.db')}');
+      buffer.writeln('   File: ${path.join(dbPath, 'saved_accounts.db')}');
       buffer.writeln('');
 
       // 6. Check raw database
@@ -156,11 +156,11 @@ class _RememberMeDebugScreenState extends State<RememberMeDebugScreen> {
 
     try {
       // Write test
-      await _secureStorage._storage.write(key: 'test_key', value: 'test_value');
+      await _secureStorage.storage.write(key: 'test_key', value: 'test_value');
       buffer.writeln('✅ Write test: Success');
 
       // Read test
-      final value = await _secureStorage._storage.read(key: 'test_key');
+      final value = await _secureStorage.storage.read(key: 'test_key');
       if (value == 'test_value') {
         buffer.writeln('✅ Read test: Success');
       } else {
@@ -168,8 +168,8 @@ class _RememberMeDebugScreenState extends State<RememberMeDebugScreen> {
       }
 
       // Delete test
-      await _secureStorage._storage.delete(key: 'test_key');
-      final deletedValue = await _secureStorage._storage.read(key: 'test_key');
+      await _secureStorage.storage.delete(key: 'test_key');
+      final deletedValue = await _secureStorage.storage.read(key: 'test_key');
       if (deletedValue == null) {
         buffer.writeln('✅ Delete test: Success');
       } else {

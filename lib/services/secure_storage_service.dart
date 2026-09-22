@@ -12,6 +12,9 @@ class SecureStorageService {
 
   SecureStorageService._init();
 
+  /// Expose the underlying FlutterSecureStorage instance for direct operations (e.g. debugging/testing)
+  FlutterSecureStorage get storage => _storage;
+
   // Keys for storage
   static const String _accessTokenPrefix = 'access_token_';
   static const String _refreshTokenPrefix = 'refresh_token_';
