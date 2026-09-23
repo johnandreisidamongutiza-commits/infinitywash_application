@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
+import '../../../services/order_service.dart';
+import '../../../services/supabase_service.dart';
 
 class PaymentProcessScreen extends StatefulWidget {
   final LaundryOrder order;
@@ -11,8 +13,13 @@ class PaymentProcessScreen extends StatefulWidget {
 }
 
 class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
+  final OrderService _orderService = OrderService();
   String? _selectedMethod;
   bool _isSuccess = false;
+  bool _isProcessing = false;
+  String? _transactionNumber;
+
+  double get _totalAmount => widget.order.totalAmount ?? (widget.order.basePrice > 0 ? widget.order.basePrice : 170.0);
 
   @override
   Widget build(BuildContext context) {
@@ -37,11 +44,17 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
             const SizedBox(height: 16),
             _buildMethodCard('Cash', Icons.money),
             const SizedBox(height: 12),
-            _buildMethodCard('G-Cash', Icons.account_balance_wallet_outlined),
+            _buildMethodCard('GCash', Icons.account_balance_wallet_outlined),
             const Spacer(),
             ElevatedButton(
-              onPressed: _selectedMethod == null ? null : _processPayment,
-              child: const Text('Complete Payment'),
+              onPressed: (_selectedMethod == null || _isProcessing) ? null : _processPayment,
+              child: _isProcessing
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Text('Complete Payment'),
             ),
           ],
         ),
@@ -50,7 +63,6 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   }
 
   Widget _buildOrderSummary() {
-    const double total = 170.0;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -69,7 +81,10 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
                   Text('Order ${widget.order.displayNumber} • ${widget.order.weightDisplay}', style: AppTheme.lightTheme.textTheme.bodyMedium),
                 ],
               ),
-              Text('₱${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: AppTheme.accentBlue)),
+              Text(
+                '₱${_totalAmount.toStringAsFixed(2)}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: AppTheme.accentBlue),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -88,7 +103,7 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   Widget _buildMethodCard(String method, IconData icon) {
     bool isSelected = _selectedMethod == method;
     return GestureDetector(
-      onTap: () => setState(() => _selectedMethod = method),
+      onTap: _isProcessing ? null : () => setState(() => _selectedMethod = method),
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: isSelected ? AppStyles.selectedCardDecoration : AppStyles.cardDecoration,
@@ -105,8 +120,63 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
     );
   }
 
-  void _processPayment() {
-    setState(() => _isSuccess = true);
+  Future<void> _processPayment() async {
+    if (_selectedMethod == null) return;
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      // Find staff ID
+      final currentUser = SupabaseService.currentUser;
+      String? assignedStaffId;
+      if (currentUser != null) {
+        final profile = await SupabaseService.client
+            .from('profiles')
+            .select('id')
+            .eq('supabase_user_id', currentUser.id)
+            .maybeSingle();
+
+        if (profile != null) {
+          final employee = await SupabaseService.client
+              .from('employees')
+              .select('id')
+              .eq('profile_id', profile['id'])
+              .maybeSingle();
+
+          if (employee != null) {
+            assignedStaffId = employee['id'] as String;
+          }
+        }
+      }
+
+      final txNumber = await _orderService.recordPayment(
+        orderId: widget.order.id,
+        amount: _totalAmount,
+        paymentMethod: _selectedMethod!,
+        assignedStaffId: assignedStaffId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isProcessing = false;
+        _transactionNumber = txNumber;
+        _isSuccess = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isProcessing = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment failed: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildSuccessView() {
@@ -127,7 +197,7 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
               _buildReceiptCard(),
               const SizedBox(height: 30),
               ElevatedButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(context, true), // Return true to indicate payment completed
                 child: const Text('Back to Payments'),
               ),
             ],
@@ -138,6 +208,9 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   }
 
   Widget _buildReceiptCard() {
+    final now = DateTime.now();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final nowStr = '${months[now.month - 1]} ${now.day.toString().padLeft(2, '0')}, ${now.year}';
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: AppStyles.cardDecoration,
@@ -148,14 +221,16 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
           const SizedBox(height: 20),
           _receiptRow('Customer', widget.order.customerName),
           _receiptRow('Order ID', widget.order.displayNumber),
+          if (_transactionNumber != null)
+            _receiptRow('Ref #', _transactionNumber!),
           _receiptRow('Weight', widget.order.weightDisplay),
           _receiptRow('Package', 'Full Service (Wash, Dry & Fold)'),
           _receiptRow('Detergent & Fab Con', 'INCLUDED (FREE)'),
           _receiptRow('Pick-up & Delivery', 'INCLUDED (FREE)'),
-          _receiptRow('Date', 'Sept 04, 2026'),
-          _receiptRow('Payment Method', _selectedMethod!),
+          _receiptRow('Date', nowStr),
+          _receiptRow('Payment Method', _selectedMethod ?? 'Cash'),
           const Divider(height: 24),
-          _receiptRow('Total Amount Paid', '₱170.00', isBold: true),
+          _receiptRow('Total Amount Paid', '₱${_totalAmount.toStringAsFixed(2)}', isBold: true),
         ],
       ),
     );

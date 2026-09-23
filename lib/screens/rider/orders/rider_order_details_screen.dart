@@ -52,11 +52,10 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
     }
     
     // Use actual order data
-    String orderNumber = widget.order.id;
+    String orderNumber = widget.order.orderNumber ?? widget.order.displayNumber;
     String customerName = widget.order.customerName;
     String address = widget.order.deliveryAddress ?? 'No address provided';
     String phoneNumber = widget.order.customerPhone ?? 'No phone';
-    String rfidTag = widget.order.rfidTag ?? 'Not assigned';
     String serviceType = '${widget.order.collectionText} → ${widget.order.returnText}';
     String weight = _hasTBDLoads ? 'To be determined at pickup' : widget.order.weightDisplay;
     String instructions = widget.order.instructions ?? widget.order.customerDescription ?? 'No special instructions';
@@ -89,7 +88,7 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
                   // Customer Information Section
                   Text('Customer Information', style: AppTheme.lightTheme.textTheme.titleMedium),
                   const SizedBox(height: 12),
-                  _buildCustomerInfoCard(customerName, address, phoneNumber, rfidTag),
+                  _buildCustomerInfoCard(customerName, address, phoneNumber),
                   const SizedBox(height: 24),
 
                   // Order Details Section
@@ -500,7 +499,7 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
     Navigator.pop(context);
   }
 
-  Widget _buildCustomerInfoCard(String name, String address, String phone, String rfid) {
+  Widget _buildCustomerInfoCard(String name, String address, String phone) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration,
@@ -511,8 +510,6 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
           _buildInfoRow(Icons.location_on_outlined, address),
           const SizedBox(height: 12),
           _buildInfoRow(Icons.phone_outlined, phone),
-          const SizedBox(height: 12),
-          _buildInfoRow(Icons.style_outlined, 'RFID: $rfid'),
         ],
       ),
     );

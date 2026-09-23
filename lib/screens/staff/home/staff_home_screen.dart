@@ -348,11 +348,15 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                 Icons.add_shopping_cart_outlined,
                 AppTheme.accentBlue,
                 AppTheme.lightBlue,
-                () {
-                  Navigator.push(
+                () async {
+                  print('🔵 HOME: Opening create order flow...');
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const CreateOrderFlow()),
                   );
+                  print('🔵 HOME: Returned from create order flow, refreshing...');
+                  await _loadOrders();
+                  print('🔵 HOME: Orders refreshed!');
                 },
               ),
             ),

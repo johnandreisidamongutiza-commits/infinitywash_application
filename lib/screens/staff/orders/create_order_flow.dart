@@ -58,6 +58,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   final TextEditingController _notesController = TextEditingController();
 
   // State variables
+  CollectionMethod _selectedCollection = CollectionMethod.dropOff; // Pickup or drop-off
   ReturnMethod _selectedReturn = ReturnMethod.shopPickup;
 
   // Loyalty card state (optional — customer may not have a card yet)
@@ -246,7 +247,8 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   bool get _isStep2Complete {
     return _loads.isNotEmpty &&
         _loads.every((load) => _getLoadWeight(_loads.indexOf(load)) > 0) &&
-        (_selectedReturn != ReturnMethod.delivery || _addressController.text.trim().isNotEmpty);
+        ((_selectedCollection != CollectionMethod.riderPickup && _selectedReturn != ReturnMethod.delivery) || 
+         _addressController.text.trim().isNotEmpty);
   }
 
   void _addLoad() {
@@ -556,11 +558,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       return;
     }
 
-    // Validation 3: Delivery address for delivery orders
-    if (_selectedReturn == ReturnMethod.delivery && _addressController.text.trim().isEmpty) {
+    // Validation 3: Address required for pickup or delivery orders
+    if ((_selectedCollection == CollectionMethod.riderPickup || _selectedReturn == ReturnMethod.delivery) && 
+        _addressController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter a delivery address for delivery orders.'),
+          content: Text('Please enter an address for pickup/delivery orders.'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -712,8 +715,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         if (_loads.length > 1) '${_loads.length} loads: ${orderLoads.map((l) => '${l.weight}${l.unit} ${l.category}').join(', ')}',
         if (_loads.length == 1) 'Load: ${orderLoads[0].weight}${orderLoads[0].unit} ${orderLoads[0].category}',
         if (_loyaltyCardUid != null) 'Loyalty Card: $_loyaltyCardUid',
-        if (_selectedReturn == ReturnMethod.delivery && _addressController.text.trim().isNotEmpty)
+        if (_selectedCollection == CollectionMethod.riderPickup && _addressController.text.trim().isNotEmpty)
+          'Pickup Address: ${_addressController.text.trim()}${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
+        if (_selectedReturn == ReturnMethod.delivery && _selectedCollection != CollectionMethod.riderPickup && _addressController.text.trim().isNotEmpty)
           'Delivery Address: ${_addressController.text.trim()}${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
+        if (_selectedReturn == ReturnMethod.delivery && _selectedCollection == CollectionMethod.riderPickup)
+          'Delivery to same address as pickup',
         if (_addExtraFabCon) 'Extra Fab Con (+₱20)',
         if (_addExtraDetergent) 'Extra Detergent (+₱20)',
       ].join(' | ');
@@ -760,10 +767,14 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         subtotal: subtotal,
         totalAmount: totalAmount,
         assignedStaffId: assignedStaffId,
-        pickupRequested: false, // Walk-in orders don't need pickup
+        pickupRequested: _selectedCollection == CollectionMethod.riderPickup,
         deliveryRequested: _selectedReturn == ReturnMethod.delivery,
-        deliveryAddress: _selectedReturn == ReturnMethod.delivery ? _addressController.text.trim() : null,
-        deliveryLandmark: _selectedReturn == ReturnMethod.delivery ? _landmarkController.text.trim() : null,
+        deliveryAddress: (_selectedCollection == CollectionMethod.riderPickup || _selectedReturn == ReturnMethod.delivery) 
+            ? _addressController.text.trim() 
+            : null,
+        deliveryLandmark: (_selectedCollection == CollectionMethod.riderPickup || _selectedReturn == ReturnMethod.delivery) 
+            ? _landmarkController.text.trim() 
+            : null,
         customerNotes: customerNotes,
         staffNotes: staffNotes.isNotEmpty ? staffNotes : null,
         rfidTag: null,
@@ -1487,6 +1498,52 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
                   const Divider(height: 24),
 
+                  // Collection Method
+                  const Text(
+                    'Collection Method',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildReturnOption(
+                          icon: Icons.store_outlined,
+                          title: 'Walk-in Drop-off',
+                          isSelected: _selectedCollection == CollectionMethod.dropOff,
+                          onTap: () => setState(() => _selectedCollection = CollectionMethod.dropOff),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildReturnOption(
+                          icon: Icons.two_wheeler,
+                          title: 'Rider Pickup',
+                          isSelected: _selectedCollection == CollectionMethod.riderPickup,
+                          onTap: () => setState(() => _selectedCollection = CollectionMethod.riderPickup),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_selectedCollection == CollectionMethod.riderPickup) ...[
+                    const SizedBox(height: 12),
+                    CustomTextField(
+                      label: 'Pickup Address',
+                      hint: 'House/Unit No., Street, Barangay, City',
+                      prefixIcon: Icons.location_on_outlined,
+                      controller: _addressController,
+                    ),
+                    const SizedBox(height: 10),
+                    CustomTextField(
+                      label: 'Landmark (Optional)',
+                      hint: 'Near blue gate, across grocery store...',
+                      prefixIcon: Icons.flag_outlined,
+                      controller: _landmarkController,
+                    ),
+                  ],
+
+                  const Divider(height: 24),
+
                   // Return Method
                   const Text(
                     'Return Method',
@@ -1516,19 +1573,44 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   ),
                   if (_selectedReturn == ReturnMethod.delivery) ...[
                     const SizedBox(height: 12),
-                    CustomTextField(
-                      label: 'Delivery Address',
-                      hint: 'House/Unit No., Street, Barangay, City',
-                      prefixIcon: Icons.location_on_outlined,
-                      controller: _addressController,
-                    ),
-                    const SizedBox(height: 10),
-                    CustomTextField(
-                      label: 'Landmark (Optional)',
-                      hint: 'Near blue gate, across grocery store...',
-                      prefixIcon: Icons.flag_outlined,
-                      controller: _landmarkController,
-                    ),
+                    // Show address fields only if not already shown for pickup
+                    if (_selectedCollection != CollectionMethod.riderPickup) ...[
+                      CustomTextField(
+                        label: 'Delivery Address',
+                        hint: 'House/Unit No., Street, Barangay, City',
+                        prefixIcon: Icons.location_on_outlined,
+                        controller: _addressController,
+                      ),
+                      const SizedBox(height: 10),
+                      CustomTextField(
+                        label: 'Landmark (Optional)',
+                        hint: 'Near blue gate, across grocery store...',
+                        prefixIcon: Icons.flag_outlined,
+                        controller: _landmarkController,
+                      ),
+                    ] else ...[
+                      // If pickup is selected, show a note that the same address will be used
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, size: 18, color: AppTheme.accentBlue.withValues(alpha: 0.8)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Delivery will use the same address as pickup',
+                                style: TextStyle(fontSize: 12, color: AppTheme.accentBlue.withValues(alpha: 0.9)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ],
               ),
@@ -1754,7 +1836,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   onChanged: (_) => setState(() {}),
                   textAlign: TextAlign.center,
                   decoration: InputDecoration(
-                    hintText: '5.0',
+                    hintText: '0',
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(

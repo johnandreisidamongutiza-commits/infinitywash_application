@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
-import '../../../services/mock_data_service.dart';
+import '../../../services/rider_service.dart';
 import '../route/rider_route_screen.dart';
 import 'rider_order_details_screen.dart';
 
@@ -13,26 +13,66 @@ class RiderOrdersScreen extends StatefulWidget {
 }
 
 class _RiderOrdersScreenState extends State<RiderOrdersScreen> {
+  final RiderService _riderService = RiderService();
   bool _showNew = true;
+  bool _isLoading = false;
+  String? _error;
+  List<LaundryOrder> _pickupOrders = [];
+  List<LaundryOrder> _deliveryOrders = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrders();
+  }
+
+  Future<void> _loadOrders() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      // Load both pickup and delivery orders in parallel
+      final results = await Future.wait([
+        _riderService.fetchPickupOrders(),
+        _riderService.fetchDeliveryOrders(),
+      ]);
+
+      if (mounted) {
+        setState(() {
+          _pickupOrders = results[0];
+          _deliveryOrders = results[1];
+          _isLoading = false;
+        });
+
+        print('=== Rider Orders Loaded ===');
+        print('Pickups: ${_pickupOrders.length}');
+        for (var order in _pickupOrders) {
+          print('- ${order.orderNumber ?? order.id}: ${order.customerName}, status: ${order.status}');
+        }
+        print('Deliveries: ${_deliveryOrders.length}');
+        for (var order in _deliveryOrders) {
+          print('- ${order.orderNumber ?? order.id}: ${order.customerName}, status: ${order.status}');
+        }
+      }
+    } catch (e) {
+      print('❌ Error loading rider orders: $e');
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   List<LaundryOrder> get _currentOrders {
-    if (_showNew) {
-      final pickups = MockDataService().getRiderPickups();
-      print('=== Rider Pickups ===');
-      print('Total pickups: ${pickups.length}');
-      for (var order in pickups) {
-        print('- ${order.id}: ${order.customerName}, status: ${order.status}, collection: ${order.collectionMethod}');
-      }
-      return pickups;
-    } else {
-      return MockDataService().getRiderDeliveries();
-    }
+    return _showNew ? _pickupOrders : _deliveryOrders;
   }
 
   @override
   Widget build(BuildContext context) {
-    final orders = _currentOrders;
-    
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -40,31 +80,96 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Row(
-              children: [
-                _buildFilterChip('Pick-ups (New)', _showNew),
-                const SizedBox(width: 12),
-                _buildFilterChip('Deliveries (Active)', !_showNew),
-              ],
-            ),
-          ),
-          Expanded(
-            child: orders.isEmpty
-                ? _buildEmptyState()
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    itemCount: orders.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 16),
-                    itemBuilder: (context, index) => _buildTaskCard(orders[index]),
-                  ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _isLoading ? null : _loadOrders,
+            tooltip: 'Refresh',
           ),
         ],
       ),
+      body: RefreshIndicator(
+        onRefresh: _loadOrders,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Row(
+                children: [
+                  _buildFilterChip('Pick-ups (${_pickupOrders.length})', _showNew),
+                  const SizedBox(width: 12),
+                  _buildFilterChip('Deliveries (${_deliveryOrders.length})', !_showNew),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _buildContent(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 64,
+                color: AppTheme.errorRed,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Error loading orders',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppTheme.textLight,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _loadOrders,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final orders = _currentOrders;
+    if (orders.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      itemCount: orders.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 16),
+      itemBuilder: (context, index) => _buildTaskCard(orders[index]),
     );
   }
 
@@ -208,7 +313,7 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> {
                 child: OutlinedButton(
                   onPressed: () async {
                     print('=== View Details clicked ===');
-                    print('Order: ${order.id} - ${order.customerName}');
+                    print('Order: ${order.orderNumber ?? order.id} - ${order.customerName}');
                     print('Has loads: ${order.loads.isNotEmpty}, Load count: ${order.loads.length}');
                     
                     await Navigator.push(
@@ -220,7 +325,9 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> {
                         ),
                       ),
                     );
-                    setState(() {}); // Refresh list after returning
+                    
+                    // Refresh orders after returning from details
+                    _loadOrders();
                   },
                   child: const Text('View Details'),
                 ),

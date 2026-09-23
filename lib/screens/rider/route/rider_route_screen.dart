@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
-import '../../../services/mock_data_service.dart';
+import '../../../services/rider_service.dart';
+import '../../../models/order.dart';
 import 'rider_route_map_screen.dart';
 import '../rider_main_screen.dart';
 import '../../../widgets/top_notification.dart';
@@ -17,63 +18,68 @@ class RiderRouteScreen extends StatefulWidget {
 enum NavigationPhase { onTheWay, arrived, completed }
 
 class _RiderRouteScreenState extends State<RiderRouteScreen> {
+  final RiderService _riderService = RiderService();
+  
   int _currentStopIndex = 0;
   NavigationPhase _phase = NavigationPhase.onTheWay;
+  bool _isLoading = true;
+  String? _error;
+  
+  List<LaundryOrder> _pickupOrders = [];
+  List<LaundryOrder> _deliveryOrders = [];
+  List<LaundryOrder> _routeOrders = [];
 
-  // Mock list of stops for today's active route
-  final List<Map<String, dynamic>> _stops = [
-    {
-      'stopNumber': 1,
-      'name': 'Maria Santos',
-      'address': '123 Mango Ave, Cebu City',
-      'type': 'Pickup',
-      'typeColor': AppTheme.errorRed,
-      'time': '09:00 AM',
-      'eta': '5 mins (1.4 km)',
-      'turnInstruction': 'In 250m, turn right onto Mango Ave',
-      'phone': '+63 912 345 6789',
-      'orderId': 'IW-105',
-      'items': '2 Laundry Bags (est. 5 kg)',
-      'notes': 'Ring the doorbell at gate #2. Bags are by the front door.',
-      'status': 'In Progress',
-    },
-    {
-      'stopNumber': 2,
-      'name': 'Juan Dela Cruz',
-      'address': '456 Banilad Rd, Cebu City',
-      'type': 'Drop-off',
-      'typeColor': AppTheme.teamMemberIconOrange,
-      'time': '10:15 AM',
-      'eta': '14 mins (4.8 km)',
-      'turnInstruction': 'Head north on Banilad Rd towards Gov. Cuenco',
-      'phone': '+63 917 888 1234',
-      'orderId': 'IW-106',
-      'items': 'Fresh Clean & Folded (7 kg)',
-      'notes': 'COD Payment: ₱450.00. Gate guard will assist.',
-      'status': 'Upcoming',
-    },
-    {
-      'stopNumber': 3,
-      'name': 'Ana Reyes',
-      'address': '789 Parkmall, Mandaue City',
-      'type': 'Pickup',
-      'typeColor': AppTheme.errorRed,
-      'time': '11:30 AM',
-      'eta': '22 mins (8.1 km)',
-      'turnInstruction': 'Merge onto Mandaue Causeway, take exit 4',
-      'phone': '+63 920 555 9876',
-      'orderId': 'IW-107',
-      'items': '1 Heavy Comforter & Towels',
-      'notes': 'Call 5 minutes prior to arrival.',
-      'status': 'Upcoming',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadOrders();
+  }
 
-  Map<String, dynamic> get _currentStop =>
-      _currentStopIndex < _stops.length ? _stops[_currentStopIndex] : _stops.last;
+  Future<void> _loadOrders() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
 
-  bool get _isAllCompleted =>
-      MockDataService().isRiderRouteCompleted || _currentStopIndex >= _stops.length;
+    try {
+      final results = await Future.wait([
+        _riderService.fetchPickupOrders(),
+        _riderService.fetchDeliveryOrders(),
+      ]);
+
+      _pickupOrders = results[0];
+      _deliveryOrders = results[1];
+
+      // Combine and sort by creation time (FIFO - oldest first)
+      _routeOrders = [..._pickupOrders, ..._deliveryOrders]
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+
+      print('✅ Route loaded: ${_routeOrders.length} stops');
+      print('   Pickups: ${_pickupOrders.length}');
+      print('   Deliveries: ${_deliveryOrders.length}');
+    } catch (e) {
+      print('❌ Error loading route: $e');
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  LaundryOrder? get _currentOrder =>
+      _currentStopIndex < _routeOrders.length ? _routeOrders[_currentStopIndex] : null;
+
+  bool get _isPickup => _currentOrder != null && _pickupOrders.contains(_currentOrder);
+
+  bool get _isAllCompleted => _routeOrders.isEmpty || _currentStopIndex >= _routeOrders.length;
 
   void _markAsArrived() {
     setState(() {
@@ -81,44 +87,71 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
     });
     showTopNotification(
       context,
-      message: 'Arrived at ${_currentStop['name']}\'s location!',
+      message: 'Arrived at ${_currentOrder?.customerName}\'s location!',
       icon: Icons.location_on,
       backgroundColor: AppTheme.primaryBlue,
     );
   }
 
-  void _confirmStop() {
-    final stopName = _currentStop['name'];
-    final isPickup = _currentStop['type'] == 'Pickup';
+  Future<void> _confirmStop() async {
+    if (_currentOrder == null) return;
 
-    setState(() {
-      _stops[_currentStopIndex]['status'] = 'Completed';
-      _currentStopIndex++;
-      if (_currentStopIndex < _stops.length) {
-        _phase = NavigationPhase.onTheWay;
-        _stops[_currentStopIndex]['status'] = 'In Progress';
+    final orderName = _currentOrder!.customerName;
+    final orderId = _currentOrder!.id;
+
+    try {
+      // Update order status in database
+      if (_isPickup) {
+        // Pickup confirmed: pending_pickup → processing
+        await _riderService.updateOrderStatus(orderId!, 'processing');
+        showTopNotification(
+          context,
+          message: 'Pickup from $orderName confirmed!',
+          icon: Icons.check_circle,
+          backgroundColor: Colors.green,
+        );
       } else {
-        _phase = NavigationPhase.completed;
-        MockDataService().completeRiderRoute();
+        // Delivery confirmed: ready/out_for_delivery → completed
+        await _riderService.updateOrderStatus(orderId!, 'completed');
+        showTopNotification(
+          context,
+          message: 'Delivery to $orderName completed!',
+          icon: Icons.check_circle,
+          backgroundColor: Colors.green,
+        );
       }
-    });
 
-    showTopNotification(
-      context,
-      message: isPickup
-          ? 'Pickup from $stopName confirmed!'
-          : 'Delivery to $stopName completed!',
-      icon: Icons.check_circle,
-      backgroundColor: Colors.green,
-    );
+      // Move to next stop
+      setState(() {
+        _currentStopIndex++;
+        if (_currentStopIndex < _routeOrders.length) {
+          _phase = NavigationPhase.onTheWay;
+        } else {
+          _phase = NavigationPhase.completed;
+        }
+      });
+
+      // Reload orders to get fresh data
+      await _loadOrders();
+    } catch (e) {
+      print('❌ Error confirming stop: $e');
+      showTopNotification(
+        context,
+        message: 'Error updating order. Please try again.',
+        icon: Icons.error,
+        backgroundColor: AppTheme.errorRed,
+      );
+    }
   }
 
   void _skipStopDialog() {
+    if (_currentOrder == null) return;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Skip This Stop?'),
-        content: Text('Are you sure you want to skip Stop #${_currentStop['stopNumber']} (${_currentStop['name']})? You can revisit it later.'),
+        content: Text('Are you sure you want to skip ${_currentOrder!.customerName}? You can revisit it later.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -128,14 +161,11 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
             onPressed: () {
               Navigator.pop(ctx);
               setState(() {
-                _stops[_currentStopIndex]['status'] = 'Skipped';
                 _currentStopIndex++;
-                if (_currentStopIndex < _stops.length) {
+                if (_currentStopIndex < _routeOrders.length) {
                   _phase = NavigationPhase.onTheWay;
-                  _stops[_currentStopIndex]['status'] = 'In Progress';
                 } else {
                   _phase = NavigationPhase.completed;
-                  MockDataService().completeRiderRoute();
                 }
               });
               showTopNotification(
@@ -155,14 +185,84 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('Loading Route...'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('Route Error'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: AppTheme.errorRed),
+                const SizedBox(height: 16),
+                const Text(
+                  'Error loading route',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppTheme.textLight),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: _loadOrders,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     if (_isAllCompleted) {
       return _buildAllCaughtUpScreen();
+    }
+
+    if (_currentOrder == null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('No Orders'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        body: const Center(
+          child: Text('No orders available for route'),
+        ),
+      );
     }
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text('Stop ${_currentStopIndex + 1} of ${_stops.length}'),
+        title: Text('Stop ${_currentStopIndex + 1} of ${_routeOrders.length}'),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -203,7 +303,10 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
   }
 
   Widget _buildProgressBar() {
-    double progress = (_currentStopIndex) / _stops.length;
+    double progress = (_currentStopIndex) / _routeOrders.length;
+    final typeColor = _isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange;
+    final type = _isPickup ? 'Pickup' : 'Delivery';
+    
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       color: Colors.white,
@@ -213,19 +316,19 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Route Progress: ${(_currentStopIndex)}/${_stops.length} completed',
+                'Route Progress: ${_currentStopIndex}/${_routeOrders.length} completed',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: (_currentStop['typeColor'] as Color).withValues(alpha: 0.12),
+                  color: typeColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  _currentStop['type'] as String,
+                  type,
                   style: TextStyle(
-                    color: _currentStop['typeColor'] as Color,
+                    color: typeColor,
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
@@ -249,6 +352,8 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
   }
 
   Widget _buildTurnBanner() {
+    final address = _currentOrder!.deliveryAddress ?? 'Address not provided';
+    
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -271,7 +376,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
               color: Colors.white.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.turn_right, color: Colors.white, size: 26),
+            child: const Icon(Icons.navigation, color: Colors.white, size: 26),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -280,18 +385,20 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
               children: [
                 Text(
                   _phase == NavigationPhase.onTheWay
-                      ? (_currentStop['turnInstruction'] as String)
+                      ? 'Navigate to: $address'
                       : 'You have arrived at the destination',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   _phase == NavigationPhase.onTheWay
-                      ? 'ETA: ${_currentStop['eta']}'
+                      ? 'Use navigation app for directions'
                       : 'Park safely & proceed to door',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.85),
@@ -301,39 +408,14 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
               ],
             ),
           ),
-          if (_phase == NavigationPhase.onTheWay)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Column(
-                children: [
-                  Text(
-                    '35',
-                    style: TextStyle(
-                      color: AppTheme.primaryBlue,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                  Text(
-                    'km/h',
-                    style: TextStyle(
-                      color: AppTheme.textLight,
-                      fontSize: 9,
-                    ),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );
   }
 
   Widget _buildNavigationMap() {
+    final typeColor = _isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange;
+    
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -390,18 +472,18 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: _currentStop['typeColor'] as Color,
+                      color: typeColor,
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
                       boxShadow: [
                         BoxShadow(
-                          color: (_currentStop['typeColor'] as Color).withValues(alpha: 0.4),
+                          color: typeColor.withValues(alpha: 0.4),
                           blurRadius: 6,
                         ),
                       ],
                     ),
                     child: Icon(
-                      _currentStop['type'] == 'Pickup' ? Icons.shopping_bag : Icons.local_shipping,
+                      _isPickup ? Icons.shopping_bag : Icons.local_shipping,
                       color: Colors.white,
                       size: 16,
                     ),
@@ -420,7 +502,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                       ],
                     ),
                     child: Text(
-                      'Stop #${_currentStop['stopNumber']}',
+                      'Stop #${_currentStopIndex + 1}',
                       style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -468,7 +550,12 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
   }
 
   Widget _buildBottomActionPanel() {
-    final isPickup = _currentStop['type'] == 'Pickup';
+    final customerName = _currentOrder!.customerName;
+    final address = _currentOrder!.deliveryAddress ?? 'Address not provided';
+    final phone = _currentOrder!.customerPhone ?? 'No phone';
+    final orderNumber = _currentOrder!.orderNumber ?? _currentOrder!.displayNumber;
+    final instructions = _currentOrder!.instructions ?? _currentOrder!.staffMessage ?? 'No special instructions';
+    final typeColor = _isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
@@ -492,12 +579,12 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: (_currentStop['typeColor'] as Color).withValues(alpha: 0.12),
+                  color: typeColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  isPickup ? Icons.shopping_bag_outlined : Icons.delivery_dining,
-                  color: _currentStop['typeColor'] as Color,
+                  _isPickup ? Icons.shopping_bag_outlined : Icons.delivery_dining,
+                  color: typeColor,
                 ),
               ),
               const SizedBox(width: 12),
@@ -509,21 +596,21 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                       children: [
                         Flexible(
                           child: Text(
-                            _currentStop['name'] as String,
+                            customerName,
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          '(${_currentStop['orderId']})',
+                          '($orderNumber)',
                           style: const TextStyle(fontSize: 12, color: AppTheme.accentBlue, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _currentStop['address'] as String,
+                      address,
                       style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -531,24 +618,25 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                 ),
               ),
               // Call action
-              IconButton(
-                icon: const Icon(Icons.phone, color: AppTheme.accentBlue),
-                onPressed: () {
-                  showTopNotification(
-                    context,
-                    message: 'Calling ${_currentStop['phone']}...',
-                    icon: Icons.phone,
-                    backgroundColor: AppTheme.accentBlue,
-                  );
-                },
-              ),
+              if (phone != 'No phone')
+                IconButton(
+                  icon: const Icon(Icons.phone, color: AppTheme.accentBlue),
+                  onPressed: () {
+                    showTopNotification(
+                      context,
+                      message: 'Calling $phone...',
+                      icon: Icons.phone,
+                      backgroundColor: AppTheme.accentBlue,
+                    );
+                  },
+                ),
               // Message action
               IconButton(
                 icon: const Icon(Icons.chat_bubble_outline, color: AppTheme.accentBlue),
                 onPressed: () {
                   showTopNotification(
                     context,
-                    message: 'Opening chat with ${_currentStop['name']}...',
+                    message: 'Opening chat with $customerName...',
                     icon: Icons.chat_bubble_outline,
                     backgroundColor: AppTheme.accentBlue,
                   );
@@ -558,28 +646,29 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
           ),
 
           // Instructions/Notes banner
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppTheme.softGray,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline, size: 16, color: AppTheme.textDark),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _currentStop['notes'] as String,
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+          if (instructions.isNotEmpty && instructions != 'No special instructions')
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.softGray,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 16, color: AppTheme.textDark),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      instructions,
+                      style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
           // Action Buttons
           if (_phase == NavigationPhase.onTheWay)
@@ -639,7 +728,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                         const Icon(Icons.done_all, size: 22),
                         const SizedBox(width: 8),
                         Text(
-                          isPickup ? 'Confirm Pickup' : 'Confirm Delivery',
+                          _isPickup ? 'Confirm Pickup' : 'Confirm Delivery',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                       ],
@@ -654,6 +743,10 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
   }
 
   Widget _buildAllCaughtUpScreen() {
+    final totalStops = _routeOrders.length;
+    final pickupsCount = _pickupOrders.length;
+    final deliveriesCount = _deliveryOrders.length;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -690,7 +783,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'You have completed all scheduled route stops for Metro Cebu. Great work keeping Infinity Wash moving!',
+                'You have completed all scheduled route stops. Great work keeping Infinity Wash moving!',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppTheme.textLight, fontSize: 13, height: 1.4),
               ),
@@ -714,21 +807,12 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    const Row(
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _StatItem(label: 'Stops Serviced', value: '3 / 3', color: Colors.green),
-                        _StatItem(label: 'Pickups', value: '2', color: AppTheme.errorRed),
-                        _StatItem(label: 'Deliveries', value: '1', color: AppTheme.teamMemberIconOrange),
-                      ],
-                    ),
-                    const Divider(height: 28),
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _StatItem(label: 'Total Time', value: '1h 18m', color: AppTheme.primaryBlue),
-                        _StatItem(label: 'Total Distance', value: '14.2 km', color: AppTheme.primaryBlue),
-                        _StatItem(label: 'On-Time Rate', value: '100%', color: Colors.green),
+                        _StatItem(label: 'Stops Serviced', value: '$totalStops / $totalStops', color: Colors.green),
+                        _StatItem(label: 'Pickups', value: '$pickupsCount', color: AppTheme.errorRed),
+                        _StatItem(label: 'Deliveries', value: '$deliveriesCount', color: AppTheme.teamMemberIconOrange),
                       ],
                     ),
                   ],
@@ -792,22 +876,6 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _resetRouteForDemo,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.refresh, size: 18),
-                    SizedBox(width: 8),
-                    Text('Reset Route (Demo Mode)', style: TextStyle(fontSize: 14)),
-                  ],
-                ),
-              ),
               const SizedBox(height: 20),
             ],
           ),
@@ -817,8 +885,6 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
   }
 
   void _returnToDashboard() {
-    MockDataService().completeRiderRoute();
-
     if (widget.onBackToHome != null) {
       widget.onBackToHome!();
     } else if (Navigator.canPop(context)) {
@@ -830,23 +896,6 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
         (route) => false,
       );
     }
-  }
-
-  void _resetRouteForDemo() {
-    MockDataService().resetRiderRoute();
-    setState(() {
-      _currentStopIndex = 0;
-      _phase = NavigationPhase.onTheWay;
-      for (var s in _stops) {
-        s['status'] = s['stopNumber'] == 1 ? 'In Progress' : 'Upcoming';
-      }
-    });
-    showTopNotification(
-      context,
-      message: 'Route has been reset for demonstration!',
-      icon: Icons.refresh,
-      backgroundColor: AppTheme.accentBlue,
-    );
   }
 }
 

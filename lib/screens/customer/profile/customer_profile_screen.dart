@@ -5,7 +5,6 @@ import '../../../services/auth_service.dart';
 import '../../role_selection_screen.dart';
 import 'options/account_details_screen.dart';
 import 'options/change_password_screen.dart';
-import 'options/help_support_screen.dart';
 
 class CustomerProfileScreen extends StatefulWidget {
   const CustomerProfileScreen({super.key});
@@ -126,12 +125,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
               Icons.lock_outline,
               'Change Password',
               const CustomerChangePasswordScreen(),
-            ),
-            _buildProfileOption(
-              context,
-              Icons.auto_awesome,
-              'Infinity AI Assistant',
-              const CustomerHelpSupportScreen(),
             ),
             const SizedBox(height: 40),
             ElevatedButton(

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/notification_service.dart';
-
+import '../../../services/rider_service.dart';
+import '../../../models/order.dart';
 import '../route/rider_route_screen.dart';
 import '../route/rider_route_map_screen.dart';
-import '../../../services/mock_data_service.dart';
+import '../orders/rider_order_details_screen.dart';
 import '../notifications/rider_notifications_screen.dart';
 
 class RiderHomeScreen extends StatefulWidget {
@@ -16,18 +17,47 @@ class RiderHomeScreen extends StatefulWidget {
 
 class _RiderHomeScreenState extends State<RiderHomeScreen> {
   final NotificationService _notificationService = NotificationService();
+  final RiderService _riderService = RiderService();
   int _unreadCount = 0;
+  bool _isLoading = true;
+  List<LaundryOrder> _pickupOrders = [];
+  List<LaundryOrder> _deliveryOrders = [];
 
   @override
   void initState() {
     super.initState();
     _loadUnreadCount();
+    _loadOrders();
   }
 
   Future<void> _loadUnreadCount() async {
     final count = await _notificationService.getUnreadCount();
     if (mounted) {
       setState(() => _unreadCount = count);
+    }
+  }
+
+  Future<void> _loadOrders() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      final results = await Future.wait([
+        _riderService.fetchPickupOrders(),
+        _riderService.fetchDeliveryOrders(),
+      ]);
+      
+      if (mounted) {
+        setState(() {
+          _pickupOrders = results[0];
+          _deliveryOrders = results[1];
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading rider orders: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -43,50 +73,73 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 30),
-              _buildDeliveriesSummary(),
-              const SizedBox(height: 30),
-              _buildRouteSection(),
-              const SizedBox(height: 30),
-              Builder(
-                builder: (context) {
-                  final isRouteCompleted = MockDataService().isRiderRouteCompleted;
-                  return ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const RiderRouteScreen()),
-                      ).then((_) => setState(() {}));
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isRouteCompleted ? Colors.green : AppTheme.accentBlue,
-                      minimumSize: const Size(double.infinity, 80),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(isRouteCompleted ? Icons.check_circle_outline : Icons.play_arrow, size: 30),
-                        const SizedBox(width: 12),
-                        Text(
-                          isRouteCompleted ? 'Route Completed' : 'Start Route',
-                          style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(color: Colors.white, fontSize: 20),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 20),
-            ],
+        child: RefreshIndicator(
+          onRefresh: _loadOrders,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(),
+                const SizedBox(height: 30),
+                _isLoading ? _buildLoadingState() : _buildDeliveriesSummary(),
+                const SizedBox(height: 30),
+                _isLoading ? _buildLoadingState() : _buildRouteSection(),
+                const SizedBox(height: 30),
+                _buildStartButton(),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Container(
+      padding: const EdgeInsets.all(40),
+      decoration: AppStyles.cardDecoration,
+      child: const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+  }
+
+  Widget _buildStartButton() {
+    final hasOrders = _pickupOrders.isNotEmpty || _deliveryOrders.isNotEmpty;
+    
+    return ElevatedButton(
+      onPressed: hasOrders ? () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const RiderRouteScreen()),
+        ).then((_) => _loadOrders());
+      } : null,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: hasOrders ? AppTheme.accentBlue : AppTheme.borderGray,
+        minimumSize: const Size(double.infinity, 80),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            hasOrders ? Icons.play_arrow : Icons.inbox_outlined, 
+            size: 30,
+            color: hasOrders ? Colors.white : AppTheme.textLight,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            hasOrders ? 'Start Route' : 'No Orders Available',
+            style: TextStyle(
+              color: hasOrders ? Colors.white : AppTheme.textLight,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -174,10 +227,9 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   }
 
   Widget _buildDeliveriesSummary() {
-    final isDone = MockDataService().isRiderRouteCompleted;
-    int deliveriesLeft = isDone ? 0 : 3;
-    int pickupsLeft = isDone ? 0 : 2;
-    int completed = isDone ? 5 : 3;
+    int deliveriesLeft = _deliveryOrders.length;
+    int pickupsLeft = _pickupOrders.length;
+    int completed = 0; // TODO: Track completed orders (could query orders with status='completed' for today)
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -247,42 +299,50 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          // Divider
-          Container(
-            height: 1,
-            color: AppTheme.borderGray,
-          ),
-          const SizedBox(height: 20),
-          // Completed Tasks (Secondary Info)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
+          if (completed > 0) ...[
+            const SizedBox(height: 20),
+            // Divider
+            Container(
+              height: 1,
+              color: AppTheme.borderGray,
+            ),
+            const SizedBox(height: 20),
+            // Completed Tasks (Secondary Info)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check_circle, color: Colors.green, size: 20),
                 ),
-                child: const Icon(Icons.check_circle, color: Colors.green, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                '$completed Completed',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: Colors.green,
+                const SizedBox(width: 12),
+                Text(
+                  '$completed Completed',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.green,
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildRouteSection() {
+    // Combine pickups and deliveries for route display
+    final allOrders = [..._pickupOrders, ..._deliveryOrders];
+    
+    // Show max 3 orders in preview
+    final displayOrders = allOrders.take(3).toList();
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: AppStyles.cardDecoration,
@@ -364,23 +424,78 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          _buildRouteStop(0, '1', 'Maria Santos', '123 Mango Ave, Cebu City', 'Pickup', '09:00 AM', AppTheme.errorRed),
-          _buildRouteStop(1, '2', 'Juan Dela Cruz', '456 Banilad Rd, Cebu City', 'Drop-off', '10:15 AM', AppTheme.teamMemberIconOrange),
-          _buildRouteStop(2, '3', 'Ana Reyes', '789 Parkmall, Mandaue City', 'Pickup', '11:30 AM', AppTheme.errorRed),
+          if (displayOrders.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Column(
+                children: [
+                  Icon(Icons.inbox_outlined, size: 48, color: AppTheme.textLight.withValues(alpha: 0.5)),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No orders for today',
+                    style: TextStyle(
+                      color: AppTheme.textLight.withValues(alpha: 0.7),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ...displayOrders.asMap().entries.map((entry) {
+              final index = entry.key;
+              final order = entry.value;
+              final isPickup = _pickupOrders.contains(order);
+              
+              return _buildRouteStop(
+                index,
+                '${index + 1}',
+                order.customerName,
+                order.deliveryAddress ?? 'Address not provided',
+                isPickup ? 'Pickup' : 'Drop-off',
+                _formatTime(order.createdAt),
+                isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
+                order,
+                isPickup,
+              );
+            }),
         ],
       ),
     );
   }
 
-  Widget _buildRouteStop(int index, String number, String name, String address, String type, String time, Color typeColor) {
+  String _formatTime(DateTime dateTime) {
+    final hour = dateTime.hour;
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+    return '$displayHour:$minute $period';
+  }
+
+  Widget _buildRouteStop(
+    int index, 
+    String number, 
+    String name, 
+    String address, 
+    String type, 
+    String time, 
+    Color typeColor,
+    LaundryOrder order,
+    bool isPickup,
+  ) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => RiderRouteMapScreen(initialStopIndex: index)),
-          );
+            MaterialPageRoute(
+              builder: (context) => RiderOrderDetailsScreen(
+                order: order,
+                isPickup: isPickup,
+              ),
+            ),
+          ).then((_) => _loadOrders()); // Refresh after viewing details
         },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
@@ -391,25 +506,27 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                 width: 30,
                 height: 30,
                 decoration: const BoxDecoration(color: AppTheme.accentBlue, shape: BoxShape.circle),
-                child: Center(child: Text(number, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                child: Center(child: Text(number, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    Text(address, style: TextStyle(color: AppTheme.textLight, fontSize: 10), overflow: TextOverflow.ellipsis),
+                    Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 2),
+                    Text(address, style: TextStyle(color: AppTheme.textLight, fontSize: 11), overflow: TextOverflow.ellipsis),
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                 child: Text(type, style: TextStyle(color: typeColor, fontSize: 10, fontWeight: FontWeight.bold)),
               ),
               const SizedBox(width: 12),
-              Text(time, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+              Text(time, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.textLight)),
             ],
           ),
         ),

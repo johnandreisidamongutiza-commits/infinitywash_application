@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/laundry_intake.dart';
-import '../services/loyalty_service.dart';
+// import '../services/loyalty_service.dart'; // Temporarily disabled
 import '../theme/app_theme.dart';
 
 class OrderCheckInForm extends StatefulWidget {
@@ -12,36 +12,47 @@ class OrderCheckInForm extends StatefulWidget {
   final VoidCallback? onChanged;
 
   @override
-  State<OrderCheckInForm> createState() => OrderCheckInFormState();
+  State<OrderCheckInForm> createState() {
+    print('🔍 OrderCheckInForm: createState called');
+    return OrderCheckInFormState();
+  }
 }
 
 class OrderCheckInFormState extends State<OrderCheckInForm> {
-  final LoyaltyService _loyaltyService = LoyaltyService();
+  // final LoyaltyService _loyaltyService = LoyaltyService(); // Temporarily disabled
   final TextEditingController notesController = TextEditingController();
-  final TextEditingController _loyaltyCardController = TextEditingController();
+  // final TextEditingController _loyaltyCardController = TextEditingController(); // Temporarily disabled
   final List<LoadDraft> _loads = [LoadDraft(initialWeight: '')];
 
-  String? _loyaltyCardUid;
-  LoyaltyCardInfo? _loyaltyCardInfo;
-  bool _lookingUpCard = false;
+  // String? _loyaltyCardUid; // Temporarily disabled
+  // LoyaltyCardInfo? _loyaltyCardInfo; // Temporarily disabled
+  // bool _lookingUpCard = false; // Temporarily disabled
   bool _addExtraFabCon = false;
   bool _addExtraDetergent = false;
+
+  // Public accessors for parent screen
+  List<LoadDraft> get loads => _loads;
+  bool get addExtraFabCon => _addExtraFabCon;
+  bool get addExtraDetergent => _addExtraDetergent;
 
   @override
   void initState() {
     super.initState();
+    print('🔍 OrderCheckInForm: initState called');
+    print('🔍 OrderCheckInForm: Initial loads count: ${_loads.length}');
   }
 
   @override
   void dispose() {
     notesController.dispose();
-    _loyaltyCardController.dispose();
+    // _loyaltyCardController.dispose(); // Temporarily disabled
     for (final load in _loads) {
       load.dispose();
     }
     super.dispose();
   }
 
+  /* Temporarily disabled - Loyalty Card Methods
   Future<void> _lookupLoyaltyCard(String uid) async {
     final cleanUid = uid.trim().toUpperCase();
     if (cleanUid.isEmpty) return;
@@ -82,6 +93,7 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
       _loyaltyCardController.clear();
     });
   }
+  */ // End of temporarily disabled loyalty card methods
 
   void _notifyChanged() => widget.onChanged?.call();
 
@@ -102,10 +114,16 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
   double get _totalWeight =>
       _loads.fold(0.0, (sum, load) => sum + LaundryIntake.weightOf(load));
 
+  // Public accessor for total weight
+  double get totalWeight => _totalWeight;
+
   double get _totalPrice =>
       (LaundryIntake.basePricePerLoad * _loads.length) +
       (_addExtraFabCon ? LaundryIntake.addonPrice : 0) +
       (_addExtraDetergent ? LaundryIntake.addonPrice : 0);
+
+  // Public accessor for total price
+  double get totalPrice => _totalPrice;
 
   bool get isComplete =>
       _loads.isNotEmpty &&
@@ -139,7 +157,7 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
   CheckInFormResult collect() {
     return CheckInFormResult(
       loads: LaundryIntake.toOrderLoads(_loads),
-      loyaltyCardUid: _loyaltyCardUid,
+      loyaltyCardUid: null, // Temporarily disabled
       extraFabCon: _addExtraFabCon,
       extraDetergent: _addExtraDetergent,
       notes: notesController.text.trim(),
@@ -196,7 +214,12 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
 
   @override
   Widget build(BuildContext context) {
+    print('🔍 OrderCheckInForm: build called');
+    print('🔍 OrderCheckInForm: _loads.length = ${_loads.length}');
+    print('🔍 OrderCheckInForm: _totalWeight = $_totalWeight');
+    
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ...List.generate(_loads.length, _buildLoadCard),
@@ -235,134 +258,7 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
           ),
         ),
         const Divider(height: 24),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.nfc_outlined, size: 16, color: AppTheme.accentBlue),
-                SizedBox(width: 6),
-                Text(
-                  'Loyalty Card Assignment (Permanent)',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-                ),
-              ],
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: _loyaltyCardUid != null
-                    ? Colors.green.withValues(alpha: 0.1)
-                    : AppTheme.accentBlue.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                _loyaltyCardUid != null ? 'Linked' : 'Optional',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: _loyaltyCardUid != null ? Colors.green : AppTheme.accentBlue,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (_loyaltyCardUid != null)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.green.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.credit_card, size: 20, color: Colors.green),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Card UID: $_loyaltyCardUid',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _loyaltyCardInfo != null
-                            ? '${_loyaltyCardInfo!.ownerName} • ⭐ ${_loyaltyCardInfo!.pointsBalance} pts balance'
-                            : 'Card linked',
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 18, color: AppTheme.textLight),
-                  tooltip: 'Unlink card',
-                  onPressed: _clearLoyaltyCard,
-                ),
-              ],
-            ),
-          )
-        else
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _loyaltyCardController,
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: InputDecoration(
-                    hintText: 'Scan or enter Card UID (e.g. CARD-001)',
-                    hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textLight),
-                    prefixIcon: const Icon(Icons.credit_card_outlined, size: 18, color: AppTheme.accentBlue),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppTheme.borderGray),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppTheme.accentBlue, width: 2),
-                    ),
-                  ),
-                  onSubmitted: (val) {
-                    if (val.trim().isNotEmpty) _lookupLoyaltyCard(val);
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: _lookingUpCard
-                    ? null
-                    : () {
-                        final uid = _loyaltyCardController.text.trim();
-                        if (uid.isNotEmpty) _lookupLoyaltyCard(uid);
-                      },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accentBlue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: _lookingUpCard
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text('Link', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
+        // Loyalty Card section temporarily removed for debugging
         const Divider(height: 24),
         const Text(
           'Optional Add-ons',
@@ -439,128 +335,144 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
   }
 
   Widget _buildLoadCard(int index) {
-    final load = _loads[index];
-    final isOver = LaundryIntake.isOverLimit(load);
-    final weight = LaundryIntake.weightOf(load);
-    final limit = LaundryIntake.limitOf(load.category);
-    final unit = LaundryIntake.unitOf(load.category);
-    final categoriesList = LaundryIntake.categories.entries.toList();
+    print('🔍 OrderCheckInForm: _buildLoadCard called for index $index');
+    try {
+      final load = _loads[index];
+      final isOver = LaundryIntake.isOverLimit(load);
+      final weight = LaundryIntake.weightOf(load);
+      final limit = LaundryIntake.limitOf(load.category);
+      final unit = LaundryIntake.unitOf(load.category);
+      final categoriesList = LaundryIntake.categories.entries.toList();
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTheme.softGray.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Load ${index + 1} of ${_loads.length}',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
-              ),
-              if (_loads.length > 1)
-                InkWell(
-                  onTap: () => _removeLoad(index),
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Icon(Icons.close, size: 16, color: Colors.red),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const Text('Category:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textLight)),
-          const SizedBox(height: 6),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final tileWidth = (constraints.maxWidth - 6) / 2;
-              return Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final entry in categoriesList)
-                    SizedBox(
-                      width: tileWidth,
-                      child: _buildCategoryTile(entry, load),
-                    ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              const Text('Weight:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 100,
-                child: TextField(
-                  controller: load.weightController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  onChanged: (_) {
-                    setState(() {});
-                    _notifyChanged();
-                  },
-                  textAlign: TextAlign.center,
-                  decoration: InputDecoration(
-                    hintText: '5.0',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                    isDense: true,
-                  ),
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(unit, style: const TextStyle(fontSize: 13, color: AppTheme.textLight, fontWeight: FontWeight.w500)),
-              const Spacer(),
-              if (weight > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isOver ? Colors.red.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: isOver ? Colors.red : Colors.green, width: 1.5),
-                  ),
-                  child: Text(
-                    isOver ? 'Over' : 'OK',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isOver ? Colors.red : Colors.green),
-                  ),
-                ),
-            ],
-          ),
-          if (isOver) ...[
-            const SizedBox(height: 6),
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTheme.softGray.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: Text(
-                    'Exceeds ${limit.toStringAsFixed(1)} $unit limit by ${(weight - limit).toStringAsFixed(1)} $unit',
-                    style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.w500),
+                Text(
+                  'Load ${index + 1} of ${_loads.length}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                ),
+                if (_loads.length > 1)
+                  InkWell(
+                    onTap: () => _removeLoad(index),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.close, size: 16, color: Colors.red),
+                    ),
                   ),
-                ),
-                TextButton(
-                  onPressed: () => _showAutoSplitDialog(index),
-                  child: const Text('Auto-Split', style: TextStyle(fontSize: 11)),
-                ),
               ],
             ),
+            const SizedBox(height: 10),
+            const Text('Category:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textLight)),
+            const SizedBox(height: 6),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final tileWidth = (constraints.maxWidth - 6) / 2;
+                return Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final entry in categoriesList)
+                      SizedBox(
+                        width: tileWidth,
+                        child: _buildCategoryTile(entry, load),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Text('Weight:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 100,
+                  child: TextField(
+                    controller: load.weightController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) {
+                      setState(() {});
+                      _notifyChanged();
+                    },
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      hintText: '5.0',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                      isDense: true,
+                    ),
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(unit, style: const TextStyle(fontSize: 13, color: AppTheme.textLight, fontWeight: FontWeight.w500)),
+                const Spacer(),
+                if (weight > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isOver ? Colors.red.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: isOver ? Colors.red : Colors.green, width: 1.5),
+                    ),
+                    child: Text(
+                      isOver ? 'Over' : 'OK',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isOver ? Colors.red : Colors.green),
+                    ),
+                  ),
+              ],
+            ),
+            if (isOver) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Exceeds ${limit.toStringAsFixed(1)} $unit limit by ${(weight - limit).toStringAsFixed(1)} $unit',
+                      style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => _showAutoSplitDialog(index),
+                    child: const Text('Auto-Split', style: TextStyle(fontSize: 11)),
+                  ),
+                ],
+              ),
+            ],
           ],
-        ],
-      ),
-    );
+        ),
+      );
+    } catch (e, stackTrace) {
+      print('❌ ERROR in _buildLoadCard: $e');
+      print('Stack trace: $stackTrace');
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.red),
+        ),
+        child: Text('Error building load card: $e'),
+      );
+    }
   }
 
   Widget _buildCategoryTile(MapEntry<String, Map<String, dynamic>> entry, LoadDraft load) {

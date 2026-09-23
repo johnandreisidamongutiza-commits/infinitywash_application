@@ -13,7 +13,10 @@ class CheckInRequestScreen extends StatefulWidget {
   const CheckInRequestScreen({super.key, required this.order});
 
   @override
-  State<CheckInRequestScreen> createState() => _CheckInRequestScreenState();
+  State<CheckInRequestScreen> createState() {
+    print('🔍 CheckInRequestScreen: createState called for order ${order.id}');
+    return _CheckInRequestScreenState();
+  }
 }
 
 class _CheckInRequestScreenState extends State<CheckInRequestScreen> {
@@ -21,6 +24,466 @@ class _CheckInRequestScreenState extends State<CheckInRequestScreen> {
   final OrderService _orderService = OrderService();
   final ServiceCatalogService _catalogService = ServiceCatalogService();
   bool _isSubmitting = false;
+
+  // Collapsible section state
+  int? _expandedStep = 1; // 1 = Laundry, 2 = Add-ons, null = all collapsed
+  
+  // Scroll controller & section keys for auto-scroll
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _step1Key = GlobalKey();
+  final GlobalKey _step2Key = GlobalKey();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // Check if laundry section is complete
+  bool get _isStep1Complete {
+    final form = _formKey.currentState;
+    if (form == null) return false;
+    return form.isComplete;
+  }
+
+  // Get summary text for collapsed sections
+  String get _laundrySummary {
+    final form = _formKey.currentState;
+    if (form == null) return 'Not started';
+    final loadCount = form.loads.length;
+    final totalWeight = form.totalWeight;
+    return '$loadCount load${loadCount == 1 ? '' : 's'} • ${totalWeight.toStringAsFixed(1)}kg total';
+  }
+
+  String get _addonsSummary {
+    final form = _formKey.currentState;
+    if (form == null) return 'None';
+    int count = 0;
+    if (form.addExtraFabCon) count++;
+    if (form.addExtraDetergent) count++;
+    return count == 0 ? 'None' : '$count add-on${count == 1 ? '' : 's'}';
+  }
+
+  // Auto-scroll to expanded section
+  void _scrollToStep(GlobalKey key) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.endOfFrame.then((_) {
+        final ctx = key.currentContext;
+        if (!mounted || ctx == null) return;
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+          alignment: 0.0,
+        );
+      });
+    });
+  }
+
+  Widget _buildProgressIndicator() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.softGray.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          _buildProgressStep(1, 'Laundry', _isStep1Complete),
+          Expanded(child: _buildProgressConnector(_isStep1Complete)),
+          _buildProgressStep(2, 'Add-ons', false),
+          Expanded(child: Container(height: 2, color: Colors.transparent)),
+          _buildProgressStep(3, 'Summary', false),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressStep(int stepNumber, String label, bool isComplete) {
+    Color color;
+    if (isComplete) {
+      color = Colors.green;
+    } else if (stepNumber <= 2) {
+      color = AppTheme.accentBlue;
+    } else {
+      color = AppTheme.textLight.withValues(alpha: 0.3);
+    }
+
+    return SizedBox(
+      width: 60,
+      child: Column(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: isComplete ? Colors.green : Colors.transparent,
+              border: Border.all(color: color, width: 2),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: isComplete
+                  ? const Icon(Icons.check, color: Colors.white, size: 16)
+                  : Text(
+                '$stepNumber',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.normal,
+              color: color,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressConnector(bool isComplete) {
+    return Container(
+      height: 2,
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: isComplete ? Colors.green : AppTheme.borderGray,
+        borderRadius: BorderRadius.circular(1),
+      ),
+    );
+  }
+
+  // Build the fixed order info card (non-collapsible)
+  Widget _buildOrderInfoCard() {
+    final order = widget.order;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppStyles.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.receipt_long, size: 20, color: AppTheme.accentBlue),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Order Information',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textDark),
+                    ),
+                    Text(
+                      order.displayNumber,
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 24),
+          _buildInfoRow(Icons.person_outline, 'Customer', order.customerName),
+          const SizedBox(height: 8),
+          _buildInfoRow(Icons.local_shipping_outlined, 'Collection', order.collectionText),
+          const SizedBox(height: 8),
+          _buildInfoRow(Icons.home_outlined, 'Return', order.returnText),
+          if (order.instructions != null && order.instructions!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildInfoRow(Icons.note_outlined, 'Instructions', order.instructions!),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: AppTheme.textLight),
+        const SizedBox(width: 8),
+        Text(
+          '$label:',
+          style: const TextStyle(fontSize: 13, color: AppTheme.textLight, fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontSize: 13, color: AppTheme.textDark),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Build collapsible laundry section
+  Widget _buildLaundrySection() {
+    final isExpanded = _expandedStep == 1;
+
+    return Container(
+      key: _step1Key,
+      clipBehavior: Clip.antiAlias,
+      decoration: AppStyles.cardDecoration.copyWith(
+        border: Border.all(
+          color: isExpanded ? AppTheme.accentBlue.withValues(alpha: 0.3) : AppTheme.borderGray,
+          width: isExpanded ? 2 : 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header - always visible and clickable
+          InkWell(
+            onTap: () {
+              setState(() => _expandedStep = isExpanded ? null : 1);
+              if (!isExpanded) _scrollToStep(_step1Key);
+            },
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  // Step indicator
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: _isStep1Complete
+                          ? Colors.green.withValues(alpha: 0.12)
+                          : AppTheme.accentBlue.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: _isStep1Complete
+                        ? const Icon(Icons.check, size: 16, color: Colors.green)
+                        : const Text('1', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue)),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Title and summary
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Laundry Weight & Categories',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textDark),
+                        ),
+                        if (!isExpanded && _isStep1Complete) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            _laundrySummary,
+                            style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // Status indicators
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_isStep1Complete)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text('Complete',
+                              style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        isExpanded ? Icons.expand_less : Icons.expand_more,
+                        color: AppTheme.textLight,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Content - expandable
+          if (isExpanded) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: OrderCheckInForm(
+                key: _formKey,
+                onChanged: () => setState(() {}), // Refresh to update summary
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Build collapsible add-ons section
+  Widget _buildAddOnsSection() {
+    final isExpanded = _expandedStep == 2;
+
+    return Container(
+      key: _step2Key,
+      clipBehavior: Clip.antiAlias,
+      decoration: AppStyles.cardDecoration.copyWith(
+        border: Border.all(
+          color: isExpanded ? AppTheme.accentBlue.withValues(alpha: 0.3) : AppTheme.borderGray,
+          width: isExpanded ? 2 : 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header - always visible and clickable
+          InkWell(
+            onTap: () {
+              setState(() => _expandedStep = isExpanded ? null : 2);
+              if (!isExpanded) _scrollToStep(_step2Key);
+            },
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  // Step indicator
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentBlue.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Text('2', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue)),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Title and summary
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Optional Add-ons',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textDark),
+                        ),
+                        if (!isExpanded) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            _addonsSummary,
+                            style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // Expand/collapse icon
+                  Icon(
+                    isExpanded ? Icons.expand_less : Icons.expand_more,
+                    color: AppTheme.textLight,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Content - expandable (only show add-ons part, form handles laundry)
+          if (isExpanded) ...[
+            const Divider(height: 1),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Add-ons are integrated in the laundry section above.',
+                style: TextStyle(fontSize: 13, color: AppTheme.textLight, fontStyle: FontStyle.italic),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Build fixed order summary card
+  Widget _buildOrderSummary() {
+    final form = _formKey.currentState;
+    final totalPrice = form?.totalPrice ?? 0.0;
+    final loadCount = form?.loads.length ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppStyles.cardDecoration.copyWith(
+        color: Colors.green.withValues(alpha: 0.05),
+        border: Border.all(color: Colors.green.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.receipt_outlined, size: 20, color: Colors.green),
+              SizedBox(width: 8),
+              Text(
+                'Order Summary',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textDark),
+              ),
+            ],
+          ),
+          const Divider(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Total ($loadCount load${loadCount == 1 ? '' : 's'})',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              Text(
+                '₱${totalPrice.toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _isSubmitting ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentBlue,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text(
+                      'Confirm Check-in',
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 15),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<String?> _currentEmployeeId() async {
     final currentUser = SupabaseService.currentUser;
@@ -123,7 +586,9 @@ class _CheckInRequestScreenState extends State<CheckInRequestScreen> {
 
   @override
   Widget build(BuildContext context) {
+    print('🔍 CheckInRequestScreen: Building screen for order ${widget.order.id}');
     final order = widget.order;
+    
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -132,63 +597,35 @@ class _CheckInRequestScreenState extends State<CheckInRequestScreen> {
         elevation: 0,
         centerTitle: true,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: AppStyles.cardDecoration,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(order.customerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 6),
-                Text(
-                  '${order.collectionText} • ${order.returnText}',
-                  style: const TextStyle(fontSize: 13, color: AppTheme.textLight),
-                ),
-                if (order.customerDescription != null && order.customerDescription!.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(order.customerDescription!, style: const TextStyle(fontSize: 13)),
-                ],
-                if (order.instructions != null && order.instructions!.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text('Notes: ${order.instructions}', style: const TextStyle(fontSize: 12, color: AppTheme.textLight)),
-                ],
-              ],
-            ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Progress Indicator
+              _buildProgressIndicator(),
+              const SizedBox(height: 20),
+              
+              // Order Info Card (Fixed, non-collapsible)
+              _buildOrderInfoCard(),
+              const SizedBox(height: 16),
+              
+              // Laundry Section (Collapsible)
+              _buildLaundrySection(),
+              const SizedBox(height: 16),
+              
+              // Add-ons Section (Collapsible) - commented out for now since integrated in form
+              // _buildAddOnsSection(),
+              // const SizedBox(height: 16),
+              
+              // Order Summary (Fixed)
+              _buildOrderSummary(),
+              const SizedBox(height: 20),
+            ],
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'Laundry & Loyalty Card',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark),
-          ),
-          const SizedBox(height: 12),
-          OrderCheckInForm(key: _formKey),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: _isSubmitting ? null : _submit,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.accentBlue,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: _isSubmitting
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text(
-                      'Confirm Check-in',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
+        ),
       ),
     );
   }

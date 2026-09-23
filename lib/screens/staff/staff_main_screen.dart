@@ -16,15 +16,11 @@ class StaffMainScreen extends StatefulWidget {
 
 class _StaffMainScreenState extends State<StaffMainScreen> {
   int _currentIndex = 0;
+  int _previousIndex = 0;
   final ChatService _chatService = ChatService();
-
-  final List<Widget> _screens = [
-    const StaffHomeScreen(),
-    const OrdersScreen(),
-    const StaffChatsScreen(),
-    const PaymentScreen(),
-    const StaffProfileScreen(),
-  ];
+  
+  // Key to access OrdersScreen state
+  final GlobalKey<OrdersScreenState> _ordersScreenKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +29,13 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          const StaffHomeScreen(),
+          OrdersScreen(key: _ordersScreenKey),
+          const StaffChatsScreen(),
+          const PaymentScreen(),
+          const StaffProfileScreen(),
+        ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -47,7 +49,26 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
+          onTap: (index) {
+            setState(() {
+              _previousIndex = _currentIndex;
+              _currentIndex = index;
+            });
+            
+            // If navigating TO Orders screen (index 1) FROM another screen
+            if (index == 1 && _previousIndex != 1) {
+              print('🔵 STAFF MAIN: Switched to Orders tab (from tab $_previousIndex)');
+              print('🔵 STAFF MAIN: OrdersScreen key is mounted: ${_ordersScreenKey.currentState?.mounted}');
+              if (_ordersScreenKey.currentState != null) {
+                print('🔵 STAFF MAIN: OrdersScreen state exists, calling refreshCurrentTab()');
+                _ordersScreenKey.currentState!.refreshCurrentTab();
+              } else {
+                print('❌ STAFF MAIN: OrdersScreen state is NULL! Cannot refresh.');
+              }
+            } else {
+              print('🔵 STAFF MAIN: Switched to tab $index (from $_previousIndex), no action needed');
+            }
+          },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
           selectedItemColor: AppTheme.accentBlue,

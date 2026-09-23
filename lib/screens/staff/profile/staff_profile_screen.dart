@@ -6,7 +6,6 @@ import '../../role_selection_screen.dart';
 import 'options/account_details_screen.dart';
 import 'options/change_password_screen.dart';
 import 'options/notification_settings_screen.dart';
-import 'options/help_support_screen.dart';
 
 class StaffProfileScreen extends StatefulWidget {
   const StaffProfileScreen({super.key});
@@ -135,12 +134,6 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
               Icons.notifications_none,
               'Notification Settings',
               const NotificationSettingsScreen(),
-            ),
-            _buildProfileOption(
-              context,
-              Icons.auto_awesome,
-              'Infinity AI Assistant',
-              const HelpSupportScreen(),
             ),
             const SizedBox(height: 40),
             ElevatedButton(

@@ -129,10 +129,30 @@ class OrderService {
       final totalWeight = loads.fold(0.0, (sum, load) => sum + load.weight);
       final loadsCount = loads.length;
 
+      // Determine initial status based on pickup/delivery requirements
+      String initialStatus;
+      String? receivedAtTime;
+      String? processingAtTime;
+
+      if (pickupRequested) {
+        // If pickup is requested, order starts as pending_pickup
+        initialStatus = 'pending_pickup';
+        receivedAtTime = null; // Not received yet
+        processingAtTime = null; // Not processing yet
+      } else {
+        // Walk-in drop-off orders start as processing immediately
+        initialStatus = 'processing';
+        receivedAtTime = now;
+        processingAtTime = now;
+      }
+
       print('📦 Creating order: $orderNumber');
       print('   Customer: $customerId');
       print('   Loads: $loadsCount (${totalWeight}kg)');
       print('   Total: ₱$totalAmount');
+      print('   Pickup requested: $pickupRequested');
+      print('   Delivery requested: $deliveryRequested');
+      print('   Initial status: $initialStatus');
 
       // Step 1: Insert order
       final orderData = {
@@ -147,16 +167,16 @@ class OrderService {
         'staff_notes': staffNotes,
         'pickup_requested': pickupRequested,
         'delivery_requested': deliveryRequested,
-        'pickup_address': null, // Walk-in orders don't need pickup address
+        'pickup_address': pickupRequested ? deliveryAddress : null, // Use same address for pickup
         'delivery_address': deliveryAddress,
         'landmark': deliveryLandmark,
         'subtotal': subtotal,
         'delivery_fee': 0.0, // Always free delivery
         'total_amount': totalAmount,
         'payment_status': isPaid ? 'paid' : 'pending',
-        'status': 'processing',
-        'received_at': now,
-        'processing_at': now,
+        'status': initialStatus, // Use computed status
+        'received_at': receivedAtTime,
+        'processing_at': processingAtTime,
         'created_at': now,
         'updated_at': now,
       };
@@ -322,13 +342,18 @@ class OrderService {
     }
   }
 
-  /// Fetch orders with optional status filter
+  /// Fetch orders with optional status filter and pagination offset.
+  /// Use [offset] + [limit] to implement cursor-style pagination:
+  ///   page 0 → offset=0, page 1 → offset=limit, etc.
   Future<List<LaundryOrder>> fetchOrders({
     List<String>? statuses,
     String? assignedStaffId,
     int limit = 50,
+    int offset = 0,
   }) async {
     try {
+      print('📊 fetchOrders called: statuses=$statuses, limit=$limit, offset=$offset');
+      
       // Build base query with customer information and RFID tags
       // Use explicit column selection to avoid id collision between orders and order_loads
       var query = _client
@@ -371,7 +396,7 @@ class OrderService {
             reviewed_by,
             expires_at,
             order_loads(*),
-            customers!inner(first_name, last_name, customer_code, phone, address, landmark)
+            customers(first_name, last_name, customer_code, phone, address, landmark)
           ''');
 
       // Apply status filter if provided
@@ -384,10 +409,14 @@ class OrderService {
         query = query.eq('assigned_staff_id', assignedStaffId);
       }
 
-      // Apply ordering and limit, then execute
+      // Apply ordering and range (for pagination), then execute.
+      // range(from, to) is inclusive on both ends.
+      print('📊 Executing query with range($offset, ${offset + limit - 1})');
       final response = await query
           .order('created_at', ascending: false)
-          .limit(limit);
+          .range(offset, offset + limit - 1);
+
+      print('📊 Query returned ${response.length} orders');
 
       // Convert to LaundryOrder objects
       final orders = <LaundryOrder>[];
@@ -437,6 +466,7 @@ class OrderService {
           reviewedBy: order.reviewedBy,
           expiresAt: order.expiresAt,
           underReviewBy: null,
+          totalAmount: order.totalAmount ?? (orderData['total_amount'] as num?)?.toDouble(),
         );
 
         orders.add(orderWithLoads);
@@ -446,6 +476,49 @@ class OrderService {
       return orders;
     } catch (e) {
       print('❌ Error fetching orders: $e');
+      rethrow;
+    }
+  }
+
+  /// Record a payment for an order and update order payment_status to 'paid'
+  Future<String> recordPayment({
+    required String orderId,
+    required double amount,
+    required String paymentMethod,
+    String? assignedStaffId,
+  }) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      final transactionNumber = await generateTransactionNumber();
+
+      final paymentData = {
+        'transaction_number': transactionNumber,
+        'order_id': orderId,
+        'amount': amount,
+        'payment_method': paymentMethod.toLowerCase(),
+        'status': 'paid',
+        'paid_at': now,
+        'created_at': now,
+      };
+
+      if (assignedStaffId != null) {
+        paymentData['processed_by'] = assignedStaffId;
+      }
+
+      print('📦 Recording payment: $paymentData');
+      await _client.from('payments').insert(paymentData);
+
+      // Update orders table — only update columns that exist on the orders table.
+      // payment_method and paid_at are recorded in the payments table only.
+      await _client.from('orders').update({
+        'payment_status': 'paid',
+        'updated_at': now,
+      }).eq('id', orderId);
+
+      print('✅ Payment successfully recorded for order $orderId: $transactionNumber ($paymentMethod)');
+      return transactionNumber;
+    } catch (e) {
+      print('❌ Error recording payment: $e');
       rethrow;
     }
   }
@@ -591,6 +664,7 @@ class OrderService {
         reviewedBy: order.reviewedBy,
         expiresAt: order.expiresAt,
         underReviewBy: null,
+        totalAmount: order.totalAmount ?? (response['total_amount'] as num?)?.toDouble(),
       );
     } catch (e) {
       print('❌ Error getting order: $e');

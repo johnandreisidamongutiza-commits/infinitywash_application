@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
+import '../../../services/order_service.dart';
 import 'check_in_request_screen.dart';
 
 class OrderStatusScreen extends StatefulWidget {
@@ -13,11 +14,209 @@ class OrderStatusScreen extends StatefulWidget {
 
 class _OrderStatusScreenState extends State<OrderStatusScreen> {
   late OrderStatus _currentStatus;
+  final OrderService _orderService = OrderService();
+  bool _isUpdating = false;
 
   @override
   void initState() {
     super.initState();
     _currentStatus = widget.order.status;
+  }
+
+  bool get _needsDelivery {
+    return widget.order.returnMethod == ReturnMethod.delivery;
+  }
+
+  bool get _canMarkReady {
+    // Can mark as ready for delivery if processing and needs delivery
+    return _currentStatus == OrderStatus.processing && _needsDelivery;
+  }
+
+  bool get _canComplete {
+    // Can complete directly if:
+    // 1. Shop pickup orders that are processing or ready
+    // 2. Delivery orders should NOT be completed by staff (rider completes them)
+    if (_needsDelivery) {
+      return false; // Staff cannot complete delivery orders
+    }
+    return _currentStatus == OrderStatus.processing ||
+           _currentStatus == OrderStatus.ready;
+  }
+
+  Future<bool> _showConfirmationDialog() async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Complete Order?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Are you sure you want to mark this order as complete?'),
+            const SizedBox(height: 16),
+            Text(
+              'Order: ${widget.order.displayNumber}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Customer: ${widget.order.customerName}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Complete'),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  Future<bool> _showReadyConfirmationDialog() async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ready for Delivery?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Mark this order as ready for rider delivery?'),
+            const SizedBox(height: 16),
+            Text(
+              'Order: ${widget.order.displayNumber}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Customer: ${widget.order.customerName}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: AppTheme.accentBlue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This will notify riders to deliver the order',
+                      style: TextStyle(fontSize: 12, color: AppTheme.accentBlue),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accentBlue,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Mark Ready'),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  Future<void> _markOrderAsComplete() async {
+    // Show confirmation dialog
+    final confirm = await _showConfirmationDialog();
+    if (!confirm) return;
+
+    // Show loading state
+    setState(() => _isUpdating = true);
+
+    try {
+      // Update order status to completed
+      await _orderService.updateOrderStatus(widget.order.id, 'completed');
+
+      // Show success message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Order ${widget.order.displayNumber} marked as complete ✓'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      // Navigate back with success flag to refresh list
+      Navigator.pop(context, true);
+    } catch (e) {
+      // Handle error
+      if (!mounted) return;
+      setState(() => _isUpdating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error completing order: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Future<void> _markOrderAsReady() async {
+    // Show confirmation dialog
+    final confirm = await _showReadyConfirmationDialog();
+    if (!confirm) return;
+
+    // Show loading state
+    setState(() => _isUpdating = true);
+
+    try {
+      // Update order status to ready for delivery
+      await _orderService.updateOrderStatus(widget.order.id, 'ready');
+
+      // Show success message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Order ${widget.order.displayNumber} marked as ready for delivery ✓'),
+          backgroundColor: AppTheme.accentBlue,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      // Navigate back with success flag to refresh list
+      Navigator.pop(context, true);
+    } catch (e) {
+      // Handle error
+      if (!mounted) return;
+      setState(() => _isUpdating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error marking order as ready: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   @override
@@ -65,6 +264,77 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   ),
                 ),
               ),
+            if (_canMarkReady && !widget.order.needsCheckIn) ...[
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _isUpdating ? null : _markOrderAsReady,
+                  icon: _isUpdating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.local_shipping_outlined, color: Colors.white),
+                  label: Text(
+                    _isUpdating ? 'Updating...' : 'Mark Ready for Delivery',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontSize: 15,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.accentBlue,
+                    disabledBackgroundColor: Colors.grey,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            if (_canComplete && !widget.order.needsCheckIn) ...[
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _isUpdating ? null : _markOrderAsComplete,
+                  icon: _isUpdating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.check_circle, color: Colors.white),
+                  label: Text(
+                    _isUpdating ? 'Completing...' : 'Mark Order as Complete',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontSize: 15,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    disabledBackgroundColor: Colors.grey,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -72,17 +342,26 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   List<OrderStatus> get _trackerSteps {
-    return [
-      if (_currentStatus == OrderStatus.pending_pickup) OrderStatus.pending_pickup,
-      OrderStatus.processing,
-      if (widget.order.returnMethod == ReturnMethod.delivery) OrderStatus.out_for_delivery,
-      OrderStatus.completed,
-    ];
-  }
-
-  OrderStatus get _trackerStatus {
-    if (_currentStatus == OrderStatus.ready) return OrderStatus.processing;
-    return _currentStatus;
+    final steps = <OrderStatus>[];
+    
+    // Add pending_pickup if order was picked up by rider
+    if (widget.order.collectionMethod == CollectionMethod.riderPickup) {
+      steps.add(OrderStatus.pending_pickup);
+    }
+    
+    // Always show processing
+    steps.add(OrderStatus.processing);
+    
+    // For delivery orders, show ready and out_for_delivery steps
+    if (widget.order.returnMethod == ReturnMethod.delivery) {
+      steps.add(OrderStatus.ready);
+      steps.add(OrderStatus.out_for_delivery);
+    }
+    
+    // Always end with completed
+    steps.add(OrderStatus.completed);
+    
+    return steps;
   }
 
   Widget _buildStatusTracker() {
@@ -95,10 +374,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             _buildStatusStep(OrderStatus.pending_pickup, 'Waiting for Rider Pickup', Icons.two_wheeler)
           else if (steps[i] == OrderStatus.processing)
             _buildStatusStep(OrderStatus.processing, 'Processing', Icons.sync)
+          else if (steps[i] == OrderStatus.ready)
+            _buildStatusStep(OrderStatus.ready, 'Ready for Delivery', Icons.check_circle_outline)
           else if (steps[i] == OrderStatus.out_for_delivery)
             _buildStatusStep(OrderStatus.out_for_delivery, 'Out for Delivery', Icons.local_shipping_outlined)
           else
-            _buildStatusStep(OrderStatus.completed, 'Completed', Icons.check_circle_outline),
+            _buildStatusStep(OrderStatus.completed, 'Completed', Icons.check_circle),
           if (i < steps.length - 1) _buildConnector(),
         ],
       ],
@@ -107,7 +388,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Widget _buildStatusStep(OrderStatus status, String label, IconData icon) {
     bool isDone = _isStatusDone(status);
-    bool isCurrent = _trackerStatus == status;
+    bool isCurrent = _currentStatus == status;
     Color color = isDone || isCurrent ? AppTheme.accentBlue : AppTheme.textLight.withValues(alpha: 0.3);
 
     return Row(
@@ -123,14 +404,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           child: Icon(icon, color: color),
         ),
         const SizedBox(width: 16),
-        Text(
-          label,
-          style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-            color: color,
-            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+        Expanded(
+          child: Text(
+            label,
+            style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+              color: color,
+              fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+            ),
           ),
         ),
-        const Spacer(),
         if (isDone && !isCurrent)
           const Icon(Icons.check_circle, color: Colors.green),
       ],
@@ -319,7 +601,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   bool _isStatusDone(OrderStatus status) {
     final steps = _trackerSteps;
-    final currentIndex = steps.indexOf(_trackerStatus);
+    final currentIndex = steps.indexOf(_currentStatus);
     final stepIndex = steps.indexOf(status);
     if (currentIndex < 0 || stepIndex < 0) return false;
     return currentIndex > stepIndex;

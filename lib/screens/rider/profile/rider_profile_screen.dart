@@ -5,7 +5,6 @@ import '../../../services/auth_service.dart';
 import '../../role_selection_screen.dart';
 import 'options/account_details_screen.dart';
 import 'options/change_password_screen.dart';
-import 'options/help_support_screen.dart';
 
 class RiderProfileScreen extends StatefulWidget {
   const RiderProfileScreen({super.key});
@@ -125,12 +124,6 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
               Icons.lock_outline,
               'Change Password',
               const RiderChangePasswordScreen(),
-            ),
-            _buildProfileOption(
-              context,
-              Icons.auto_awesome,
-              'Infinity AI Assistant',
-              const RiderHelpSupportScreen(),
             ),
             const SizedBox(height: 40),
             ElevatedButton(

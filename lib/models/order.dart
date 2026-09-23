@@ -123,6 +123,7 @@ class LaundryOrder {
   final String? reviewedBy; // Which staff member reviewed
   final DateTime? expiresAt; // Auto-reject after 24 hours if not reviewed
   final String? underReviewBy; // Staff member currently reviewing (lock)
+  final double? totalAmount; // Total order price from DB
 
   LaundryOrder({
     required this.id,
@@ -151,6 +152,7 @@ class LaundryOrder {
     this.reviewedBy,
     this.expiresAt,
     this.underReviewBy,
+    this.totalAmount,
   });
 
   // Computed properties
@@ -261,6 +263,7 @@ class LaundryOrder {
       'reviewed_by': reviewedBy,
       'expires_at': expiresAt?.toIso8601String(),
       'under_review_by': underReviewBy,
+      'total_amount': totalAmount,
     };
   }
 
@@ -299,6 +302,7 @@ class LaundryOrder {
       reviewedBy: json['reviewed_by'] as String?,
       expiresAt: _parseLocalDateTime(json['expires_at']),
       underReviewBy: json['under_review_by'] as String?,
+      totalAmount: (json['total_amount'] as num?)?.toDouble(),
     );
   }
 
