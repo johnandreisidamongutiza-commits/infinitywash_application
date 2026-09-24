@@ -156,7 +156,6 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
 
   Future<void> _handleAccept() async {
     final isRiderPickup = _request.collectionMethod == CollectionMethod.riderPickup;
-    final staffMessageController = TextEditingController();
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -178,38 +177,9 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
             ),
           ],
         ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'This request will be marked as "Processing" and added to your active orders.',
-                style: TextStyle(fontSize: 13, color: AppTheme.textDark),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Message to Customer (Optional)',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: staffMessageController,
-                maxLines: 2,
-                decoration: InputDecoration(
-                  hintText: 'e.g., We have approved your pickup request.',
-                  hintStyle: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                  filled: true,
-                  fillColor: AppTheme.softGray,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.all(12),
-                ),
-              ),
-            ],
-          ),
+        content: const Text(
+          'This request will be marked as "Processing" and added to your active orders.',
+          style: TextStyle(fontSize: 13, color: AppTheme.textDark),
         ),
         actions: [
           TextButton(
@@ -234,7 +204,6 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
         await _serviceRequestService.approveServiceRequest(
           orderId: _request.id,
           isRiderPickup: isRiderPickup,
-          staffMessage: staffMessageController.text.trim(),
         );
 
         if (mounted) {
@@ -270,7 +239,6 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
       {'id': 'unreachable', 'label': 'Customer unreachable / invalid info'},
       {'id': 'other', 'label': 'Other reason'},
     ];
-    final messageController = TextEditingController();
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -318,27 +286,6 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
                     },
                   );
                 }),
-                const SizedBox(height: 8),
-                const Text(
-                  'Explanation for Customer',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: messageController,
-                  maxLines: 2,
-                  decoration: InputDecoration(
-                    hintText: 'Provide additional context to the customer...',
-                    hintStyle: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                    filled: true,
-                    fillColor: AppTheme.softGray,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.all(12),
-                  ),
-                ),
               ],
             ),
           ),
@@ -366,7 +313,6 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
         await _serviceRequestService.rejectServiceRequest(
           orderId: _request.id,
           reason: selectedReason,
-          staffMessage: messageController.text.trim(),
         );
 
         if (mounted) {

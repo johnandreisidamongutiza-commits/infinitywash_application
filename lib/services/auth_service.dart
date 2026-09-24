@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_service.dart';
 import 'secure_storage_service.dart';
 import 'saved_accounts_db.dart';
+import 'customer_service.dart';
 import '../models/saved_account.dart';
 
 class AuthService {
@@ -77,6 +78,8 @@ class AuthService {
   ) async {
     final now = DateTime.now().toIso8601String();
     final client = SupabaseService.client;
+    
+    // Step 1: Create or update profile
     final profile = await client
         .from('profiles')
         .select('id')
@@ -96,14 +99,81 @@ class AuthService {
       'updated_at': now,
     };
 
+    String profileId;
     if (profile == null) {
-      await client.from('profiles').insert({
+      final newProfile = await client.from('profiles').insert({
         'id': user.id,
         ...profileData,
         'created_at': now,
-      });
+      }).select('id').single();
+      profileId = newProfile['id'] as String;
+      print('✅ Profile created: $profileId');
     } else {
       await client.from('profiles').update(profileData).eq('id', profile['id']);
+      profileId = profile['id'] as String;
+      print('✅ Profile updated: $profileId');
+    }
+
+    // Step 2: Create or update customer record with address and landmark
+    try {
+      final existingCustomer = await client
+          .from('customers')
+          .select('id, address, landmark')
+          .eq('profile_id', profileId)
+          .maybeSingle();
+
+      final address = metadata['address'] as String? ?? '';
+      final landmark = metadata['landmark'] as String? ?? '';
+
+      if (existingCustomer == null) {
+        // Create new customer record with address
+        final customerService = CustomerService();
+        final customerCode = await customerService.generateCustomerCode();
+        
+        await client.from('customers').insert({
+          'customer_code': customerCode,
+          'profile_id': profileId,
+          'first_name': metadata['first_name'],
+          'last_name': metadata['last_name'],
+          'phone': metadata['phone'],
+          'email': email,
+          'address': address,
+          'landmark': landmark,
+          'customer_type': 'mobile_app',
+          'status': 'active',
+          'joined_at': now,
+          'created_at': now,
+          'updated_at': now,
+        });
+        
+        print('✅ Customer created with address: "$address" and landmark: "$landmark"');
+      } else {
+        // Update existing customer with address and landmark
+        final existingAddress = existingCustomer['address'] as String? ?? '';
+        final existingLandmark = existingCustomer['landmark'] as String? ?? '';
+        
+        // Only update if address is empty or different
+        if (existingAddress.isEmpty || existingLandmark.isEmpty || 
+            existingAddress != address || existingLandmark != landmark) {
+          await client.from('customers').update({
+            'first_name': metadata['first_name'],
+            'last_name': metadata['last_name'],
+            'phone': metadata['phone'],
+            'email': email,
+            'address': address,
+            'landmark': landmark,
+            'updated_at': now,
+          }).eq('id', existingCustomer['id']);
+          
+          print('✅ Customer updated with address: "$address" and landmark: "$landmark"');
+        } else {
+          print('ℹ️ Customer already has correct address and landmark');
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error creating/updating customer record: $e');
+      // Don't fail the registration if customer creation fails
+      // The profile is created successfully, customer can be synced later
     }
   }
 
@@ -227,17 +297,25 @@ class AuthService {
   }
 
   /// Ensure a profile exists for the user, create if missing
+  /// Also ensures customer record is synced with profile data
   Future<void> _ensureProfileExists(User user) async {
     try {
       // Check if profile exists
       final profile = await SupabaseService.client
           .from('profiles')
-          .select('id')
+          .select('id, role, address, landmark, first_name, last_name, phone, email')
           .eq('supabase_user_id', user.id)
           .maybeSingle();
 
       if (profile != null) {
         print('✅ Profile exists for ${user.email}');
+        
+        // If this is a customer profile, ensure customer record exists with address
+        final role = profile['role'] as String? ?? '';
+        if (role.toLowerCase() == 'customer') {
+          await _syncCustomerRecord(profile, user.email ?? '');
+        }
+        
         return;
       }
 
@@ -263,9 +341,90 @@ class AuthService {
       });
 
       print('✅ Profile created automatically on login');
+      
+      // Create customer record if role is customer
+      if ((metadata['role'] ?? 'customer') == 'customer') {
+        await _saveCustomerProfile(user, user.email ?? '', metadata);
+      }
     } catch (e) {
       print('⚠️ Could not auto-create profile: $e');
       // Don't fail the login if profile creation fails
+    }
+  }
+
+  /// Sync customer record with profile data (for existing users with empty address)
+  Future<void> _syncCustomerRecord(Map<String, dynamic> profile, String email) async {
+    try {
+      final profileId = profile['id'] as String;
+      final address = profile['address'] as String? ?? '';
+      final landmark = profile['landmark'] as String? ?? '';
+      
+      // Check if customer record exists
+      final customer = await SupabaseService.client
+          .from('customers')
+          .select('id, address, landmark')
+          .eq('profile_id', profileId)
+          .maybeSingle();
+
+      if (customer == null) {
+        // No customer record exists, create one
+        print('⚠️ Customer record missing, creating from profile...');
+        
+        final metadata = {
+          'first_name': profile['first_name'],
+          'last_name': profile['last_name'],
+          'phone': profile['phone'],
+          'address': address,
+          'landmark': landmark,
+          'role': 'customer',
+        };
+        
+        final customerService = CustomerService();
+        final customerCode = await customerService.generateCustomerCode();
+        final now = DateTime.now().toIso8601String();
+        
+        await SupabaseService.client.from('customers').insert({
+          'customer_code': customerCode,
+          'profile_id': profileId,
+          'first_name': profile['first_name'],
+          'last_name': profile['last_name'],
+          'phone': profile['phone'],
+          'email': email,
+          'address': address,
+          'landmark': landmark,
+          'customer_type': 'mobile_app',
+          'status': 'active',
+          'joined_at': now,
+          'created_at': now,
+          'updated_at': now,
+        });
+        
+        print('✅ Customer record created with address from profile');
+      } else {
+        // Customer exists, check if address needs updating
+        final customerAddress = customer['address'] as String? ?? '';
+        final customerLandmark = customer['landmark'] as String? ?? '';
+        
+        // If customer address is empty but profile has address, sync it
+        if ((customerAddress.isEmpty || customerLandmark.isEmpty) && address.isNotEmpty) {
+          print('⚠️ Customer address empty, syncing from profile...');
+          
+          await SupabaseService.client.from('customers').update({
+            'address': address,
+            'landmark': landmark,
+            'first_name': profile['first_name'],
+            'last_name': profile['last_name'],
+            'phone': profile['phone'],
+            'email': email,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', customer['id']);
+          
+          print('✅ Customer address synced from profile: "$address"');
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error syncing customer record: $e');
+      // Don't fail the login
     }
   }
 

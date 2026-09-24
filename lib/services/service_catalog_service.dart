@@ -104,6 +104,38 @@ class ServiceCatalogService {
     }
   }
 
+  /// Get addon by code (e.g., "extra-fabric-conditioner", "extra-detergent")
+  /// Returns addon details including price
+  Future<Map<String, dynamic>> getAddonByCode(String addonCode) async {
+    try {
+      // Return cached addon if available
+      if (_cachedAddons.containsKey(addonCode)) {
+        return _cachedAddons[addonCode]!;
+      }
+
+      // Query addon by code
+      final response = await _client
+          .from('service_addons')
+          .select()
+          .eq('addon_code', addonCode)
+          .eq('status', 'active')
+          .maybeSingle();
+
+      if (response == null) {
+        throw Exception('Addon "$addonCode" not found in service_addons');
+      }
+
+      // Cache the addon
+      _cachedAddons[addonCode] = response;
+
+      print('✅ Loaded addon: ${response['addon_name']} - ₱${response['price']}');
+      return response;
+    } catch (e) {
+      print('❌ Error loading addon "$addonCode": $e');
+      rethrow;
+    }
+  }
+
   /// Get all active addons
   Future<List<Map<String, dynamic>>> getAllAddons() async {
     try {

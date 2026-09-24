@@ -524,23 +524,15 @@ class _CheckInRequestScreenState extends State<CheckInRequestScreen> {
       final addons = <Map<String, dynamic>>[];
 
       if (result.extraFabCon) {
-        final fabConAddon = await _catalogService.getAddonByName('Extra Fab Con');
         addons.add({
-          'addon_id': fabConAddon['id'],
-          'addon_name': fabConAddon['addon_name'],
+          'addon_code': 'extra-fabric-conditioner',
           'quantity': 1,
-          'unit_price': (fabConAddon['price'] as num).toDouble(),
-          'line_total': (fabConAddon['price'] as num).toDouble(),
         });
       }
       if (result.extraDetergent) {
-        final detergentAddon = await _catalogService.getAddonByName('Extra Detergent');
         addons.add({
-          'addon_id': detergentAddon['id'],
-          'addon_name': detergentAddon['addon_name'],
+          'addon_code': 'extra-detergent',
           'quantity': 1,
-          'unit_price': (detergentAddon['price'] as num).toDouble(),
-          'line_total': (detergentAddon['price'] as num).toDouble(),
         });
       }
 

@@ -17,29 +17,32 @@ class RiderMainScreen extends StatefulWidget {
 
 class _RiderMainScreenState extends State<RiderMainScreen> {
   late int _currentIndex;
+  int _previousIndex = 0;
+  
+  // Key to access RiderOrdersScreen state
+  final GlobalKey<RiderOrdersScreenState> _ordersScreenKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    _previousIndex = widget.initialIndex;
   }
-
-  List<Widget> get _screens => [
-    const RiderHomeScreen(),
-    RiderRouteScreen(
-      onBackToHome: () => setState(() => _currentIndex = 0),
-    ),
-    const RiderOrdersScreen(),
-    const RiderChatsScreen(),
-    const RiderProfileScreen(),
-  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          const RiderHomeScreen(),
+          RiderRouteScreen(
+            onBackToHome: () => setState(() => _currentIndex = 0),
+          ),
+          RiderOrdersScreen(key: _ordersScreenKey),
+          const RiderChatsScreen(),
+          const RiderProfileScreen(),
+        ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -53,7 +56,26 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
+          onTap: (index) {
+            setState(() {
+              _previousIndex = _currentIndex;
+              _currentIndex = index;
+            });
+            
+            // If navigating TO Orders screen (index 2) FROM another screen
+            if (index == 2 && _previousIndex != 2) {
+              print('🔵 RIDER MAIN: Switched to Orders tab (from tab $_previousIndex)');
+              print('🔵 RIDER MAIN: RiderOrdersScreen key is mounted: ${_ordersScreenKey.currentState?.mounted}');
+              if (_ordersScreenKey.currentState != null) {
+                print('🔵 RIDER MAIN: RiderOrdersScreen state exists, calling refreshOrders()');
+                _ordersScreenKey.currentState!.refreshOrders();
+              } else {
+                print('❌ RIDER MAIN: RiderOrdersScreen state is NULL! Cannot refresh.');
+              }
+            } else {
+              print('🔵 RIDER MAIN: Switched to tab $index (from $_previousIndex), no action needed');
+            }
+          },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
           selectedItemColor: AppTheme.accentBlue,

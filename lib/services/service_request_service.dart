@@ -3,11 +3,13 @@ import '../models/order.dart';
 import '../services/supabase_service.dart';
 import '../services/customer_service.dart';
 import '../services/service_catalog_service.dart';
+import '../services/loyalty_service.dart';
 
 class ServiceRequestService {
   final SupabaseClient _client = SupabaseService.client;
   final CustomerService _customerService = CustomerService();
   final ServiceCatalogService _catalogService = ServiceCatalogService();
+  final LoyaltyService _loyaltyService = LoyaltyService();
 
   /// Submit a new service request from authenticated customer
   /// Uses currently logged-in user's customer record instead of creating new one
@@ -20,6 +22,7 @@ class ServiceRequestService {
     List<String>? photoUrls,
     String? customerDescription,
     String? instructions,
+    List<Map<String, dynamic>> addons = const [],
   }) async {
     try {
       print('🔄 Starting authenticated service request submission...');
@@ -28,21 +31,28 @@ class ServiceRequestService {
       final customerId = await _customerService.getCurrentAuthenticatedCustomerId();
       print('✅ Using authenticated customer: $customerId');
 
-      // Step 2: Get service information
+      // Step 2: Check if customer has linked loyalty card (for logging only)
+      print('🔄 Checking for linked loyalty card...');
+      final linkedCard = await _loyaltyService.getLinkedCard(customerId);
+      if (linkedCard != null) {
+        print('✅ Found linked card: ${linkedCard.uid} (${linkedCard.currentPoints} pts)');
+      }
+
+      // Step 3: Get service information
       print('🔄 Loading service catalog...');
       final service = await _catalogService.getFullService();
       final serviceId = service['id'] as String;
       final serviceName = service['service_name'] as String;
       final basePrice = (service['base_price'] as num).toDouble();
 
-      // Step 3: Generate order number
+      // Step 4: Generate order number
       final orderNumber = await _generateServiceRequestNumber();
       print('✅ Generated request number: $orderNumber');
 
-      // Step 4: Set expiry time (24 hours from now)
+      // Step 5: Set expiry time (24 hours from now)
       final expiresAt = DateTime.now().add(const Duration(hours: 24));
 
-      // Step 5: Create service request in orders table
+      // Step 6: Create service request in orders table
       final response = await _client.from('orders').insert({
         'order_number': orderNumber,
         'customer_id': customerId,
@@ -78,6 +88,45 @@ class ServiceRequestService {
 
       final orderId = response['id'] as String;
       print('✅ Service request created: $orderId');
+
+      // Insert add-ons if any
+      if (addons.isNotEmpty) {
+        print('🔄 Processing ${addons.length} add-ons...');
+        final now = DateTime.now().toIso8601String();
+        final addonsData = <Map<String, dynamic>>[];
+        
+        for (final addon in addons) {
+          final addonCode = addon['addon_code'] as String;
+          
+          // Fetch the actual addon UUID from service_addons table
+          final serviceAddon = await _client
+              .from('service_addons')
+              .select('id, addon_name, price')
+              .eq('addon_code', addonCode)
+              .eq('status', 'active')
+              .maybeSingle();
+          
+          if (serviceAddon == null) {
+            print('⚠️ Add-on not found: $addonCode');
+            continue;
+          }
+          
+          addonsData.add({
+            'order_id': orderId,
+            'addon_id': serviceAddon['id'],
+            'addon_name': serviceAddon['addon_name'],
+            'quantity': addon['quantity'] ?? 1,
+            'unit_price': serviceAddon['price'],
+            'line_total': (addon['quantity'] ?? 1) * (serviceAddon['price'] as num).toDouble(),
+            'created_at': now,
+          });
+        }
+        
+        if (addonsData.isNotEmpty) {
+          await _client.from('order_addons').insert(addonsData);
+          print('✅ Created ${addonsData.length} add-ons for service request');
+        }
+      }
 
       return orderId;
     } catch (e) {
@@ -530,7 +579,6 @@ class ServiceRequestService {
     required String orderId,
     required bool isRiderPickup,
     int? estimatedLoads,
-    String? staffMessage,
   }) async {
     try {
       final newStatus = isRiderPickup ? 'pending_pickup' : 'processing';
@@ -554,10 +602,6 @@ class ServiceRequestService {
         updates['estimated_loads'] = estimatedLoads;
       }
 
-      if (staffMessage != null && staffMessage.trim().isNotEmpty) {
-        updates['staff_notes'] = staffMessage.trim();
-      }
-
       await _client
           .from('orders')
           .update(updates)
@@ -575,7 +619,6 @@ class ServiceRequestService {
   Future<void> rejectServiceRequest({
     required String orderId,
     required String reason,
-    String? staffMessage,
   }) async {
     try {
       print('🔄 Rejecting service request $orderId (Reason: $reason)');
@@ -593,10 +636,6 @@ class ServiceRequestService {
       // Only set reviewed_by if an employee record exists in employees table
       if (employeeId != null) {
         updates['reviewed_by'] = employeeId;
-      }
-
-      if (staffMessage != null && staffMessage.trim().isNotEmpty) {
-        updates['staff_notes'] = staffMessage.trim();
       }
 
       await _client

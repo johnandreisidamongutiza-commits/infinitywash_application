@@ -25,6 +25,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   final List<File> _laundryPhotos = [];
   final ImagePicker _imagePicker = ImagePicker();
   final int _maxPhotos = 3;
+  
+  // Add-ons state
+  bool _addExtraFabCon = false;
+  bool _addExtraDetergent = false;
 
   // Active details for this order - loaded from authenticated customer profile
   String _pickupAddress = '';
@@ -35,6 +39,13 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
   final TextEditingController _instructionsController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
+
+  double _calculateAddonsTotal() {
+    double total = 0.0;
+    if (_addExtraFabCon) total += 20.0;
+    if (_addExtraDetergent) total += 20.0;
+    return total;
+  }
 
   @override
   void initState() {
@@ -300,13 +311,13 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(_currentStep == 4 ? 'Request Status' : 'Request Service'),
+        title: Text(_currentStep == 5 ? 'Request Status' : 'Request Service'),
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(_currentStep > 1 && _currentStep < 4 ? Icons.arrow_back : Icons.close, color: AppTheme.textDark),
+          icon: Icon(_currentStep > 1 && _currentStep < 5 ? Icons.arrow_back : Icons.close, color: AppTheme.textDark),
           onPressed: () {
-            if (_currentStep > 1 && _currentStep < 4) {
+            if (_currentStep > 1 && _currentStep < 5) {
               setState(() => _currentStep = _currentStep - 1);
             } else {
               Navigator.pop(context);
@@ -325,8 +336,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
       case 2:
         return _buildPhotoUpload();
       case 3:
-        return _buildDetailsForm();
+        return _buildAddOnsStep();
       case 4:
+        return _buildDetailsForm();
+      case 5:
         return _buildWaitingApproval();
       default:
         return const SizedBox.shrink();
@@ -556,7 +569,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             // Continue button
             ElevatedButton(
               onPressed: _laundryPhotos.isEmpty ? null : () => setState(() => _currentStep = 3),
-              child: const Text('Continue'),
+              child: const Text('Continue to Add-ons'),
             ),
             const SizedBox(height: 20),
           ],
@@ -666,6 +679,173 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             if (isSelected) const Icon(Icons.check_circle, color: AppTheme.accentBlue),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAddOnsStep() {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Extra Services (Optional)',
+              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(fontSize: 22),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Enhance your laundry experience with these add-ons.',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 24),
+            
+            // Fabric Conditioner
+            _buildAddOnCard(
+              title: 'Extra Fabric Conditioner',
+              description: 'Makes clothes softer and smell fresher',
+              price: 20.0,
+              icon: Icons.bubble_chart_outlined,
+              value: _addExtraFabCon,
+              onChanged: (val) => setState(() => _addExtraFabCon = val!),
+            ),
+            const SizedBox(height: 16),
+            
+            // Extra Detergent
+            _buildAddOnCard(
+              title: 'Extra Detergent',
+              description: 'For heavily soiled or stained laundry',
+              price: 20.0,
+              icon: Icons.local_laundry_service_outlined,
+              value: _addExtraDetergent,
+              onChanged: (val) => setState(() => _addExtraDetergent = val!),
+            ),
+            const SizedBox(height: 24),
+            
+            // Price Summary
+            if (_calculateAddonsTotal() > 0) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightBlue,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Add-ons Total:', 
+                                     style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('₱${_calculateAddonsTotal().toStringAsFixed(2)}',
+                             style: const TextStyle(fontWeight: FontWeight.bold, 
+                                                   fontSize: 18, 
+                                                   color: AppTheme.accentBlue)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 16, color: AppTheme.accentBlue),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Base price will be calculated after staff weighs your laundry',
+                            style: TextStyle(fontSize: 11, color: AppTheme.textDark),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+            
+            // Continue Button
+            ElevatedButton(
+              onPressed: () => setState(() => _currentStep = 4),
+              child: const Text('Continue to Details'),
+            ),
+            const SizedBox(height: 12),
+            
+            // Skip Button
+            TextButton(
+              onPressed: () => setState(() => _currentStep = 4),
+              child: const Text('Skip Add-ons'),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddOnCard({
+    required String title,
+    required String description,
+    required double price,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool?> onChanged,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: value ? AppTheme.accentBlue : AppTheme.borderGray,
+          width: value ? 2 : 1,
+        ),
+      ),
+      child: CheckboxListTile(
+        value: value,
+        onChanged: onChanged,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: value 
+                    ? AppTheme.accentBlue.withValues(alpha: 0.1) 
+                    : AppTheme.softGray,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, 
+                         color: value ? AppTheme.accentBlue : AppTheme.textLight, 
+                         size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, 
+                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 2),
+                  Text(description, 
+                       style: const TextStyle(fontSize: 12, color: AppTheme.textLight)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(left: 44, top: 4),
+          child: Text(
+            '₱${price.toStringAsFixed(2)}',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: value ? AppTheme.accentBlue : AppTheme.textDark,
+              fontSize: 14,
+            ),
+          ),
+        ),
+        activeColor: AppTheme.accentBlue,
+        controlAffinity: ListTileControlAffinity.trailing,
       ),
     );
   }
@@ -1012,6 +1192,21 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     }
                   }
 
+                  // Prepare add-ons list
+                  final List<Map<String, dynamic>> addons = [];
+                  if (_addExtraFabCon) {
+                    addons.add({
+                      'addon_code': 'extra-fabric-conditioner',
+                      'quantity': 1,
+                    });
+                  }
+                  if (_addExtraDetergent) {
+                    addons.add({
+                      'addon_code': 'extra-detergent',
+                      'quantity': 1,
+                    });
+                  }
+
                   // Submit the request using authenticated method
                   await ServiceRequestService().submitAuthenticatedServiceRequest(
                     collectionMethod: _selectedCollection,
@@ -1024,6 +1219,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     customerDescription: _descriptionController.text.trim().isNotEmpty 
                         ? _descriptionController.text.trim() 
                         : null,
+                    addons: addons,
                   );
 
                   // Close loading dialog
@@ -1031,7 +1227,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   Navigator.of(context).pop();
 
                   // Move to success screen
-                  setState(() => _currentStep = 4);
+                  setState(() => _currentStep = 5);
                 } catch (e) {
                   // Close loading dialog
                   if (!mounted) return;

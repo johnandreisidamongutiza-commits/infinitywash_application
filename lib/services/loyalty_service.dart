@@ -32,6 +32,12 @@ class LoyaltyCardInfo {
   bool get isActive => status == 'active';
   bool get hasOwner => customerId != null;
 
+  /// Alias for UI consistency (same as pointsBalance)
+  int get currentPoints => pointsBalance;
+  
+  /// Alias for UI consistency (same as totalLoads)
+  int get totalLoadsCompleted => totalLoads;
+
   /// Points needed for next free load (10 points = 1 free load)
   int get pointsToNextRedemption {
     final remainder = pointsBalance % 10;
@@ -403,6 +409,86 @@ class LoyaltyService {
     } catch (e) {
       print('❌ Error fetching cards for customer: $e');
       return [];
+    }
+  }
+
+  // ─── Customer Card Linking (Mobile App) ──────────────────────────────────────
+
+  /// Link a loyalty card to a customer profile via card code entry.
+  /// This is the mobile app version where customers manually enter their card code.
+  Future<void> linkCardToCustomer({
+    required String cardUid,
+    required String customerId,
+  }) async {
+    try {
+      final cleanUid = cardUid.trim().toUpperCase();
+      print('🔗 Linking card $cleanUid to customer $customerId');
+
+      // Verify card exists
+      final card = await lookupCardByUid(cleanUid);
+      if (card == null) {
+        throw Exception('Card not found. Please check the card code and try again.');
+      }
+
+      // Check if already linked to another customer
+      if (card.hasOwner && card.customerId != customerId) {
+        throw Exception('This card is already linked to another customer.');
+      }
+
+      // Link card to customer by updating customer_id in rfid_loyalty_cards table
+      await _client.from('rfid_loyalty_cards').update({
+        'customer_id': customerId,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('uid', cleanUid);
+
+      print('✅ Successfully linked card $cleanUid to customer $customerId');
+    } catch (e) {
+      print('❌ Error linking card: $e');
+      rethrow;
+    }
+  }
+
+  /// Get the linked loyalty card for a customer (returns first active card).
+  /// Used in mobile app to auto-detect customer's loyalty card.
+  Future<LoyaltyCardInfo?> getLinkedCard(String customerId) async {
+    try {
+      final response = await _client
+          .from('vw_rfid_loyalty_cards')
+          .select()
+          .eq('customer_id', customerId)
+          .eq('status', 'active')
+          .maybeSingle();
+
+      if (response == null) {
+        print('ℹ️ No linked card found for customer $customerId');
+        return null;
+      }
+
+      final card = LoyaltyCardInfo.fromJson(response);
+      print('✅ Found linked card for customer: ${card.uid} (${card.pointsBalance} pts)');
+      return card;
+    } catch (e) {
+      print('❌ Error getting linked card: $e');
+      return null;
+    }
+  }
+
+  /// Unlink a card from customer (removes customer_id association).
+  /// Card remains active but unassigned.
+  Future<void> unlinkCard(String cardUid) async {
+    try {
+      final cleanUid = cardUid.trim().toUpperCase();
+      print('🔓 Unlinking card $cleanUid');
+
+      await _client.from('rfid_loyalty_cards').update({
+        'customer_id': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('uid', cleanUid);
+
+      print('✅ Card $cleanUid unlinked successfully');
+    } catch (e) {
+      print('❌ Error unlinking card: $e');
+      rethrow;
     }
   }
 }

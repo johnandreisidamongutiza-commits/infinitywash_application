@@ -9,10 +9,10 @@ class RiderOrdersScreen extends StatefulWidget {
   const RiderOrdersScreen({super.key});
 
   @override
-  State<RiderOrdersScreen> createState() => _RiderOrdersScreenState();
+  State<RiderOrdersScreen> createState() => RiderOrdersScreenState();
 }
 
-class _RiderOrdersScreenState extends State<RiderOrdersScreen> {
+class RiderOrdersScreenState extends State<RiderOrdersScreen> {
   final RiderService _riderService = RiderService();
   bool _showNew = true;
   bool _isLoading = false;
@@ -24,6 +24,12 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> {
   void initState() {
     super.initState();
     _loadOrders();
+  }
+
+  /// Public method to refresh orders - called from RiderMainScreen
+  Future<void> refreshOrders() async {
+    print('🔵 RIDER: refreshOrders() called');
+    await _loadOrders();
   }
 
   Future<void> _loadOrders() async {

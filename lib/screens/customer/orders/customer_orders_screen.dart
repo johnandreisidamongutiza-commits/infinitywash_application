@@ -7,7 +7,9 @@ import '../../../widgets/top_notification.dart';
 import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
 import '../../../services/customer_service.dart';
+import '../../../services/feedback_service.dart';
 import 'request_service_flow.dart';
+import 'customer_order_details_screen.dart';
 import '../chats/customer_chat_detail_screen.dart';
 
 class CustomerOrdersScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class CustomerOrdersScreen extends StatefulWidget {
 class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   final ServiceRequestService _serviceRequestService = ServiceRequestService();
   final CustomerService _customerService = CustomerService();
+  final FeedbackService _feedbackService = FeedbackService();
   int _selectedTabIndex = 0; // 0: Requests, 1: Active, 2: History
   final Set<String> _expandedOrderIds = {};
   
@@ -27,6 +30,9 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   bool _isLoading = false;
   List<LaundryOrder> _customerOrders = [];
   String? _errorMessage;
+  
+  // Feedback cache: orderId -> hasFeedback
+  Map<String, bool> _feedbackStatus = {};
 
   @override
   void initState() {
@@ -48,6 +54,9 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
       // Fetch orders for this customer
       final orders = await _serviceRequestService.getOrdersByCustomerId(customerId);
       
+      // Load feedback status for completed orders
+      await _loadFeedbackStatus(orders);
+      
       setState(() {
         _customerOrders = orders;
         _isLoading = false;
@@ -59,6 +68,21 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
         _errorMessage = 'Failed to load orders: ${e.toString()}';
       });
       print('❌ Error loading customer orders: $e');
+    }
+  }
+
+  /// Load feedback status for orders
+  Future<void> _loadFeedbackStatus(List<LaundryOrder> orders) async {
+    final completedOrders = orders.where((o) => o.status == OrderStatus.completed);
+    
+    for (final order in completedOrders) {
+      try {
+        final feedback = await _feedbackService.getFeedbackForOrder(order.id);
+        _feedbackStatus[order.id] = feedback != null;
+      } catch (e) {
+        print('⚠️ Error loading feedback for ${order.id}: $e');
+        _feedbackStatus[order.id] = false;
+      }
     }
   }
 
@@ -1344,146 +1368,123 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   }
 
   Widget _buildHistoryCard(LaundryOrder order) {
-    final bool isExpanded = _expandedOrderIds.contains(order.id);
+    final bool hasFeedback = _feedbackStatus[order.id] ?? false;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: AppStyles.cardDecoration,
-      child: Column(
-        children: [
-          // Collapsed header
-          InkWell(
-            onTap: () {
-              setState(() {
-                if (isExpanded) {
-                  _expandedOrderIds.remove(order.id);
-                } else {
-                  _expandedOrderIds.add(order.id);
-                }
-              });
-            },
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CustomerOrderDetailsScreen(order: order),
+            ),
+          );
+          // Refresh if feedback was submitted
+          if (result == true) {
+            _loadCustomerOrders();
+          }
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.check_circle_outline, color: Colors.green, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Order #${order.displayNumber}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
                     ),
-                    child: const Icon(Icons.check_circle_outline, color: Colors.green, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 4),
+                    Text(
+                      'Completed • ${_formatDateTime(order.createdAt)}',
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                    ),
+                    const SizedBox(height: 6),
+                    // Feedback badge
+                    Row(
                       children: [
-                        Text(
-                          'Order #${order.displayNumber}',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Completed • ${_formatDateTime(order.createdAt)}',
-                          style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                        ),
+                        if (hasFeedback)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.star, size: 12, color: Color(0xFFFFD700)),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Rated',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFFB8860B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentBlue.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '💬',
+                                  style: TextStyle(fontSize: 10),
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Rate this order',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.accentBlue,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
-                  ),
-                  if (order.totalWeight > 0)
-                    Text(
-                      '${order.totalWeight.toStringAsFixed(1)} kg',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
-                    ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    isExpanded ? Icons.expand_less : Icons.expand_more,
-                    color: AppTheme.textLight,
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+              if (order.totalWeight > 0)
+                Text(
+                  '${order.totalWeight.toStringAsFixed(1)} kg',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textLight),
+                ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: AppTheme.textLight,
+              ),
+            ],
           ),
-          // Expanded details
-          if (isExpanded) ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (order.loads.isNotEmpty) ...[
-                    const Text(
-                      'Order Summary',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-                    ),
-                    const SizedBox(height: 8),
-                    ...order.loads.map((load) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                  color: AppTheme.accentBlue,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Load ${load.loadNumber}: ${load.category} (${load.weight} kg)',
-                                style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                              ),
-                            ],
-                          ),
-                        )),
-                    const SizedBox(height: 12),
-                  ],
-                  if (order.paymentStatus == PaymentStatus.paid) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.check_circle, size: 16, color: Colors.green),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Paid via ${order.paymentMethod ?? "N/A"}',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.green),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
-                        );
-                      },
-                      icon: const Icon(Icons.replay, size: 16),
-                      label: const Text('Reorder', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }

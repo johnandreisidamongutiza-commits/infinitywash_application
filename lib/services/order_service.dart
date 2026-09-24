@@ -209,20 +209,43 @@ class OrderService {
 
       // Step 3: Insert order addons (if any)
       if (addons.isNotEmpty) {
-        final addonsData = addons.map((addon) {
-          return {
+        print('🔄 Processing ${addons.length} add-ons...');
+        final addonsData = <Map<String, dynamic>>[];
+        
+        for (final addon in addons) {
+          final addonCode = addon['addon_code'] as String;
+          
+          // Fetch the actual addon UUID from service_addons table
+          final serviceAddon = await _client
+              .from('service_addons')
+              .select('id, addon_name, price')
+              .eq('addon_code', addonCode)
+              .eq('status', 'active')
+              .maybeSingle();
+          
+          if (serviceAddon == null) {
+            print('⚠️ Add-on not found: $addonCode');
+            continue;
+          }
+          
+          final quantity = (addon['quantity'] ?? 1) as num;
+          final unitPrice = (serviceAddon['price'] as num).toDouble();
+          
+          addonsData.add({
             'order_id': orderId,
-            'addon_id': addon['addon_id'],
-            'addon_name': addon['addon_name'],
-            'quantity': addon['quantity'] ?? 1,
-            'unit_price': addon['unit_price'],
-            'line_total': addon['line_total'],
+            'addon_id': serviceAddon['id'],
+            'addon_name': serviceAddon['addon_name'],
+            'quantity': quantity,
+            'unit_price': unitPrice,
+            'line_total': quantity.toDouble() * unitPrice,
             'created_at': now,
-          };
-        }).toList();
+          });
+        }
 
-        await _client.from('order_addons').insert(addonsData);
-        print('✅ Created ${addons.length} addons');
+        if (addonsData.isNotEmpty) {
+          await _client.from('order_addons').insert(addonsData);
+          print('✅ Created ${addonsData.length} addons');
+        }
       }
 
       // Step 4: Create payment record (if paid immediately)
@@ -302,18 +325,43 @@ class OrderService {
       await _client.from('order_loads').insert(loadsData);
 
       if (addons.isNotEmpty) {
-        final addonsData = addons.map((addon) {
-          return {
+        print('🔄 Processing ${addons.length} add-ons...');
+        final addonsData = <Map<String, dynamic>>[];
+        
+        for (final addon in addons) {
+          final addonCode = addon['addon_code'] as String;
+          
+          // Fetch the actual addon UUID from service_addons table
+          final serviceAddon = await _client
+              .from('service_addons')
+              .select('id, addon_name, price')
+              .eq('addon_code', addonCode)
+              .eq('status', 'active')
+              .maybeSingle();
+          
+          if (serviceAddon == null) {
+            print('⚠️ Add-on not found: $addonCode');
+            continue;
+          }
+          
+          final quantity = (addon['quantity'] ?? 1) as num;
+          final unitPrice = (serviceAddon['price'] as num).toDouble();
+          
+          addonsData.add({
             'order_id': orderId,
-            'addon_id': addon['addon_id'],
-            'addon_name': addon['addon_name'],
-            'quantity': addon['quantity'] ?? 1,
-            'unit_price': addon['unit_price'],
-            'line_total': addon['line_total'],
+            'addon_id': serviceAddon['id'],
+            'addon_name': serviceAddon['addon_name'],
+            'quantity': quantity,
+            'unit_price': unitPrice,
+            'line_total': quantity.toDouble() * unitPrice,
             'created_at': now,
-          };
-        }).toList();
-        await _client.from('order_addons').insert(addonsData);
+          });
+        }
+        
+        if (addonsData.isNotEmpty) {
+          await _client.from('order_addons').insert(addonsData);
+          print('✅ Created ${addonsData.length} addons');
+        }
       }
 
       final updates = <String, dynamic>{
@@ -563,12 +611,12 @@ class OrderService {
     }
   }
 
-  /// Award loyalty points for completed order if a card UID or customer profile is linked
+  /// Award loyalty points for completed order if a card or customer profile is linked
   Future<void> _awardLoyaltyPointsForOrder(String orderId) async {
     try {
       final orderRow = await _client
           .from('orders')
-          .select('customer_id, loads_count, order_number, staff_notes, customers(profile_id)')
+          .select('customer_id, loads_count, order_number')
           .eq('id', orderId)
           .maybeSingle();
 
@@ -576,39 +624,25 @@ class OrderService {
 
       final loadsCount = (orderRow['loads_count'] as num?)?.toInt() ?? 1;
       final orderNumber = orderRow['order_number'] as String?;
-      final staffNotes = orderRow['staff_notes'] as String? ?? '';
+      final customerId = orderRow['customer_id'] as String?;
 
-      // 1. Check if card UID was noted in staff notes (e.g. "Loyalty Card: CARD-001")
-      String? cardUid;
-      if (staffNotes.contains('Loyalty Card: ')) {
-        final match = RegExp(r'Loyalty Card:\s*([^\s|]+)').firstMatch(staffNotes);
-        cardUid = match?.group(1);
-      }
-
-      LoyaltyCardInfo? card;
-      if (cardUid != null && cardUid.isNotEmpty) {
-        card = await _loyaltyService.lookupCardByUid(cardUid);
-      }
-
-      // 2. If not found by UID, check if customer has a profile_id with linked card
-      if (card == null) {
-        final customerData = orderRow['customers'] as Map<String, dynamic>?;
-        final profileId = customerData?['profile_id'] as String?;
-        if (profileId != null) {
-          final cards = await _loyaltyService.getCardsForCustomer(profileId);
-          if (cards.isNotEmpty) card = cards.first;
+      // Check if customer has linked loyalty card
+      if (customerId != null) {
+        final card = await _loyaltyService.getLinkedCard(customerId);
+        if (card != null) {
+          await _loyaltyService.awardPoints(
+            cardId: card.cardId,
+            customerId: card.customerId,
+            orderId: orderId,
+            loadsCompleted: loadsCount,
+            orderNumber: orderNumber,
+          );
+          print('⭐ Awarded $loadsCount points to loyalty card ${card.uid} for order $orderNumber');
+        } else {
+          print('ℹ️ No loyalty card linked for customer on order $orderNumber');
         }
-      }
-
-      if (card != null) {
-        await _loyaltyService.awardPoints(
-          cardId: card.cardId,
-          customerId: card.customerId,
-          orderId: orderId,
-          loadsCompleted: loadsCount,
-          orderNumber: orderNumber,
-        );
-        print('⭐ Awarded $loadsCount points to loyalty card ${card.uid} for order $orderNumber');
+      } else {
+        print('ℹ️ No customer ID found for order $orderNumber');
       }
     } catch (e) {
       print('⚠️ Failed to award loyalty points for order $orderId: $e');

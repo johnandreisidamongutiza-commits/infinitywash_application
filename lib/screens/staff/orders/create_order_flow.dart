@@ -654,28 +654,20 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       final serviceName = service['service_name'] as String;
       final basePrice = (service['base_price'] as num).toDouble();
 
-      // Step 3: Get add-ons if selected
+      // Step 3: Prepare add-ons array (if selected)
       final List<Map<String, dynamic>> addons = [];
 
       if (_addExtraFabCon) {
-        final fabConAddon = await _catalogService.getAddonByName('Extra Fab Con');
         addons.add({
-          'addon_id': fabConAddon['id'],
-          'addon_name': fabConAddon['addon_name'],
+          'addon_code': 'extra-fabric-conditioner',
           'quantity': 1,
-          'unit_price': (fabConAddon['price'] as num).toDouble(),
-          'line_total': (fabConAddon['price'] as num).toDouble(),
         });
       }
 
       if (_addExtraDetergent) {
-        final detergentAddon = await _catalogService.getAddonByName('Extra Detergent');
         addons.add({
-          'addon_id': detergentAddon['id'],
-          'addon_name': detergentAddon['addon_name'],
+          'addon_code': 'extra-detergent',
           'quantity': 1,
-          'unit_price': (detergentAddon['price'] as num).toDouble(),
-          'line_total': (detergentAddon['price'] as num).toDouble(),
         });
       }
 

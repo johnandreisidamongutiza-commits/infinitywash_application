@@ -5,6 +5,7 @@ import '../../../services/auth_service.dart';
 import '../../role_selection_screen.dart';
 import 'options/account_details_screen.dart';
 import 'options/change_password_screen.dart';
+import 'options/loyalty_card_screen.dart';
 
 class CustomerProfileScreen extends StatefulWidget {
   const CustomerProfileScreen({super.key});
@@ -119,6 +120,12 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
               Icons.person_outline,
               'Account Details',
               const CustomerAccountDetailsScreen(),
+            ),
+            _buildProfileOption(
+              context,
+              Icons.card_membership_outlined,
+              'Loyalty Card',
+              const CustomerLoyaltyCardScreen(),
             ),
             _buildProfileOption(
               context,
