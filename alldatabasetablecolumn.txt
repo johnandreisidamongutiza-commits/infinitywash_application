@@ -1,0 +1,805 @@
+create table public.audit_logs (
+  id uuid not null default gen_random_uuid (),
+  log_number character varying(30) not null,
+  actor_profile_id uuid null,
+  action character varying(80) not null,
+  entity_type character varying(80) null,
+  entity_id uuid null,
+  details text null,
+  ip_address character varying(45) null,
+  metadata jsonb null,
+  created_at timestamp with time zone not null default now(),
+  constraint audit_logs_pkey primary key (id),
+  constraint audit_logs_log_number_key unique (log_number),
+  constraint audit_logs_actor_profile_id_fkey foreign KEY (actor_profile_id) references profiles (id) on delete set null
+) TABLESPACE pg_default;
+
+create table public.customers (
+  id uuid not null default gen_random_uuid (),
+  profile_id uuid null,
+  customer_code character varying(30) not null,
+  first_name character varying(100) null,
+  last_name character varying(100) null,
+  phone character varying(40) null,
+  email character varying(254) null,
+  customer_type character varying(20) not null,
+  address text null,
+  landmark text null,
+  status character varying(20) not null default 'active'::character varying,
+  deactivation_reason text null,
+  joined_at timestamp with time zone not null default now(),
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint customers_pkey primary key (id),
+  constraint customers_customer_code_key unique (customer_code),
+  constraint customers_profile_id_key unique (profile_id),
+  constraint customers_profile_id_fkey foreign KEY (profile_id) references profiles (id) on delete set null,
+  constraint customers_customer_type_check check (
+    (
+      (customer_type)::text = any (
+        array[
+          ('walk_in'::character varying)::text,
+          ('mobile_app'::character varying)::text,
+          ('both'::character varying)::text
+        ]
+      )
+    )
+  ),
+  constraint customers_status_check check (
+    (
+      (status)::text = any (
+        array[
+          ('active'::character varying)::text,
+          ('deactivated'::character varying)::text
+        ]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create trigger customers_updated_at BEFORE
+update on customers for EACH row
+execute FUNCTION update_updated_at ();
+
+create table public.dispatch_jobs (
+  id uuid not null default gen_random_uuid (),
+  job_number character varying(30) not null,
+  order_id uuid not null,
+  rider_id uuid null,
+  job_type character varying(20) not null,
+  status character varying(20) not null default 'pending'::character varying,
+  address text not null,
+  landmark text null,
+  scheduled_at timestamp with time zone null,
+  assigned_at timestamp with time zone null,
+  started_at timestamp with time zone null,
+  completed_at timestamp with time zone null,
+  proof_url text null,
+  notes text null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  latitude numeric(10, 7) null,
+  longitude numeric(10, 7) null,
+  constraint dispatch_jobs_pkey primary key (id),
+  constraint dispatch_jobs_job_number_key unique (job_number),
+  constraint dispatch_jobs_order_id_fkey foreign KEY (order_id) references orders (id) on delete CASCADE,
+  constraint dispatch_jobs_rider_id_fkey foreign KEY (rider_id) references employees (id) on delete set null,
+  constraint dispatch_jobs_job_type_check check (
+    (
+      (job_type)::text = any (
+        (
+          array[
+            'pickup'::character varying,
+            'delivery'::character varying
+          ]
+        )::text[]
+      )
+    )
+  ),
+  constraint dispatch_jobs_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'pending'::character varying,
+            'assigned'::character varying,
+            'in_progress'::character varying,
+            'done'::character varying,
+            'cancelled'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create trigger dispatch_jobs_updated_at BEFORE
+update on dispatch_jobs for EACH row
+execute FUNCTION update_updated_at ();
+
+create table public.employees (
+  id uuid not null default gen_random_uuid (),
+  profile_id uuid null,
+  employee_code character varying(30) not null,
+  name character varying(160) not null,
+  role character varying(20) not null,
+  phone character varying(40) null,
+  email character varying(254) null,
+  vehicle_details character varying(160) null,
+  delivery_zones text null,
+  status character varying(20) not null default 'active'::character varying,
+  archive_reason text null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint employees_pkey primary key (id),
+  constraint employees_employee_code_key unique (employee_code),
+  constraint employees_profile_id_key unique (profile_id),
+  constraint employees_profile_id_fkey foreign KEY (profile_id) references profiles (id) on delete set null,
+  constraint employees_role_check check (
+    (
+      (role)::text = any (
+        (
+          array[
+            'staff'::character varying,
+            'rider'::character varying
+          ]
+        )::text[]
+      )
+    )
+  ),
+  constraint employees_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'active'::character varying,
+            'archived'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create trigger employees_updated_at BEFORE
+update on employees for EACH row
+execute FUNCTION update_updated_at ();
+
+create table public.feedback (
+  id uuid not null default gen_random_uuid (),
+  customer_id uuid null,
+  order_id uuid null,
+  customer_name character varying(160) not null,
+  rating smallint not null,
+  comment text null,
+  created_at timestamp with time zone not null default now(),
+  constraint feedback_pkey primary key (id),
+  constraint feedback_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete set null,
+  constraint feedback_order_id_fkey foreign KEY (order_id) references orders (id) on delete set null,
+  constraint feedback_rating_check check (
+    (
+      (rating >= 1)
+      and (rating <= 5)
+    )
+  )
+) TABLESPACE pg_default;
+
+create table public.inventory_items (
+  id uuid not null default gen_random_uuid (),
+  item_code character varying(40) not null,
+  item_name character varying(120) not null,
+  item_type character varying(20) not null,
+  unit character varying(30) not null,
+  quantity numeric(12, 3) not null default 0,
+  maximum_quantity numeric(12, 3) null,
+  minimum_quantity numeric(12, 3) not null default 0,
+  usage_rule character varying(120) null,
+  status character varying(20) not null default 'active'::character varying,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint inventory_items_pkey primary key (id),
+  constraint inventory_items_item_code_key unique (item_code),
+  constraint inventory_items_maximum_quantity_check check (
+    (
+      (maximum_quantity is null)
+      or (maximum_quantity >= (0)::numeric)
+    )
+  ),
+  constraint inventory_items_minimum_quantity_check check ((minimum_quantity >= (0)::numeric)),
+  constraint inventory_items_quantity_check check ((quantity >= (0)::numeric)),
+  constraint inventory_items_check check (
+    (
+      (maximum_quantity is null)
+      or (maximum_quantity >= minimum_quantity)
+    )
+  ),
+  constraint inventory_items_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'active'::character varying,
+            'inactive'::character varying
+          ]
+        )::text[]
+      )
+    )
+  ),
+  constraint inventory_items_item_type_check check (
+    (
+      (item_type)::text = any (
+        (
+          array[
+            'liquid'::character varying,
+            'gas'::character varying,
+            'other'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create trigger inventory_items_updated_at BEFORE
+update on inventory_items for EACH row
+execute FUNCTION update_updated_at ();
+
+create table public.inventory_movements (
+  id uuid not null default gen_random_uuid (),
+  inventory_item_id uuid not null,
+  movement_type character varying(20) not null,
+  quantity numeric(12, 3) not null,
+  previous_quantity numeric(12, 3) not null,
+  new_quantity numeric(12, 3) not null,
+  order_id uuid null,
+  performed_by uuid null,
+  created_at timestamp with time zone not null default now(),
+  constraint inventory_movements_pkey primary key (id),
+  constraint inventory_movements_inventory_item_id_fkey foreign KEY (inventory_item_id) references inventory_items (id) on delete RESTRICT,
+  constraint inventory_movements_order_id_fkey foreign KEY (order_id) references orders (id) on delete set null,
+  constraint inventory_movements_performed_by_fkey foreign KEY (performed_by) references profiles (id) on delete set null,
+  constraint inventory_movements_quantity_check check ((quantity > (0)::numeric)),
+  constraint inventory_movements_movement_type_check check (
+    (
+      (movement_type)::text = any (
+        (
+          array[
+            'restock'::character varying,
+            'consume'::character varying,
+            'adjustment'::character varying
+          ]
+        )::text[]
+      )
+    )
+  ),
+  constraint inventory_movements_new_quantity_check check ((new_quantity >= (0)::numeric)),
+  constraint inventory_movements_previous_quantity_check check ((previous_quantity >= (0)::numeric))
+) TABLESPACE pg_default;
+
+create table public.iot_devices (
+  id uuid not null default gen_random_uuid (),
+  device_code character varying(40) not null,
+  device_name character varying(120) not null,
+  device_type character varying(30) not null,
+  ip_address character varying(45) null,
+  firmware_version character varying(40) null,
+  status character varying(20) not null default 'offline'::character varying,
+  last_heartbeat_at timestamp with time zone null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint iot_devices_pkey primary key (id),
+  constraint iot_devices_device_code_key unique (device_code),
+  constraint iot_devices_device_type_check check (
+    (
+      (device_type)::text = any (
+        (
+          array[
+            'counter'::character varying,
+            'return_bin'::character varying
+          ]
+        )::text[]
+      )
+    )
+  ),
+  constraint iot_devices_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'online'::character varying,
+            'offline'::character varying,
+            'disabled'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create table public.laundry_types (
+  id uuid not null default gen_random_uuid (),
+  laundry_type_code character varying(40) not null,
+  laundry_type_name character varying(120) not null,
+  unit_type character varying(20) not null,
+  limit_per_load numeric(10, 2) not null,
+  status character varying(20) not null default 'active'::character varying,
+  constraint laundry_types_pkey primary key (id),
+  constraint laundry_types_laundry_type_code_key unique (laundry_type_code),
+  constraint laundry_types_limit_per_load_check check ((limit_per_load > (0)::numeric)),
+  constraint laundry_types_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'active'::character varying,
+            'inactive'::character varying
+          ]
+        )::text[]
+      )
+    )
+  ),
+  constraint laundry_types_unit_type_check check (
+    (
+      (unit_type)::text = any (
+        (
+          array[
+            'kg'::character varying,
+            'piece'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create table public.loyalty_points_history (
+  id uuid not null default gen_random_uuid (),
+  card_id uuid null,
+  customer_id uuid null,
+  order_id uuid null,
+  transaction_type character varying(20) not null,
+  points integer not null,
+  loads_count integer not null default 0,
+  discount_amount numeric(12, 2) not null default 0.00,
+  description text not null,
+  created_at timestamp with time zone not null default now(),
+  constraint loyalty_points_history_pkey primary key (id),
+  constraint loyalty_points_history_card_id_fkey foreign KEY (card_id) references rfid_loyalty_cards (id) on delete CASCADE,
+  constraint loyalty_points_history_customer_id_fkey foreign KEY (customer_id) references profiles (id) on delete set null,
+  constraint loyalty_points_history_order_id_fkey foreign KEY (order_id) references orders (id) on delete set null
+) TABLESPACE pg_default;
+
+create index IF not exists idx_loyalty_points_history_card on public.loyalty_points_history using btree (card_id) TABLESPACE pg_default;
+
+create index IF not exists idx_loyalty_points_history_customer on public.loyalty_points_history using btree (customer_id) TABLESPACE pg_default;
+
+create table public.order_addons (
+  id uuid not null default gen_random_uuid (),
+  order_id uuid not null,
+  addon_id uuid not null,
+  addon_name character varying(120) not null,
+  quantity numeric(10, 2) not null default 1,
+  unit_price numeric(12, 2) not null,
+  line_total numeric(12, 2) not null,
+  created_at timestamp with time zone not null default now(),
+  constraint order_addons_pkey primary key (id),
+  constraint order_addons_addon_id_fkey foreign KEY (addon_id) references service_addons (id) on delete RESTRICT,
+  constraint order_addons_order_id_fkey foreign KEY (order_id) references orders (id) on delete CASCADE,
+  constraint order_addons_line_total_check check ((line_total >= (0)::numeric)),
+  constraint order_addons_quantity_check check ((quantity > (0)::numeric)),
+  constraint order_addons_unit_price_check check ((unit_price >= (0)::numeric))
+) TABLESPACE pg_default;
+
+create table public.order_loads (
+  id uuid not null default gen_random_uuid (),
+  order_id uuid not null,
+  load_number integer not null,
+  laundry_type character varying(40) not null,
+  weight numeric(10, 2) not null,
+  unit character varying(10) not null default 'kg'::character varying,
+  description text null,
+  notes text null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint order_loads_pkey primary key (id),
+  constraint unique_order_load unique (order_id, load_number),
+  constraint order_loads_order_id_fkey foreign KEY (order_id) references orders (id) on delete CASCADE,
+  constraint positive_weight check ((weight > (0)::numeric)),
+  constraint valid_unit check (
+    (
+      (unit)::text = any (
+        (
+          array['kg'::character varying, 'pc'::character varying]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_order_loads_order_id on public.order_loads using btree (order_id) TABLESPACE pg_default;
+
+create index IF not exists idx_order_loads_laundry_type on public.order_loads using btree (laundry_type) TABLESPACE pg_default;
+
+create table public.orders (
+  id uuid not null default gen_random_uuid (),
+  order_number character varying(30) not null,
+  customer_id uuid null,
+  source character varying(20) not null,
+  service_id uuid null,
+  service_name character varying(120) not null,
+  weight_kg numeric(10, 2) null,
+  loads_count integer not null default 1,
+  customer_notes text null,
+  staff_notes text null,
+  assigned_staff_id uuid null,
+  assigned_rider_id uuid null,
+  pickup_requested boolean not null default false,
+  delivery_requested boolean not null default false,
+  pickup_address text null,
+  delivery_address text null,
+  landmark text null,
+  subtotal numeric(12, 2) not null,
+  delivery_fee numeric(12, 2) not null default 0,
+  total_amount numeric(12, 2) not null,
+  payment_status character varying(20) not null default 'pending'::character varying,
+  status character varying(30) not null default 'pending_intake'::character varying,
+  received_at timestamp with time zone null,
+  processing_at timestamp with time zone null,
+  ready_at timestamp with time zone null,
+  out_for_delivery_at timestamp with time zone null,
+  completed_at timestamp with time zone null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  laundry_photo_urls text[] null,
+  customer_description text null,
+  estimated_loads integer null,
+  rejection_reason text null,
+  expires_at timestamp with time zone null,
+  reviewed_at timestamp with time zone null,
+  reviewed_by uuid null,
+  rfid_uid character varying(100) null,
+  points_redeemed integer not null default 0,
+  points_discount numeric(12, 2) not null default 0.00,
+  pickup_latitude numeric(10, 7) null,
+  pickup_longitude numeric(10, 7) null,
+  delivery_latitude numeric(10, 7) null,
+  delivery_longitude numeric(10, 7) null,
+  constraint orders_pkey primary key (id),
+  constraint orders_order_number_key unique (order_number),
+  constraint orders_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete set null,
+  constraint orders_assigned_rider_id_fkey foreign KEY (assigned_rider_id) references employees (id) on delete set null,
+  constraint orders_assigned_staff_id_fkey foreign KEY (assigned_staff_id) references employees (id) on delete set null,
+  constraint orders_reviewed_by_fkey foreign KEY (reviewed_by) references employees (id) on delete set null,
+  constraint orders_service_id_fkey foreign KEY (service_id) references service_catalog (id) on delete set null,
+  constraint orders_payment_status_check check (
+    (
+      (payment_status)::text = any (
+        (
+          array[
+            'pending'::character varying,
+            'paid'::character varying,
+            'refunded'::character varying,
+            'failed'::character varying
+          ]
+        )::text[]
+      )
+    )
+  ),
+  constraint orders_delivery_fee_check check ((delivery_fee >= (0)::numeric)),
+  constraint orders_total_amount_check check ((total_amount >= (0)::numeric)),
+  constraint orders_weight_kg_check check (
+    (
+      (weight_kg is null)
+      or (weight_kg >= (0)::numeric)
+    )
+  ),
+  constraint orders_source_check check (
+    (
+      (source)::text = any (
+        (
+          array[
+            'walk_in'::character varying,
+            'online'::character varying,
+            'mobile_app'::character varying
+          ]
+        )::text[]
+      )
+    )
+  ),
+  constraint orders_status_check check (
+    (
+      (status)::text = any (
+        array[
+          ('pending_intake'::character varying)::text,
+          ('pending_approval'::character varying)::text,
+          ('pending_pickup'::character varying)::text,
+          ('processing'::character varying)::text,
+          ('ready'::character varying)::text,
+          ('out_for_delivery'::character varying)::text,
+          ('completed'::character varying)::text,
+          ('cancelled'::character varying)::text,
+          ('rejected'::character varying)::text
+        ]
+      )
+    )
+  ),
+  constraint orders_subtotal_check check ((subtotal >= (0)::numeric)),
+  constraint orders_loads_count_check check ((loads_count > 0)),
+  constraint orders_estimated_loads_check check (
+    (
+      (estimated_loads is null)
+      or (
+        (estimated_loads >= 1)
+        and (estimated_loads <= 10)
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_orders_source_status on public.orders using btree (source, status) TABLESPACE pg_default;
+
+create index IF not exists idx_orders_expires_at on public.orders using btree (expires_at) TABLESPACE pg_default
+where
+  (expires_at is not null);
+
+create index IF not exists idx_orders_pickup_location on public.orders using btree (pickup_latitude, pickup_longitude) TABLESPACE pg_default;
+
+create trigger orders_updated_at BEFORE
+update on orders for EACH row
+execute FUNCTION update_updated_at ();
+
+create table public.password_reset_tokens (
+  id uuid not null default gen_random_uuid (),
+  email text not null,
+  code_hash text not null,
+  expires_at timestamp with time zone not null,
+  sent_at timestamp with time zone not null default now(),
+  attempts integer not null default 0,
+  verified_token text null,
+  used boolean not null default false,
+  created_at timestamp with time zone not null default now(),
+  constraint password_reset_tokens_pkey primary key (id)
+) TABLESPACE pg_default;
+
+create index IF not exists idx_password_reset_tokens_email on public.password_reset_tokens using btree (email) TABLESPACE pg_default;
+
+create index IF not exists idx_password_reset_tokens_expires on public.password_reset_tokens using btree (expires_at) TABLESPACE pg_default;
+
+create table public.payments (
+  id uuid not null default gen_random_uuid (),
+  transaction_number character varying(30) not null,
+  order_id uuid not null,
+  amount numeric(12, 2) not null,
+  payment_method character varying(30) not null,
+  status character varying(20) not null default 'pending'::character varying,
+  reference_number character varying(120) null,
+  processed_by uuid null,
+  paid_at timestamp with time zone null,
+  created_at timestamp with time zone not null default now(),
+  constraint payments_pkey primary key (id),
+  constraint payments_transaction_number_key unique (transaction_number),
+  constraint payments_order_id_fkey foreign KEY (order_id) references orders (id) on delete CASCADE,
+  constraint payments_amount_check check ((amount > (0)::numeric)),
+  constraint payments_payment_method_check check (
+    (
+      (payment_method)::text = any (
+        (
+          array[
+            'cash'::character varying,
+            'gcash'::character varying,
+            'in_app'::character varying
+          ]
+        )::text[]
+      )
+    )
+  ),
+  constraint payments_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'pending'::character varying,
+            'paid'::character varying,
+            'failed'::character varying,
+            'refunded'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create table public.profiles (
+  id uuid not null default gen_random_uuid (),
+  supabase_user_id uuid not null,
+  first_name character varying(80) null,
+  last_name character varying(80) null,
+  username character varying(80) null,
+  email character varying(254) null,
+  phone character varying(40) null,
+  avatar_url text null,
+  role character varying(30) not null,
+  status character varying(20) not null default 'active'::character varying,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  address text null,
+  landmark text null,
+  deactivation_reason text null,
+  constraint profiles_pkey primary key (id),
+  constraint profiles_supabase_user_id_key unique (supabase_user_id),
+  constraint profiles_username_key unique (username),
+  constraint profiles_supabase_user_id_fkey foreign KEY (supabase_user_id) references auth.users (id) on delete CASCADE,
+  constraint profiles_role_check check (
+    (
+      (role)::text = any (
+        (
+          array[
+            'admin'::character varying,
+            'superadmin'::character varying,
+            'customer'::character varying,
+            'staff'::character varying,
+            'rider'::character varying
+          ]
+        )::text[]
+      )
+    )
+  ),
+  constraint profiles_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'active'::character varying,
+            'deactivated'::character varying,
+            'archived'::character varying,
+            'suspended'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create trigger profiles_updated_at BEFORE
+update on profiles for EACH row
+execute FUNCTION update_updated_at ();
+
+create trigger trigger_create_customer_for_profile
+after INSERT on profiles for EACH row
+execute FUNCTION create_customer_for_profile ();
+
+create table public.rfid_loyalty_cards (
+  id uuid not null default gen_random_uuid (),
+  uid character varying(100) not null,
+  customer_id uuid null,
+  total_orders integer not null default 0,
+  total_loads integer not null default 0,
+  points_balance integer not null default 0,
+  status character varying(20) not null default 'active'::character varying,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint rfid_loyalty_cards_pkey primary key (id),
+  constraint rfid_loyalty_cards_uid_key unique (uid),
+  constraint rfid_loyalty_cards_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete set null
+) TABLESPACE pg_default;
+
+create index IF not exists idx_rfid_loyalty_cards_uid on public.rfid_loyalty_cards using btree (uid) TABLESPACE pg_default;
+
+create index IF not exists idx_rfid_loyalty_cards_customer on public.rfid_loyalty_cards using btree (customer_id) TABLESPACE pg_default;
+
+create table public.rider_locations (
+  rider_id uuid not null,
+  dispatch_job_id uuid null,
+  latitude numeric(10, 7) not null,
+  longitude numeric(10, 7) not null,
+  updated_at timestamp with time zone not null default now(),
+  constraint rider_locations_pkey primary key (rider_id),
+  constraint rider_locations_dispatch_job_id_fkey foreign KEY (dispatch_job_id) references dispatch_jobs (id) on delete set null,
+  constraint rider_locations_rider_id_fkey foreign KEY (rider_id) references employees (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+create index IF not exists idx_rider_locations_dispatch_job_id on public.rider_locations using btree (dispatch_job_id) TABLESPACE pg_default;
+
+create index IF not exists idx_rider_locations_updated_at on public.rider_locations using btree (updated_at) TABLESPACE pg_default;
+
+create table public.service_addons (
+  id uuid not null default gen_random_uuid (),
+  addon_code character varying(40) not null,
+  addon_name character varying(120) not null,
+  price numeric(12, 2) not null,
+  status character varying(20) not null default 'active'::character varying,
+  constraint service_addons_pkey primary key (id),
+  constraint service_addons_addon_code_key unique (addon_code),
+  constraint service_addons_price_check check ((price >= (0)::numeric)),
+  constraint service_addons_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'active'::character varying,
+            'inactive'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create table public.service_catalog (
+  id uuid not null default gen_random_uuid (),
+  service_code character varying(40) not null,
+  service_name character varying(120) not null,
+  base_price numeric(12, 2) not null,
+  status character varying(20) not null default 'active'::character varying,
+  constraint service_catalog_pkey primary key (id),
+  constraint service_catalog_service_code_key unique (service_code),
+  constraint service_catalog_base_price_check check ((base_price >= (0)::numeric)),
+  constraint service_catalog_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'active'::character varying,
+            'inactive'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create table public.system_settings (
+  id uuid not null default gen_random_uuid (),
+  setting_key character varying(100) not null,
+  setting_value text not null,
+  description text null,
+  updated_by uuid null,
+  updated_at timestamp with time zone not null default now(),
+  constraint system_settings_pkey primary key (id),
+  constraint system_settings_setting_key_key unique (setting_key),
+  constraint system_settings_updated_by_fkey foreign KEY (updated_by) references profiles (id) on delete set null
+) TABLESPACE pg_default;
+
+create trigger system_settings_updated_at BEFORE
+update on system_settings for EACH row
+execute FUNCTION update_updated_at ();
+
+create view public.vw_rfid_loyalty_cards as
+select
+  card.id as card_id,
+  card.uid,
+  card.status as card_status,
+  card.customer_id,
+  case
+    when c.id is not null then COALESCE(
+      NULLIF(
+        TRIM(
+          both
+          from
+            (c.first_name::text || ' '::text) || c.last_name::text
+        ),
+        ''::text
+      ),
+      c.customer_code::text,
+      'Customer #'::text || c.id
+    )
+    else 'Unassigned'::text
+  end as owner_name,
+  c.phone as owner_phone,
+  c.email as owner_email,
+  c.customer_type,
+  c.status as customer_status,
+  c.customer_code,
+  card.total_orders,
+  card.total_loads,
+  card.points_balance,
+  card.created_at as card_created_at,
+  card.updated_at as card_updated_at,
+  p.username as account_username,
+  p.email as account_email,
+  p.role as account_role
+from
+  rfid_loyalty_cards card
+  left join customers c on card.customer_id = c.id
+  left join profiles p on c.profile_id = p.id;
+  
