@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/rider_service.dart';
-import '../../../models/order.dart';
-import '../route/rider_route_screen.dart';
-import '../route/rider_route_map_screen.dart';
-import '../orders/rider_order_details_screen.dart';
+import '../../../services/supabase_service.dart';
+import '../../../models/dispatch_job.dart';
+import '../route/rider_route_screen_new.dart';
+import '../jobs/rider_job_details_screen.dart';
 import '../notifications/rider_notifications_screen.dart';
 
 class RiderHomeScreen extends StatefulWidget {
-  const RiderHomeScreen({super.key});
+  final ValueChanged<int>? onSelectTab;
+
+  const RiderHomeScreen({super.key, this.onSelectTab});
 
   @override
   State<RiderHomeScreen> createState() => _RiderHomeScreenState();
@@ -20,8 +22,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   final RiderService _riderService = RiderService();
   int _unreadCount = 0;
   bool _isLoading = true;
-  List<LaundryOrder> _pickupOrders = [];
-  List<LaundryOrder> _deliveryOrders = [];
+  List<DispatchJob> _pickupJobs = [];
+  List<DispatchJob> _deliveryJobs = [];
 
   @override
   void initState() {
@@ -41,20 +43,22 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     setState(() => _isLoading = true);
     
     try {
-      final results = await Future.wait([
-        _riderService.fetchPickupOrders(),
-        _riderService.fetchDeliveryOrders(),
-      ]);
+      final riderId = SupabaseService.client.auth.currentUser?.id;
+      if (riderId == null) {
+        throw Exception('Not authenticated');
+      }
+
+      final allJobs = await _riderService.getRiderJobs(riderId);
       
       if (mounted) {
         setState(() {
-          _pickupOrders = results[0];
-          _deliveryOrders = results[1];
+          _pickupJobs = allJobs.where((j) => j.jobType == 'pickup').toList();
+          _deliveryJobs = allJobs.where((j) => j.jobType == 'delivery').toList();
           _isLoading = false;
         });
       }
     } catch (e) {
-      print('❌ Error loading rider orders: $e');
+      print('❌ Error loading rider jobs: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -108,13 +112,13 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   }
 
   Widget _buildStartButton() {
-    final hasOrders = _pickupOrders.isNotEmpty || _deliveryOrders.isNotEmpty;
+    final hasOrders = _pickupJobs.isNotEmpty || _deliveryJobs.isNotEmpty;
     
     return ElevatedButton(
       onPressed: hasOrders ? () {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const RiderRouteScreen()),
+          MaterialPageRoute(builder: (context) => const RiderRouteScreenNew()),
         ).then((_) => _loadOrders());
       } : null,
       style: ElevatedButton.styleFrom(
@@ -227,8 +231,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   }
 
   Widget _buildDeliveriesSummary() {
-    int deliveriesLeft = _deliveryOrders.length;
-    int pickupsLeft = _pickupOrders.length;
+    int deliveriesLeft = _deliveryJobs.length;
+    int pickupsLeft = _pickupJobs.length;
     int completed = 0; // TODO: Track completed orders (could query orders with status='completed' for today)
 
     return Container(
@@ -338,10 +342,10 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
   Widget _buildRouteSection() {
     // Combine pickups and deliveries for route display
-    final allOrders = [..._pickupOrders, ..._deliveryOrders];
+    final allJobs = [..._pickupJobs, ..._deliveryJobs];
     
-    // Show max 3 orders in preview
-    final displayOrders = allOrders.take(3).toList();
+    // Show max 3 jobs in preview
+    final displayJobs = allJobs.take(3).toList();
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -355,12 +359,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               Text('Today\'s Route', style: AppTheme.lightTheme.textTheme.titleMedium),
               const Spacer(),
               TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const RiderRouteMapScreen()),
-                  );
-                },
+                onPressed: () => widget.onSelectTab?.call(2),
                 child: const Row(
                   children: [
                     Text('View Map', style: TextStyle(color: AppTheme.accentBlue)),
@@ -373,12 +372,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           const SizedBox(height: 16),
           // Mock Map Area (tap to view full map)
           InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const RiderRouteMapScreen()),
-              );
-            },
+            onTap: () => widget.onSelectTab?.call(1),
             borderRadius: BorderRadius.circular(16),
             child: Container(
               height: 150,
@@ -424,7 +418,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          if (displayOrders.isEmpty)
+          if (displayJobs.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Column(
@@ -442,20 +436,20 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               ),
             )
           else
-            ...displayOrders.asMap().entries.map((entry) {
+            ...displayJobs.asMap().entries.map((entry) {
               final index = entry.key;
-              final order = entry.value;
-              final isPickup = _pickupOrders.contains(order);
+              final job = entry.value;
+              final isPickup = job.jobType == 'pickup';
               
               return _buildRouteStop(
                 index,
                 '${index + 1}',
-                order.customerName,
-                order.deliveryAddress ?? 'Address not provided',
+                job.address ?? 'No address',
+                job.notes ?? '',
                 isPickup ? 'Pickup' : 'Drop-off',
-                _formatTime(order.createdAt),
+                _formatTime(job.createdAt),
                 isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
-                order,
+                job,
                 isPickup,
               );
             }),
@@ -480,7 +474,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     String type, 
     String time, 
     Color typeColor,
-    LaundryOrder order,
+    DispatchJob job,
     bool isPickup,
   ) {
     return Material(
@@ -490,10 +484,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => RiderOrderDetailsScreen(
-                order: order,
-                isPickup: isPickup,
-              ),
+              builder: (context) => RiderJobDetailsScreen(job: job),
             ),
           ).then((_) => _loadOrders()); // Refresh after viewing details
         },
