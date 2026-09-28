@@ -115,4 +115,10 @@ class FeedbackService {
       return 0.0;
     }
   }
+
+  /// Check if feedback exists for an order
+  Future<bool> hasFeedback(String orderId) async {
+    final feedback = await getFeedbackForOrder(orderId);
+    return feedback != null;
+  }
 }

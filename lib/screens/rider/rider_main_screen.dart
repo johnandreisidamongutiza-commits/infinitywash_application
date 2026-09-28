@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import 'home/rider_home_screen.dart';
-import 'orders/rider_orders_screen.dart';
-import 'route/rider_route_screen.dart';
+import 'jobs/rider_jobs_map_screen.dart';
+import 'route/rider_route_screen_new.dart';
 import 'chats/rider_chats_screen.dart';
 import 'profile/rider_profile_screen.dart';
 
@@ -17,16 +17,11 @@ class RiderMainScreen extends StatefulWidget {
 
 class _RiderMainScreenState extends State<RiderMainScreen> {
   late int _currentIndex;
-  int _previousIndex = 0;
-  
-  // Key to access RiderOrdersScreen state
-  final GlobalKey<RiderOrdersScreenState> _ordersScreenKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
-    _previousIndex = widget.initialIndex;
   }
 
   @override
@@ -35,11 +30,13 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          const RiderHomeScreen(),
-          RiderRouteScreen(
+          RiderHomeScreen(
+            onSelectTab: (index) => setState(() => _currentIndex = index),
+          ),
+          RiderRouteScreenNew(
             onBackToHome: () => setState(() => _currentIndex = 0),
           ),
-          RiderOrdersScreen(key: _ordersScreenKey),
+          const RiderJobsMapScreen(),
           const RiderChatsScreen(),
           const RiderProfileScreen(),
         ],
@@ -58,23 +55,8 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
           currentIndex: _currentIndex,
           onTap: (index) {
             setState(() {
-              _previousIndex = _currentIndex;
               _currentIndex = index;
             });
-            
-            // If navigating TO Orders screen (index 2) FROM another screen
-            if (index == 2 && _previousIndex != 2) {
-              print('🔵 RIDER MAIN: Switched to Orders tab (from tab $_previousIndex)');
-              print('🔵 RIDER MAIN: RiderOrdersScreen key is mounted: ${_ordersScreenKey.currentState?.mounted}');
-              if (_ordersScreenKey.currentState != null) {
-                print('🔵 RIDER MAIN: RiderOrdersScreen state exists, calling refreshOrders()');
-                _ordersScreenKey.currentState!.refreshOrders();
-              } else {
-                print('❌ RIDER MAIN: RiderOrdersScreen state is NULL! Cannot refresh.');
-              }
-            } else {
-              print('🔵 RIDER MAIN: Switched to tab $index (from $_previousIndex), no action needed');
-            }
           },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
@@ -94,9 +76,9 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
               label: 'Route',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.shopping_bag_outlined),
-              activeIcon: Icon(Icons.shopping_bag),
-              label: 'Orders',
+              icon: Icon(Icons.map_outlined),
+              activeIcon: Icon(Icons.map),
+              label: 'Jobs',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.chat_bubble_outline),

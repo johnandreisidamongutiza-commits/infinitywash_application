@@ -1,13 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'config/supabase_config.dart';
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
+import 'services/cache/route_cache_service.dart';
+import 'services/cache/job_cache_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Hive for local caching
+  try {
+    await Hive.initFlutter();
+    print('✅ Hive cache initialized');
+  } catch (e) {
+    print('❌ Hive initialization error: $e');
+  }
+  
+  // Initialize cache services
+  try {
+    await RouteCacheService.init();
+    await JobCacheService.init();
+    print('✅ Cache services initialized');
+  } catch (e) {
+    print('❌ Cache services initialization error: $e');
+  }
   
   // Initialize Supabase first (required for auth)
   try {

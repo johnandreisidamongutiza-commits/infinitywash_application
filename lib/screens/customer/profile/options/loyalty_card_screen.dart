@@ -267,7 +267,6 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
       ),
     );
   }
-
   Widget _buildLinkedCardSection() {
     return Column(
       children: [

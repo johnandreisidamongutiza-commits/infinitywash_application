@@ -319,7 +319,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
     
     try {
-      final result = await _passwordResetService.resendResetCode(_userEmail!);
+      await _passwordResetService.resendResetCode(_userEmail!);
       
       if (mounted) {
         // Clear OTP fields

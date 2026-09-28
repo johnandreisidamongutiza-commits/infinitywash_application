@@ -66,5 +66,17 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Location permissions for delivery tracking (Phase 5) -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Infinity Wash needs access to your location to show your position on the map and track delivery routes.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Infinity Wash needs access to your location to provide real-time delivery tracking even when the app is in the background.</string>
+	<!-- Optional: Only if you need background location tracking -->
+	<!-- <key>NSLocationAlwaysUsageDescription</key>
+	<string>Infinity Wash needs background location access to track deliveries continuously.</string> -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>
