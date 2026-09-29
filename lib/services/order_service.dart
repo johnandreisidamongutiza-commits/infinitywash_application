@@ -228,8 +228,15 @@ class OrderService {
             continue;
           }
           
+          // Safely handle null price
+          final priceValue = serviceAddon['price'];
+          if (priceValue == null) {
+            print('⚠️ Add-on has null price: $addonCode, skipping');
+            continue;
+          }
+          
           final quantity = (addon['quantity'] ?? 1) as num;
-          final unitPrice = (serviceAddon['price'] as num).toDouble();
+          final unitPrice = (priceValue as num).toDouble();
           
           addonsData.add({
             'order_id': orderId,
@@ -344,8 +351,15 @@ class OrderService {
             continue;
           }
           
+          // Safely handle null price
+          final priceValue = serviceAddon['price'];
+          if (priceValue == null) {
+            print('⚠️ Add-on has null price: $addonCode, skipping');
+            continue;
+          }
+          
           final quantity = (addon['quantity'] ?? 1) as num;
-          final unitPrice = (serviceAddon['price'] as num).toDouble();
+          final unitPrice = (priceValue as num).toDouble();
           
           addonsData.add({
             'order_id': orderId,

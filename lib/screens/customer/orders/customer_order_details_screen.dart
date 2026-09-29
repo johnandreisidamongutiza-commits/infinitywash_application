@@ -13,10 +13,122 @@ class CustomerOrderDetailsScreen extends StatefulWidget {
   const CustomerOrderDetailsScreen({super.key, required this.order});
 
   @override
+  State<CustomerOrderDetailsScreen> createState() => _CustomerOrderDetailsScreenState();
+}
+
+class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen> {
+  final FeedbackService _feedbackService = FeedbackService();
+  final CustomerService _customerService = CustomerService();
+  final TextEditingController _commentController = TextEditingController();
+
+  Map<String, dynamic>? _existingFeedback;
+  bool _isLoadingFeedback = true;
+  bool _isSubmitting = false;
+  int _selectedRating = 0;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFeedback();
+  }
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFeedback() async {
+    try {
+      final feedback = await _feedbackService.getFeedbackForOrder(widget.order.id);
+      setState(() {
+        _existingFeedback = feedback;
+        _isLoadingFeedback = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingFeedback = false;
+        _error = 'Failed to load feedback';
+      });
+    }
+  }
+
+  Future<void> _submitFeedback() async {
+    if (_selectedRating == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a rating'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final customerId = await _customerService.getCurrentAuthenticatedCustomerId();
+      await _feedbackService.submitFeedback(
+        orderId: widget.order.id,
+        customerId: customerId,
+        customerName: widget.order.customerName,
+        rating: _selectedRating,
+        comment: _commentController.text.trim().isEmpty ? null : _commentController.text.trim(),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Thank you for your feedback! 🎉'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        await _loadFeedback();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit feedback: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays == 0) {
+      if (difference.inHours == 0) {
+        return '${difference.inMinutes}m ago';
+      }
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays == 1) {
+      return '1d ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    }
+
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[dateTime.month - 1]} ${dateTime.day}, ${dateTime.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isCompleted = widget.order.status == OrderStatus.completed;
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
+        title: const Text('Order Details'),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -45,6 +157,117 @@ class CustomerOrderDetailsScreen extends StatefulWidget {
       ),
     );
   }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: AppStyles.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _getStatusColor().withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  _getStatusIcon(),
+                  color: _getStatusColor(),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Order #${widget.order.displayNumber}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_getStatusText()} • ${_formatDateTime(widget.order.createdAt)}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.textLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimeline() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: AppStyles.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Order Timeline',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildTimelineItem(
+            'Requested',
+            widget.order.createdAt,
+            Icons.schedule,
+            isCompleted: true,
+          ),
+          if (widget.order.status == OrderStatus.processing ||
+              widget.order.status == OrderStatus.ready ||
+              widget.order.status == OrderStatus.out_for_delivery ||
+              widget.order.status == OrderStatus.completed)
+            _buildTimelineItem(
+              'Processing',
+              widget.order.createdAt,
+              Icons.local_laundry_service,
+              isCompleted: true,
+            ),
+          if (widget.order.status == OrderStatus.ready ||
+              widget.order.status == OrderStatus.out_for_delivery ||
+              widget.order.status == OrderStatus.completed)
+            _buildTimelineItem(
+              'Ready',
+              widget.order.createdAt,
+              Icons.check_circle,
+              isCompleted: true,
+            ),
+          if (widget.order.status == OrderStatus.completed)
+            _buildTimelineItem(
+              'Completed',
+              widget.order.createdAt,
+              Icons.done_all,
+              isCompleted: true,
+              isLast: true,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineItem(
+    String label,
+    DateTime time,
+    IconData icon, {
     required bool isCompleted,
     bool isLast = false,
   }) {
@@ -163,6 +386,113 @@ class CustomerOrderDetailsScreen extends StatefulWidget {
               ),
             ],
           ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Total Loads',
+                style: TextStyle(fontSize: 13, color: AppTheme.textLight),
+              ),
+              Text(
+                '${widget.order.loads.length}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentInfo() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: AppStyles.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Payment Information',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Total Amount',
+                style: TextStyle(fontSize: 14, color: AppTheme.textLight),
+              ),
+              Text(
+                '₱${(widget.order.totalAmount ?? 0.0).toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.accentBlue,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: widget.order.paymentStatus == PaymentStatus.paid
+                  ? Colors.green.withValues(alpha: 0.08)
+                  : Colors.orange.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  widget.order.paymentStatus == PaymentStatus.paid
+                      ? Icons.check_circle
+                      : Icons.schedule,
+                  size: 16,
+                  color: widget.order.paymentStatus == PaymentStatus.paid
+                      ? Colors.green
+                      : Colors.orange,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  widget.order.paymentStatus == PaymentStatus.paid
+                      ? 'Paid via ${widget.order.paymentMethod ?? "N/A"}'
+                      : 'Payment Pending',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: widget.order.paymentStatus == PaymentStatus.paid
+                        ? Colors.green
+                        : Colors.orange,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeedbackSection() {
+    if (_isLoadingFeedback) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: AppStyles.cardDecoration,
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_existingFeedback != null) {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: AppStyles.cardDecoration.copyWith(
@@ -322,87 +652,6 @@ class CustomerOrderDetailsScreen extends StatefulWidget {
             ),
           ),
         ],
-import '../../../models/order.dart';
-
-/// Customer Order Details Screen
-/// Shows detailed information about a specific order
-class CustomerOrderDetailsScreen extends StatelessWidget {
-  final LaundryOrder order;
-
-  const CustomerOrderDetailsScreen({
-    super.key,
-    required this.order,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Order Details'),
-        backgroundColor: Colors.blue,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Order Number
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.receipt_long),
-                title: const Text('Order Number'),
-                subtitle: Text(order.orderNumber ?? order.id),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Status
-            Card(
-              child: ListTile(
-                leading: Icon(
-                  Icons.circle,
-                  color: _getStatusColor(order.status),
-                ),
-                title: const Text('Status'),
-                subtitle: Text(
-                  order.status.name.toUpperCase().replaceAll('_', ' '),
-                  style: TextStyle(
-                    color: _getStatusColor(order.status),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Total Amount
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.attach_money),
-                title: const Text('Total Amount'),
-                subtitle: Text(
-                  '₱${(order.totalAmount ?? 0.0).toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Created At
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.calendar_today),
-                title: const Text('Order Date'),
-                subtitle: Text(
-                  order.createdAt.toLocal().toString().split('.')[0],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
       ),
     );
   }

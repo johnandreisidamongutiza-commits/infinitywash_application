@@ -5,7 +5,33 @@ class CustomerService {
   final SupabaseClient _client = SupabaseService.client;
 
   /// Generate next sequential customer code (CUST-00001, CUST-00002, etc.)
+  /// Uses database sequence to prevent race conditions and duplicate key errors
   Future<String> generateCustomerCode() async {
+    try {
+      // Call database RPC function that uses a sequence
+      // This guarantees unique codes even with concurrent requests
+      final result = await _client.rpc('get_next_customer_code');
+      
+      if (result != null) {
+        print('✅ Generated customer code via sequence: $result');
+        return result as String;
+      }
+      
+      // If RPC returns null, fall back to old method
+      print('⚠️ Sequence RPC returned null, using fallback method');
+      return await _generateCustomerCodeFallback();
+    } catch (e) {
+      // If RPC fails (function doesn't exist yet, permissions issue, etc.)
+      // fall back to the old query-based method
+      print('⚠️ Sequence RPC failed: $e, using fallback method');
+      return await _generateCustomerCodeFallback();
+    }
+  }
+
+  /// Fallback method for generating customer codes (legacy approach)
+  /// Used when database sequence is not available
+  /// WARNING: This method has race conditions and may cause duplicate key errors
+  Future<String> _generateCustomerCodeFallback() async {
     try {
       // Query for the maximum customer_code to find the last number
       final response = await _client
@@ -28,8 +54,8 @@ class CustomerService {
       final nextNumber = lastNumber + 1;
       return 'CUST-${nextNumber.toString().padLeft(5, '0')}';
     } catch (e) {
-      print('Error generating customer code: $e');
-      // Fallback to timestamp-based code if query fails
+      print('❌ Fallback customer code generation failed: $e');
+      // Last resort: timestamp-based code
       return 'CUST-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
     }
   }
@@ -92,6 +118,108 @@ class CustomerService {
     }
   }
 
+  /// Create or get existing customer for a profile (idempotent)
+  /// This method is safe to call multiple times - it will only create once
+  /// Returns the customer UUID
+  Future<String> createOrGetCustomerForProfile({
+    required String profileId,
+    required String firstName,
+    String? lastName,
+    String? phone,
+    String? email,
+    String? address,
+    String? landmark,
+    String customerType = 'mobile_app',
+  }) async {
+    try {
+      // Check if customer already exists for this profile
+      final existing = await findCustomerByProfileId(profileId);
+      if (existing != null) {
+        final customerId = existing['id'] as String;
+        print('✅ Customer already exists for profile $profileId: $customerId');
+        
+        // Optionally update customer info if provided data is different
+        final needsUpdate = 
+            (address != null && address.isNotEmpty && existing['address'] != address) ||
+            (landmark != null && landmark.isNotEmpty && existing['landmark'] != landmark) ||
+            (phone != null && phone.isNotEmpty && existing['phone'] != phone) ||
+            (email != null && email.isNotEmpty && existing['email'] != email);
+        
+        if (needsUpdate) {
+          print('ℹ️ Updating customer info for $customerId');
+          await _client.from('customers').update({
+            if (firstName.trim().isNotEmpty) 'first_name': firstName.trim(),
+            if (lastName != null && lastName.trim().isNotEmpty) 'last_name': lastName.trim(),
+            if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+            if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+            if (address != null && address.trim().isNotEmpty) 'address': address.trim(),
+            if (landmark != null && landmark.trim().isNotEmpty) 'landmark': landmark.trim(),
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', customerId);
+        }
+        
+        return customerId;
+      }
+
+      // Customer doesn't exist, create new one
+      print('🔄 Creating new customer for profile $profileId');
+      
+      // Validate required fields
+      if (firstName.trim().isEmpty) {
+        throw Exception('Customer first name is required');
+      }
+
+      // Generate unique customer code
+      final customerCode = await generateCustomerCode();
+      final now = DateTime.now().toIso8601String();
+
+      // Insert customer record with profile_id
+      final response = await _client
+          .from('customers')
+          .insert({
+            'customer_code': customerCode,
+            'profile_id': profileId,
+            'first_name': firstName.trim(),
+            'last_name': lastName?.trim(),
+            'phone': phone?.trim(),
+            'email': email?.trim(),
+            'address': address?.trim(),
+            'landmark': landmark?.trim(),
+            'customer_type': customerType,
+            'status': 'active',
+            'joined_at': now,
+            'created_at': now,
+            'updated_at': now,
+          })
+          .select('id')
+          .single();
+
+      final customerId = response['id'] as String;
+      final fullName = lastName != null && lastName.trim().isNotEmpty 
+          ? '${firstName.trim()} ${lastName.trim()}'
+          : firstName.trim();
+      print('✅ Created customer: $customerCode ($customerId) - $fullName');
+      return customerId;
+    } on PostgrestException catch (e) {
+      // If we get a duplicate key error, it means another process created the customer
+      // Try to fetch it one more time
+      if (e.message.contains('duplicate') || e.code == '23505') {
+        print('⚠️ Duplicate detected, fetching existing customer...');
+        final existing = await findCustomerByProfileId(profileId);
+        if (existing != null) {
+          print('✅ Found existing customer after duplicate: ${existing['id']}');
+          return existing['id'] as String;
+        }
+      }
+      
+      print('❌ Database error creating customer: ${e.message}');
+      throw Exception('Database error: ${e.message}');
+    } catch (e) {
+      print('❌ Error creating customer: $e');
+      rethrow;
+    }
+  }
+
   /// Find customer by phone number (for future reuse logic)
   Future<Map<String, dynamic>?> findCustomerByPhone(String phone) async {
     try {
@@ -105,6 +233,24 @@ class CustomerService {
       return response;
     } catch (e) {
       print('Error finding customer by phone: $e');
+      return null;
+    }
+  }
+
+  /// Find customer by profile ID
+  /// Used to check if a customer record already exists for a given profile
+  Future<Map<String, dynamic>?> findCustomerByProfileId(String profileId) async {
+    try {
+      final response = await _client
+          .from('customers')
+          .select()
+          .eq('profile_id', profileId)
+          .eq('status', 'active')
+          .maybeSingle();
+
+      return response;
+    } catch (e) {
+      print('Error finding customer by profile ID: $e');
       return null;
     }
   }

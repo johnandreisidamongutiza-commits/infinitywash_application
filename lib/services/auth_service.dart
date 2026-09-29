@@ -47,16 +47,17 @@ class AuthService {
       'role': 'customer',
     };
 
+    // Don't pass phone to signUp - it's for SMS auth, not user data
+    // Phone is included in metadata instead
     final response = await signUp(
       email: email,
       password: password,
-      phone: phone,
       metadata: metadata,
     );
 
-    if (response.user != null && response.session != null) {
-      await _saveCustomerProfile(response.user!, email, metadata);
-    }
+    // NOTE: Profile and customer creation now handled by database trigger
+    // No need to call _saveCustomerProfile here
+    print('✅ Registration complete - trigger created profile + customer');
 
     return response;
   }
@@ -115,6 +116,8 @@ class AuthService {
     }
 
     // Step 2: Create or update customer record with address and landmark
+    // NOTE: Customer creation is now handled by database trigger during registration
+    // This code only runs for updates and sign-ins (not during initial registration)
     try {
       final existingCustomer = await client
           .from('customers')
@@ -126,27 +129,9 @@ class AuthService {
       final landmark = metadata['landmark'] as String? ?? '';
 
       if (existingCustomer == null) {
-        // Create new customer record with address
-        final customerService = CustomerService();
-        final customerCode = await customerService.generateCustomerCode();
-        
-        await client.from('customers').insert({
-          'customer_code': customerCode,
-          'profile_id': profileId,
-          'first_name': metadata['first_name'],
-          'last_name': metadata['last_name'],
-          'phone': metadata['phone'],
-          'email': email,
-          'address': address,
-          'landmark': landmark,
-          'customer_type': 'mobile_app',
-          'status': 'active',
-          'joined_at': now,
-          'created_at': now,
-          'updated_at': now,
-        });
-        
-        print('✅ Customer created with address: "$address" and landmark: "$landmark"');
+        // Customer doesn't exist yet (shouldn't happen - trigger should create it)
+        // Skip creation here, let trigger handle it
+        print('ℹ️ Customer not found - trigger should create it during registration');
       } else {
         // Update existing customer with address and landmark
         final existingAddress = existingCustomer['address'] as String? ?? '';
@@ -367,39 +352,22 @@ class AuthService {
           .maybeSingle();
 
       if (customer == null) {
-        // No customer record exists, create one
+        // No customer record exists, create one using idempotent method
         print('⚠️ Customer record missing, creating from profile...');
         
-        final metadata = {
-          'first_name': profile['first_name'],
-          'last_name': profile['last_name'],
-          'phone': profile['phone'],
-          'address': address,
-          'landmark': landmark,
-          'role': 'customer',
-        };
-        
         final customerService = CustomerService();
-        final customerCode = await customerService.generateCustomerCode();
-        final now = DateTime.now().toIso8601String();
+        await customerService.createOrGetCustomerForProfile(
+          profileId: profileId,
+          firstName: profile['first_name'] as String,
+          lastName: profile['last_name'] as String?,
+          phone: profile['phone'] as String?,
+          email: email,
+          address: address,
+          landmark: landmark,
+          customerType: 'mobile_app',
+        );
         
-        await SupabaseService.client.from('customers').insert({
-          'customer_code': customerCode,
-          'profile_id': profileId,
-          'first_name': profile['first_name'],
-          'last_name': profile['last_name'],
-          'phone': profile['phone'],
-          'email': email,
-          'address': address,
-          'landmark': landmark,
-          'customer_type': 'mobile_app',
-          'status': 'active',
-          'joined_at': now,
-          'created_at': now,
-          'updated_at': now,
-        });
-        
-        print('✅ Customer record created with address from profile');
+        print('✅ Customer record created/verified with address from profile');
       } else {
         // Customer exists, check if address needs updating
         final customerAddress = customer['address'] as String? ?? '';

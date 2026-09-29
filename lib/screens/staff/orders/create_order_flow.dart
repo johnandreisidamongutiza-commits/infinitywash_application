@@ -656,19 +656,24 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
       // Step 3: Prepare add-ons array (if selected)
       final List<Map<String, dynamic>> addons = [];
+      double addonsTotal = 0.0;
 
       if (_addExtraFabCon) {
+        const addonPrice = 20.0; // Price per addon
         addons.add({
           'addon_code': 'extra-fabric-conditioner',
           'quantity': 1,
         });
+        addonsTotal += addonPrice;
       }
 
       if (_addExtraDetergent) {
+        const addonPrice = 20.0; // Price per addon
         addons.add({
           'addon_code': 'extra-detergent',
           'quantity': 1,
         });
+        addonsTotal += addonPrice;
       }
 
       // Step 4: Create OrderLoad objects
@@ -694,7 +699,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       }
 
       // Step 5: Calculate totals
-      final subtotal = (basePrice * _loads.length) + addons.fold(0.0, (sum, addon) => sum + (addon['line_total'] as double));
+      final subtotal = (basePrice * _loads.length) + addonsTotal;
       final totalAmount = subtotal; // delivery_fee is always 0
 
       // Step 6: Build customer notes
