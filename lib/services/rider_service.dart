@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
 import '../models/dispatch_job.dart';
+import '../config/cache_config.dart';
 import 'cache/job_cache_service.dart';
 import 'supabase_service.dart';
 
@@ -327,16 +328,25 @@ class RiderService {
   }
 
   /// Get all dispatch jobs for a rider
-  /// Uses cache for faster loading and offline support
-  /// Also includes unassigned jobs (NULL rider_id) so all riders see them
+  /// Uses cache for faster loading and offline support.
+  /// Also includes unassigned jobs (NULL rider_id) so all riders see them.
+  /// Background refresh only fires when the cache is older than
+  /// [CacheConfig.backgroundRefreshMinAge] — a cache hit no longer costs
+  /// a Supabase call every time.
   Future<List<DispatchJob>> getRiderJobs(String riderId) async {
     try {
       // Try cache first (fast)
       final cachedJobs = await JobCacheService.getCachedJobs(riderId);
       if (cachedJobs != null) {
         print('📦 Using cached jobs (${cachedJobs.length} jobs)');
-        // Refresh in background
-        _refreshJobsInBackground(riderId);
+
+        // Stale-while-revalidate: refresh in background only if stale enough.
+        final age = await JobCacheService.getCacheAge(riderId);
+        final minAgeSeconds = CacheConfig.backgroundRefreshMinAge.inSeconds;
+        if (age == null || age >= minAgeSeconds) {
+          print('🔄 Cache is stale (${age ?? '?'}s), refreshing in background');
+          _refreshJobsInBackground(riderId);
+        }
         return cachedJobs;
       }
 
@@ -365,10 +375,10 @@ class RiderService {
 
       // Try to return stale cache as fallback
       try {
-        final cachedJobs = await JobCacheService.getCachedJobs(riderId);
-        if (cachedJobs != null) {
+        final stale = await JobCacheService.getCachedJobs(riderId);
+        if (stale != null) {
           print('⚠️ Using stale cache as fallback');
-          return cachedJobs;
+          return stale;
         }
       } catch (cacheError) {
         print('❌ Cache fallback failed: $cacheError');

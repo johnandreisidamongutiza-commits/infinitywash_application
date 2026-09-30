@@ -1,0 +1,342 @@
+================================================================================
+WALK-IN TO MOBILE APP ACCOUNT CONVERSION PLAN
+================================================================================
+Project: Infinity Wash Laundry App
+Date Created: 2026-09-29
+Status: PLANNED (Not yet implemented)
+
+================================================================================
+OVERVIEW
+================================================================================
+
+GOAL:
+Allow walk-in customers to convert their existing walk-in account into a 
+mobile app account, preserving their order history and customer code.
+
+USER STORY:
+"As a walk-in customer, I want to register in the mobile app using my existing
+customer code so that I can view my past orders and continue using the same 
+account."
+
+BUSINESS VALUE:
+- Seamless customer experience (no duplicate accounts)
+- Preserved order history
+- Encourages walk-in customers to use the mobile app
+- Single source of truth for customer data
+
+================================================================================
+CURRENT STATE (as of 2026-09-29)
+================================================================================
+
+CUSTOMER TYPES:
+1. Walk-in customers:
+   - Created by staff during order creation
+   - Have customer_code (e.g., "CUST-00014")
+   - Have NO profile_id (not linked to auth.users)
+   - Have NO app account
+   - customer_type = 'walk_in'
+
+2. Mobile app customers:
+   - Self-registered through mobile app
+   - Have customer_code (e.g., "CUST-00015")
+   - Have profile_id (linked to auth.users)
+   - Can sign in to app
+   - customer_type = 'mobile_app'
+
+CURRENT CUSTOMER TABLE STRUCTURE:
+- id (UUID) - primary key
+- customer_code (TEXT) - unique (e.g., "CUST-00014")
+- profile_id (UUID) - nullable, links to profiles table
+- first_name, last_name, phone, email, address, landmark
+- customer_type ('walk_in' or 'mobile_app')
+- status ('active', 'inactive', etc.)
+- joined_at, created_at, updated_at
+
+CURRENT REGISTRATION FLOW (Mobile App):
+1. User fills registration form (email, password, name, phone, address)
+2. Supabase Auth creates user in auth.users
+3. Trigger handle_new_auth_user() creates:
+   - Profile in profiles table
+   - Customer in customers table with NEW customer_code
+4. Result: New mobile_app customer with no connection to walk-in history
+
+================================================================================
+PROPOSED SOLUTION
+================================================================================
+
+CONVERSION FLOW:
+1. During registration, user can enter an OPTIONAL "Customer Code" field
+2. If customer code provided:
+   a. Verify customer code exists and is walk-in type
+   b. Verify customer code is not already linked to another account
+   c. Create auth account and profile as normal
+   d. LINK existing customer record instead of creating new one:
+      - Update existing customer's profile_id
+      - Update customer_type from 'walk_in' to 'mobile_app'
+      - Keep original customer_code and order history
+3. If customer code NOT provided or invalid:
+   - Normal registration flow (create new customer)
+
+================================================================================
+IMPLEMENTATION STEPS
+================================================================================
+
+PHASE 1: DATABASE CHANGES
+--------------------------
+[ ] Step 1.1: Create verification function
+    File: supabase/migrations/20260930_walk_in_conversion_functions.sql
+    
+    CREATE FUNCTION verify_walk_in_customer_code(code TEXT)
+    RETURNS TABLE (
+      customer_id UUID,
+      first_name TEXT,
+      last_name TEXT,
+      phone TEXT,
+      email TEXT
+    )
+    
+    - Checks if customer_code exists
+    - Checks if customer_type = 'walk_in'
+    - Checks if profile_id IS NULL (not already linked)
+    - Returns customer info for verification
+
+[ ] Step 1.2: Update trigger function to handle conversion
+    File: supabase/migrations/20260930_update_trigger_for_conversion.sql
+    
+    Modify handle_new_auth_user() to:
+    - Check if raw_user_meta_data has 'customer_code' field
+    - If yes, verify and link existing customer
+    - If no or invalid, create new customer (current behavior)
+    
+    Logic:
+    IF customer_code provided AND valid walk-in customer:
+      - Create profile as usual
+      - UPDATE existing customer SET profile_id = new_profile_id, 
+                                      customer_type = 'mobile_app'
+      - UPDATE customer name/phone/email if provided in registration
+    ELSE:
+      - Create new customer (existing logic)
+
+PHASE 2: FLUTTER APP CHANGES
+-----------------------------
+[ ] Step 2.1: Update registration screen UI
+    File: lib/screens/customer/customer_registration_screen.dart
+    
+    Add new field:
+    - "Have an existing customer code? (Optional)"
+    - Text input with placeholder "CUST-00XXX"
+    - Help text: "If you've ordered as walk-in before, enter your code to 
+                   link your account"
+    - Add validation: format check (CUST-XXXXX)
+
+[ ] Step 2.2: Update AuthService registration
+    File: lib/services/auth_service.dart
+    
+    - Add optional customerCode parameter to registerCustomer()
+    - Pass customerCode in metadata to signUp()
+    - Metadata will include: 'customer_code': customerCode
+
+[ ] Step 2.3: Add customer code verification (optional enhancement)
+    File: lib/services/customer_service.dart
+    
+    Create method:
+    Future<Map<String, dynamic>?> verifyWalkInCustomerCode(String code)
+    
+    - Calls verify_walk_in_customer_code() RPC
+    - Returns customer info if valid
+    - Shows preview: "Link to account: John Doe (0912-XXX-XXXX)?"
+    - User confirms before proceeding with registration
+
+PHASE 3: TESTING
+-----------------
+[ ] Step 3.1: Unit tests
+    - Test customer code validation
+    - Test duplicate linking prevention
+    - Test invalid code handling
+
+[ ] Step 3.2: Integration tests
+    Test scenarios:
+    a. Walk-in customer converts → order history preserved ✓
+    b. Invalid customer code → normal registration (new customer) ✓
+    c. Already-linked code → error message ✓
+    d. Registration without code → normal flow ✓
+
+[ ] Step 3.3: Manual testing
+    - Create walk-in customer via staff order
+    - Note the customer_code
+    - Register in mobile app with that code
+    - Verify:
+      * Can sign in with new credentials
+      * Order history visible in app
+      * Customer code unchanged
+      * customer_type updated to 'mobile_app'
+
+PHASE 4: UI/UX POLISH (Optional)
+----------------------------------
+[ ] Step 4.1: Add customer code to order receipt (for walk-in)
+    - Show customer code clearly on receipt/confirmation
+    - "Your customer code: CUST-00014"
+    - "Use this code when registering in our mobile app!"
+
+[ ] Step 4.2: Add QR code on receipt (future enhancement)
+    - Generate QR code with customer code
+    - Scan QR in app to auto-fill during registration
+
+================================================================================
+DATABASE SCHEMA REFERENCE
+================================================================================
+
+CUSTOMERS TABLE (current):
+- id: UUID (PK)
+- customer_code: TEXT (UNIQUE) ← Key field for linking
+- profile_id: UUID (FK to profiles) ← NULL for walk-in, set on conversion
+- customer_type: TEXT ← Changes from 'walk_in' to 'mobile_app'
+- first_name, last_name, phone, email, address, landmark
+- status, joined_at, created_at, updated_at
+
+PROFILES TABLE (current):
+- id: UUID (PK)
+- supabase_user_id: UUID (FK to auth.users)
+- first_name, last_name, email, phone, address, landmark
+- role: TEXT ('customer')
+- status: TEXT ('active')
+
+ORDERS TABLE (unchanged):
+- customer_id: UUID (FK to customers) ← Links remain intact after conversion
+
+================================================================================
+EDGE CASES TO HANDLE
+================================================================================
+
+1. Customer code doesn't exist
+   → Show error: "Customer code not found. Leave blank to create new account."
+
+2. Customer code already linked to another account
+   → Show error: "This customer code is already linked to an account."
+
+3. Customer code is for mobile_app type (not walk_in)
+   → Show error: "This customer code is already a mobile app account."
+
+4. Name/phone mismatch during verification
+   → Show warning: "Name on file: John Doe. Continue?" (let user confirm)
+
+5. User forgets their customer code
+   → Support staff can look up by phone number
+   → Add "Forgot customer code?" link → contact support
+
+6. Duplicate registration attempts
+   → Normal Supabase auth duplicate email error handling
+
+================================================================================
+ROLLBACK PLAN
+================================================================================
+
+If conversion feature causes issues:
+
+1. Revert trigger function to previous version:
+   - Run rollback migration
+   - Trigger will ignore customer_code in metadata
+
+2. Remove customer_code field from registration screen:
+   - Comment out the input field
+   - Remove from metadata
+
+3. Fix any incorrectly linked accounts:
+   - Manually unlink: UPDATE customers SET profile_id = NULL 
+                      WHERE customer_code = 'CUST-XXXXX'
+
+================================================================================
+SUCCESS METRICS
+================================================================================
+
+After implementation, track:
+- Number of walk-in customers who convert to mobile accounts
+- Conversion rate (walk-in converts / total walk-in customers)
+- Customer satisfaction (fewer duplicate account complaints)
+- Order history continuity (customers can see all past orders)
+
+================================================================================
+TIMELINE ESTIMATE
+================================================================================
+
+Phase 1 (Database): 2-3 hours
+- Write migration scripts
+- Test in SQL editor
+- Deploy to production
+
+Phase 2 (Flutter App): 4-6 hours
+- Update UI screens
+- Modify services
+- Handle edge cases
+
+Phase 3 (Testing): 2-3 hours
+- Write tests
+- Manual QA
+- Bug fixes
+
+Phase 4 (Polish): 2-4 hours (optional)
+- Receipt updates
+- QR code feature
+
+TOTAL: 10-16 hours (2-3 days of focused work)
+
+================================================================================
+NOTES & DECISIONS
+================================================================================
+
+DECISION 1: Customer code field is OPTIONAL during registration
+Reason: Don't force users to have a code; new customers can still register normally
+
+DECISION 2: Use trigger-based linking (not app-side)
+Reason: Keeps logic centralized in database, reduces race conditions
+
+DECISION 3: Allow name/email updates during conversion
+Reason: Walk-in data might be incomplete or outdated
+
+DECISION 4: Keep original customer_code after conversion
+Reason: Preserves referential integrity with existing orders
+
+DECISION 5: Update customer_type on conversion
+Reason: Track which customers converted vs. initially registered via app
+
+================================================================================
+QUESTIONS TO RESOLVE BEFORE IMPLEMENTATION
+================================================================================
+
+1. Should we verify phone number matches during conversion?
+   - Pro: Extra security
+   - Con: Walk-in data might be inaccurate
+
+2. Should staff be notified when a walk-in customer converts?
+   - Pro: Staff knows customer is now active in app
+   - Con: Extra complexity
+
+3. What if customer registers with different email than walk-in email?
+   - Current plan: Allow it (walk-in email might be placeholder)
+   - Alternative: Require email match
+
+4. Should we send welcome email mentioning order history?
+   - "Welcome! Your X previous orders are now in your account."
+
+================================================================================
+RELATED FILES
+================================================================================
+
+Database:
+- supabase/migrations/20260929_customer_code_sequence.sql (sequence for codes)
+- supabase/migrations/20260929_trigger_customer_creation.sql (current trigger)
+
+Flutter:
+- lib/screens/customer/customer_registration_screen.dart (registration UI)
+- lib/services/auth_service.dart (registration logic)
+- lib/services/customer_service.dart (customer operations)
+
+================================================================================
+END OF PLAN
+================================================================================
+
+Last Updated: 2026-09-29
+Status: Ready for implementation
+Next Step: Review plan → Get approval → Start Phase 1
+
+================================================================================

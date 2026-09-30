@@ -2,10 +2,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
 import 'supabase_service.dart';
 import 'loyalty_service.dart';
+import 'service_catalog_service.dart';
 
 class OrderService {
   final SupabaseClient _client = SupabaseService.client;
   final LoyaltyService _loyaltyService = LoyaltyService();
+  final ServiceCatalogService _catalogService = ServiceCatalogService();
 
   /// Generate next sequential order number for today (ORD-YYMMDD-001, up to 999/day)
   Future<String> generateOrderNumber() async {
@@ -211,33 +213,34 @@ class OrderService {
       if (addons.isNotEmpty) {
         print('🔄 Processing ${addons.length} add-ons...');
         final addonsData = <Map<String, dynamic>>[];
-        
+
+        // Resolve all addon codes in ONE cached catalog call
+        // (replaces one DB query per addon).
+        final addonCodes = addons
+            .map((addon) => addon['addon_code'] as String)
+            .toList();
+        final resolvedAddons =
+            await _catalogService.resolveAddonsByCode(addonCodes);
+
         for (final addon in addons) {
           final addonCode = addon['addon_code'] as String;
-          
-          // Fetch the actual addon UUID from service_addons table
-          final serviceAddon = await _client
-              .from('service_addons')
-              .select('id, addon_name, price')
-              .eq('addon_code', addonCode)
-              .eq('status', 'active')
-              .maybeSingle();
-          
+          final serviceAddon = resolvedAddons[addonCode];
+
           if (serviceAddon == null) {
             print('⚠️ Add-on not found: $addonCode');
             continue;
           }
-          
+
           // Safely handle null price
           final priceValue = serviceAddon['price'];
           if (priceValue == null) {
             print('⚠️ Add-on has null price: $addonCode, skipping');
             continue;
           }
-          
+
           final quantity = (addon['quantity'] ?? 1) as num;
           final unitPrice = (priceValue as num).toDouble();
-          
+
           addonsData.add({
             'order_id': orderId,
             'addon_id': serviceAddon['id'],
@@ -418,33 +421,34 @@ class OrderService {
       if (addons.isNotEmpty) {
         print('🔄 Processing ${addons.length} add-ons...');
         final addonsData = <Map<String, dynamic>>[];
-        
+
+        // Resolve all addon codes in ONE cached catalog call
+        // (replaces one DB query per addon).
+        final addonCodes = addons
+            .map((addon) => addon['addon_code'] as String)
+            .toList();
+        final resolvedAddons =
+            await _catalogService.resolveAddonsByCode(addonCodes);
+
         for (final addon in addons) {
           final addonCode = addon['addon_code'] as String;
-          
-          // Fetch the actual addon UUID from service_addons table
-          final serviceAddon = await _client
-              .from('service_addons')
-              .select('id, addon_name, price')
-              .eq('addon_code', addonCode)
-              .eq('status', 'active')
-              .maybeSingle();
-          
+          final serviceAddon = resolvedAddons[addonCode];
+
           if (serviceAddon == null) {
             print('⚠️ Add-on not found: $addonCode');
             continue;
           }
-          
+
           // Safely handle null price
           final priceValue = serviceAddon['price'];
           if (priceValue == null) {
             print('⚠️ Add-on has null price: $addonCode, skipping');
             continue;
           }
-          
+
           final quantity = (addon['quantity'] ?? 1) as num;
           final unitPrice = (priceValue as num).toDouble();
-          
+
           addonsData.add({
             'order_id': orderId,
             'addon_id': serviceAddon['id'],
@@ -455,7 +459,7 @@ class OrderService {
             'created_at': now,
           });
         }
-        
+
         if (addonsData.isNotEmpty) {
           await _client.from('order_addons').insert(addonsData);
           print('✅ Created ${addonsData.length} addons');

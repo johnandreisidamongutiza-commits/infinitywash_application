@@ -1,12 +1,17 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'api/api_gate.dart';
 import 'supabase_service.dart';
+import '../config/cache_config.dart';
 
 class ServiceCatalogService {
   final SupabaseClient _client = SupabaseService.client;
 
-  // Cache for service and addons to reduce database queries
-  Map<String, dynamic>? _cachedService;
-  final Map<String, Map<String, dynamic>> _cachedAddons = {};
+  // In-memory lookups backed by ApiGate (Hive-persisted, 24h TTL)
+  final Map<String, Map<String, dynamic>> _cachedAddonsByName = {};
+  final Map<String, Map<String, dynamic>> _cachedAddonsByCode = {};
+
+  static const String _serviceKey = 'catalog:service';
+  static const String _addonsKey = 'catalog:addons';
 
   /// Test Supabase connection (debugging method)
   Future<void> testConnection() async {
@@ -27,44 +32,24 @@ class ServiceCatalogService {
   }
 
   /// Get the full service (there's only one service: Full Service)
-  /// Returns service details including base_price
+  /// Returns service details including base_price.
+  ///
+  /// Cached in memory + Hive (24h TTL). Deduplicated: concurrent callers
+  /// share one query.
   Future<Map<String, dynamic>> getFullService() async {
     try {
-      // Return cached service if available
-      if (_cachedService != null) {
-        print('✅ Returning cached service: ${_cachedService!['service_name']}');
-        return _cachedService!;
+      await ApiGate.instance.init();
+      final result = await ApiGate.instance.runCached<Map<String, dynamic>>(
+        _serviceKey,
+        CacheConfig.catalogTtl,
+        _fetchServiceFromDb,
+        persist: true,
+        decode: (raw) => Map<String, dynamic>.from(raw as Map),
+      );
+      if (result.fromCache) {
+        print('✅ Returning cached service (age: ${result.hiveAge?.inMinutes ?? 0} min): ${result.value['service_name']}');
       }
-
-      print('🔍 Querying service_catalog for active service...');
-      
-      // Query for the single active service
-      final response = await _client
-          .from('service_catalog')
-          .select()
-          .eq('status', 'active')
-          .maybeSingle();
-
-      print('📊 Query response: $response');
-
-      if (response == null) {
-        print('❌ No response from service_catalog query');
-        
-        // Let's try a broader query for debugging
-        print('🔍 Trying to get ALL services for debugging...');
-        final allServices = await _client
-            .from('service_catalog')
-            .select();
-        print('📊 All services in table: $allServices');
-        
-        throw Exception('No active service found in service_catalog');
-      }
-
-      // Cache the service
-      _cachedService = response;
-
-      print('✅ Loaded service: ${response['service_name']} - ₱${response['base_price']}');
-      return response;
+      return result.value;
     } catch (e) {
       print('❌ Error loading service: $e');
       print('❌ Error type: ${e.runtimeType}');
@@ -72,16 +57,59 @@ class ServiceCatalogService {
     }
   }
 
+  Future<Map<String, dynamic>> _fetchServiceFromDb() async {
+    print('🔍 Querying service_catalog for active service...');
+
+    // Query for the single active service
+    final response = await _client
+        .from('service_catalog')
+        .select()
+        .eq('status', 'active')
+        .maybeSingle();
+
+    print('📊 Query response: $response');
+
+    if (response == null) {
+      print('❌ No response from service_catalog query');
+
+      // Let's try a broader query for debugging
+      print('🔍 Trying to get ALL services for debugging...');
+      final allServices = await _client
+          .from('service_catalog')
+          .select();
+      print('📊 All services in table: $allServices');
+
+      throw Exception('No active service found in service_catalog');
+    }
+
+    print('✅ Loaded service: ${response['service_name']} - ₱${response['base_price']}');
+    return Map<String, dynamic>.from(response);
+  }
+
   /// Get addon by name (e.g., "Extra Fab Con", "Extra Detergent")
-  /// Returns addon details including price
+  /// Returns addon details including price.
+  ///
+  /// Resolved locally from the cached addon list when possible —
+  /// at most one query instead of one per lookup.
   Future<Map<String, dynamic>> getAddonByName(String addonName) async {
     try {
-      // Return cached addon if available
-      if (_cachedAddons.containsKey(addonName)) {
-        return _cachedAddons[addonName]!;
+      final cached = _cachedAddonsByName[addonName];
+      if (cached != null) return cached;
+
+      // Try resolving from the cached full list first (0-1 queries total).
+      try {
+        final addons = await getAllAddons();
+        for (final addon in addons) {
+          if (addon['addon_name'] == addonName) {
+            _cachedAddonsByName[addonName] = addon;
+            return addon;
+          }
+        }
+      } catch (_) {
+        // List fetch failed — fall through to direct lookup.
       }
 
-      // Query addon by name
+      // Direct lookup fallback.
       final response = await _client
           .from('service_addons')
           .select()
@@ -93,11 +121,11 @@ class ServiceCatalogService {
         throw Exception('Addon "$addonName" not found in service_addons');
       }
 
-      // Cache the addon
-      _cachedAddons[addonName] = response;
+      final addon = Map<String, dynamic>.from(response);
+      _cachedAddonsByName[addonName] = addon;
 
-      print('✅ Loaded addon: ${response['addon_name']} - ₱${response['price']}');
-      return response;
+      print('✅ Loaded addon: ${addon['addon_name']} - ₱${addon['price']}');
+      return addon;
     } catch (e) {
       print('❌ Error loading addon "$addonName": $e');
       rethrow;
@@ -105,15 +133,27 @@ class ServiceCatalogService {
   }
 
   /// Get addon by code (e.g., "extra-fabric-conditioner", "extra-detergent")
-  /// Returns addon details including price
+  /// Returns addon details including price.
+  /// Resolved locally from the cached addon list when possible.
   Future<Map<String, dynamic>> getAddonByCode(String addonCode) async {
     try {
-      // Return cached addon if available
-      if (_cachedAddons.containsKey(addonCode)) {
-        return _cachedAddons[addonCode]!;
+      final cached = _cachedAddonsByCode[addonCode];
+      if (cached != null) return cached;
+
+      // Try resolving from the cached full list first.
+      try {
+        final addons = await getAllAddons();
+        for (final addon in addons) {
+          if (addon['addon_code'] == addonCode) {
+            _cachedAddonsByCode[addonCode] = addon;
+            return addon;
+          }
+        }
+      } catch (_) {
+        // List fetch failed — fall through to direct lookup.
       }
 
-      // Query addon by code
+      // Direct lookup fallback.
       final response = await _client
           .from('service_addons')
           .select()
@@ -125,51 +165,101 @@ class ServiceCatalogService {
         throw Exception('Addon "$addonCode" not found in service_addons');
       }
 
-      // Cache the addon
-      _cachedAddons[addonCode] = response;
+      final addon = Map<String, dynamic>.from(response);
+      _cachedAddonsByCode[addonCode] = addon;
 
-      print('✅ Loaded addon: ${response['addon_name']} - ₱${response['price']}');
-      return response;
+      print('✅ Loaded addon: ${addon['addon_name']} - ₱${addon['price']}');
+      return addon;
     } catch (e) {
       print('❌ Error loading addon "$addonCode": $e');
       rethrow;
     }
   }
 
-  /// Get all active addons
+  /// Get all active addons.
+  /// Cached in memory + Hive (24h TTL), deduplicated across concurrent callers.
   Future<List<Map<String, dynamic>>> getAllAddons() async {
     try {
-      final response = await _client
-          .from('service_addons')
-          .select()
-          .eq('status', 'active')
-          .order('addon_name');
+      await ApiGate.instance.init();
+      final result = await ApiGate.instance.runCached<List<Map<String, dynamic>>>(
+        _addonsKey,
+        CacheConfig.catalogTtl,
+        _fetchAddonsFromDb,
+        persist: true,
+        decode: (raw) => (raw as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList(),
+      );
 
-      final addons = List<Map<String, dynamic>>.from(response);
-
-      // Cache all addons
-      for (var addon in addons) {
-        _cachedAddons[addon['addon_name'] as String] = addon;
+      // Index by name and code for fast local lookups.
+      for (var addon in result.value) {
+        final name = addon['addon_name'] as String?;
+        final code = addon['addon_code'] as String?;
+        if (name != null) _cachedAddonsByName[name] = addon;
+        if (code != null) _cachedAddonsByCode[code] = addon;
       }
 
-      print('✅ Loaded ${addons.length} active addons');
-      return addons;
+      if (!result.fromCache) {
+        print('✅ Loaded ${result.value.length} active addons');
+      }
+      return result.value;
     } catch (e) {
       print('❌ Error loading addons: $e');
       rethrow;
     }
   }
 
+  Future<List<Map<String, dynamic>>> _fetchAddonsFromDb() async {
+    final response = await _client
+        .from('service_addons')
+        .select()
+        .eq('status', 'active')
+        .order('addon_name');
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  /// Resolve multiple addon codes to addon rows using the cached list.
+  /// Returns a map of code → addon row (only codes that exist are included).
+  /// One cached [getAllAddons] call replaces N per-addon queries.
+  Future<Map<String, Map<String, dynamic>>> resolveAddonsByCode(
+    List<String> codes,
+  ) async {
+    final resolved = <String, Map<String, dynamic>>{};
+    if (codes.isEmpty) return resolved;
+
+    final missing = <String>[];
+    for (final code in codes) {
+      final cached = _cachedAddonsByCode[code];
+      if (cached != null) {
+        resolved[code] = cached;
+      } else {
+        missing.add(code);
+      }
+    }
+
+    if (missing.isNotEmpty) {
+      await getAllAddons();
+      for (final code in missing) {
+        final addon = _cachedAddonsByCode[code];
+        if (addon != null) resolved[code] = addon;
+      }
+    }
+
+    return resolved;
+  }
+
   /// Clear cache (useful for testing or when data changes)
-  void clearCache() {
-    _cachedService = null;
-    _cachedAddons.clear();
+  Future<void> clearCache() async {
+    _cachedAddonsByName.clear();
+    _cachedAddonsByCode.clear();
+    await ApiGate.instance.invalidate(_serviceKey);
+    await ApiGate.instance.invalidate(_addonsKey);
     print('🔄 Service catalog cache cleared');
   }
 
   /// Reload service and addons from database
   Future<void> refreshCache() async {
-    clearCache();
+    await clearCache();
     await getFullService();
     await getAllAddons();
   }

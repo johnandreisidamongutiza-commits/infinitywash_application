@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import '../config/routing_config.dart';
+import 'api/api_guard.dart';
 import 'cache/route_cache_service.dart';
 
 /// Result of a routing request.
@@ -41,6 +42,9 @@ class RoutingService {
     'User-Agent': 'InfinityWash/1.0 (com.infinitywash.app)',
     'Accept': 'application/json',
   };
+
+  /// Shared outbound guard (throttle + retry + circuit breaker).
+  static final ApiGuard _guard = ApiGuard();
 
   /// Convenience wrapper used by existing screens.
   Future<List<LatLng>> getRoute(List<LatLng> waypoints) async {
@@ -118,30 +122,31 @@ class RoutingService {
   Future<RouteResult?> _fetchOpenRouteService(List<LatLng> waypoints) async {
     try {
       final url = Uri.parse('${RoutingConfig.openRouteServiceBaseUrl}/geojson');
-      final body = json.encode({
-        'coordinates': [
-          for (final p in waypoints) [p.longitude, p.latitude],
-        ],
-        'radiuses': List<double>.filled(waypoints.length, _snapRadiusMeters),
-      });
+      final requestFactory = () => http.Request('POST', url)
+        ..headers.addAll({
+          ..._headers,
+          'Authorization': RoutingConfig.openRouteServiceApiKey,
+          'Content-Type': 'application/json',
+        })
+        ..body = json.encode({
+          'coordinates': [
+            for (final p in waypoints) [p.longitude, p.latitude],
+          ],
+          'radiuses': List<double>.filled(waypoints.length, _snapRadiusMeters),
+        });
 
-      final response = await http
-          .post(
-            url,
-            headers: {
-              ..._headers,
-              'Authorization': RoutingConfig.openRouteServiceApiKey,
-              'Content-Type': 'application/json',
-            },
-            body: body,
-          )
-          .timeout(_timeout);
+      final guarded = await _guard.execute(
+        ApiGuard.providerOrs,
+        requestFactory,
+        timeout: _timeout,
+      );
 
-      if (response.statusCode != 200) {
-        print('⚠️ ORS failed: HTTP ${response.statusCode}');
-        return RouteResult.fallback(waypoints, error: 'ORS HTTP ${response.statusCode}');
+      if (guarded.verdict != GuardVerdict.success || guarded.response == null) {
+        print('⚠️ ORS failed: ${guarded.error}');
+        return RouteResult.fallback(waypoints, error: guarded.error);
       }
 
+      final response = guarded.response!;
       final data = json.decode(response.body) as Map<String, dynamic>;
       final features = data['features'] as List?;
       if (features == null || features.isEmpty) {
@@ -181,13 +186,20 @@ class RoutingService {
         '$_osrmBaseUrl/$coordinates?overview=full&geometries=geojson&radiuses=$radiuses',
       );
 
-      final response = await http.get(url, headers: _headers).timeout(_timeout);
+      final requestFactory = () => http.Request('GET', url)..headers.addAll(_headers);
 
-      if (response.statusCode != 200) {
-        print('⚠️ OSRM failed: HTTP ${response.statusCode}');
-        return RouteResult.fallback(waypoints, error: 'OSRM HTTP ${response.statusCode}');
+      final guarded = await _guard.execute(
+        ApiGuard.providerOsrm,
+        requestFactory,
+        timeout: _timeout,
+      );
+
+      if (guarded.verdict != GuardVerdict.success || guarded.response == null) {
+        print('⚠️ OSRM failed: ${guarded.error}');
+        return RouteResult.fallback(waypoints, error: guarded.error);
       }
 
+      final response = guarded.response!;
       final data = json.decode(response.body) as Map<String, dynamic>;
       if (data['code'] != 'Ok' || data['routes'] == null || (data['routes'] as List).isEmpty) {
         print('⚠️ OSRM code: ${data['code']}');

@@ -8,6 +8,7 @@ import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'services/cache/route_cache_service.dart';
 import 'services/cache/job_cache_service.dart';
+import 'services/api/api_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +25,7 @@ void main() async {
   try {
     await RouteCacheService.init();
     await JobCacheService.init();
+    await ApiGate.instance.init();
     print('✅ Cache services initialized');
   } catch (e) {
     print('❌ Cache services initialization error: $e');
