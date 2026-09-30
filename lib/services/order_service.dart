@@ -283,6 +283,18 @@ class OrderService {
       }
 
       print('🎉 Order creation complete: $orderNumber');
+
+      // Create dispatch jobs if pickup/delivery requested
+      if (pickupRequested || deliveryRequested) {
+        await _createDispatchJobsForOrder(
+          orderId: orderId,
+          pickupRequested: pickupRequested,
+          deliveryRequested: deliveryRequested,
+          address: deliveryAddress ?? '',
+          landmark: deliveryLandmark,
+        );
+      }
+
       return orderId;
     } catch (e) {
       print('❌ Error creating order: $e');
@@ -290,6 +302,78 @@ class OrderService {
         throw Exception('Database constraint error: ${e.toString()}');
       }
       rethrow;
+    }
+  }
+
+  /// Create dispatch jobs for walk-in orders
+  Future<void> _createDispatchJobsForOrder({
+    required String orderId,
+    required bool pickupRequested,
+    required bool deliveryRequested,
+    required String address,
+    String? landmark,
+  }) async {
+    try {
+      if (!pickupRequested && !deliveryRequested) {
+        return; // No dispatch needed
+      }
+
+      if (address.isEmpty) {
+        print('⚠️ Cannot create dispatch job: No address provided');
+        return;
+      }
+
+      print('🔄 Creating dispatch jobs for walk-in order: $orderId');
+
+      // Fetch order with customer info to get customer name
+      final orderResponse = await _client
+          .from('orders')
+          .select('''
+            *,
+            customers!inner(first_name, last_name)
+          ''')
+          .eq('id', orderId)
+          .single();
+
+      // Extract customer name
+      final customerData = orderResponse['customers'] as Map<String, dynamic>?;
+      final firstName = customerData?['first_name'] as String? ?? '';
+      final lastName = customerData?['last_name'] as String? ?? '';
+      final customerName = lastName.isNotEmpty 
+          ? '$firstName $lastName'.trim()
+          : firstName.isNotEmpty 
+              ? firstName 
+              : 'Unknown Customer';
+
+      // Use default coordinates (Santa Cruz, Laguna area)
+      // TODO: Implement actual geocoding service
+      final defaultLat = 14.2811;
+      final defaultLng = 121.4159;
+      print('⚠️ Using default coordinates for address: $address');
+
+      // Create unassigned dispatch jobs
+      final supabaseService = SupabaseService();
+
+      if (pickupRequested) {
+        await supabaseService.createDispatchJob(
+          orderId: orderId,
+          riderId: null, // NULL for unassigned
+          jobType: 'pickup',
+          latitude: defaultLat,
+          longitude: defaultLng,
+          address: address,
+          landmark: landmark,
+          customerName: customerName, // Pass customer name
+          notes: 'Pickup laundry from customer',
+        );
+        print('✅ Created pickup dispatch job');
+      }
+
+      // Note: Delivery job will be created when order status changes to 'ready'
+      // This ensures riders only see delivery jobs when laundry is actually ready
+    } catch (e) {
+      print('❌ Error creating dispatch jobs: $e');
+      // Don't rethrow - order creation should succeed even if dispatch fails
     }
   }
 
@@ -599,7 +683,10 @@ class OrderService {
           updates['processing_at'] = DateTime.now().toIso8601String();
           break;
         case 'ready':
+          print('🔍 DEBUG: Order status changing to READY, will create delivery job...');
           updates['ready_at'] = DateTime.now().toIso8601String();
+          // Create delivery dispatch job when order is ready
+          await _createDeliveryJobIfNeeded(orderId);
           break;
         case 'out_for_delivery':
           updates['out_for_delivery_at'] = DateTime.now().toIso8601String();
@@ -622,6 +709,111 @@ class OrderService {
     } catch (e) {
       print('❌ Error updating order status: $e');
       rethrow;
+    }
+  }
+
+  /// Create delivery dispatch job when order becomes ready
+  Future<void> _createDeliveryJobIfNeeded(String orderId) async {
+    try {
+      print('🔍 DEBUG: _createDeliveryJobIfNeeded called for order: $orderId');
+      
+      // Fetch order to check if delivery is requested
+      print('🔍 DEBUG: Fetching order data...');
+      final orderResponse = await _client
+          .from('orders')
+          .select('''
+            *,
+            customers!inner(first_name, last_name, address, landmark)
+          ''')
+          .eq('id', orderId)
+          .single();
+
+      print('🔍 DEBUG: Order fetched successfully');
+      print('🔍 DEBUG: Order data: ${orderResponse.toString()}');
+
+      final deliveryRequested = orderResponse['delivery_requested'] as bool? ?? false;
+      print('🔍 DEBUG: delivery_requested = $deliveryRequested');
+      
+      if (!deliveryRequested) {
+        print('ℹ️ Delivery not requested for order $orderId, skipping delivery job creation');
+        return;
+      }
+
+      print('🔍 DEBUG: Checking for existing delivery job...');
+      // Check if delivery job already exists (avoid duplicates)
+      final existingJob = await _client
+          .from('dispatch_jobs')
+          .select('id')
+          .eq('order_id', orderId)
+          .eq('job_type', 'delivery')
+          .maybeSingle();
+
+      print('🔍 DEBUG: Existing job query result: ${existingJob?.toString() ?? "null (no existing job)"}');
+
+      if (existingJob != null) {
+        print('ℹ️ Delivery job already exists for order $orderId');
+        return;
+      }
+
+      print('🔍 DEBUG: Extracting address data...');
+      // Get address
+      final deliveryAddress = orderResponse['delivery_address'] as String?;
+      final pickupAddress = orderResponse['pickup_address'] as String?;
+      final customerData = orderResponse['customers'] as Map<String, dynamic>?;
+      final customerAddress = customerData?['address'] as String?;
+      final landmark = orderResponse['landmark'] as String? ?? customerData?['landmark'] as String?;
+      
+      print('🔍 DEBUG: deliveryAddress = $deliveryAddress');
+      print('🔍 DEBUG: pickupAddress = $pickupAddress');
+      print('🔍 DEBUG: customerAddress = $customerAddress');
+      print('🔍 DEBUG: landmark = $landmark');
+      
+      final finalAddress = deliveryAddress ?? pickupAddress ?? customerAddress ?? '';
+      print('🔍 DEBUG: finalAddress = "$finalAddress"');
+      
+      if (finalAddress.isEmpty) {
+        print('⚠️ Cannot create delivery job: No address for order $orderId');
+        return;
+      }
+
+      print('🔍 DEBUG: Extracting customer name...');
+      // Extract customer name
+      final firstName = customerData?['first_name'] as String? ?? '';
+      final lastName = customerData?['last_name'] as String? ?? '';
+      final customerName = lastName.isNotEmpty 
+          ? '$firstName $lastName'.trim()
+          : firstName.isNotEmpty 
+              ? firstName 
+              : 'Unknown Customer';
+      
+      print('🔍 DEBUG: customerName = "$customerName"');
+
+      // Use default coordinates (Santa Cruz, Laguna area)
+      // TODO: Implement actual geocoding service
+      final defaultLat = 14.2811;
+      final defaultLng = 121.4159;
+      print('⚠️ Using default coordinates for delivery address: $finalAddress');
+
+      print('🔍 DEBUG: About to call createDispatchJob...');
+      // Create delivery dispatch job
+      final supabaseService = SupabaseService();
+      await supabaseService.createDispatchJob(
+        orderId: orderId,
+        riderId: null, // NULL for unassigned
+        jobType: 'delivery',
+        latitude: defaultLat,
+        longitude: defaultLng,
+        address: finalAddress,
+        landmark: landmark,
+        customerName: customerName,
+        notes: 'Deliver clean laundry to customer',
+      );
+
+      print('✅ Created delivery dispatch job for ready order $orderId');
+    } catch (e) {
+      print('❌ Error creating delivery job: $e');
+      print('❌ Error stack trace: ${StackTrace.current}');
+      // Don't rethrow - order status update should succeed even if dispatch creation fails
     }
   }
 

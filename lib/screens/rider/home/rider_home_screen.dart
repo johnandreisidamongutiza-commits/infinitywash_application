@@ -444,8 +444,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               return _buildRouteStop(
                 index,
                 '${index + 1}',
+                job.customerName ?? 'Unknown Customer',
                 job.address ?? 'No address',
-                job.notes ?? '',
                 isPickup ? 'Pickup' : 'Drop-off',
                 _formatTime(job.createdAt),
                 isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,

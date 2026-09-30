@@ -11,15 +11,16 @@ class RiderService {
 
   /// Fetch orders that need pickup by rider
   /// Filters: pickup_requested = true AND status = 'pending_pickup'
+  /// Shows ALL pickup orders to ALL riders (no rider assignment filtering)
   Future<List<LaundryOrder>> fetchPickupOrders({
-    String? assignedRiderId,
+    String? assignedRiderId,  // Kept for backwards compatibility, but not used for filtering
     int limit = 50,
   }) async {
     try {
-      print('📦 Fetching rider pickup orders...');
+      print('📦 Fetching ALL rider pickup orders (no filtering by rider)...');
       
-      // Build query for orders that need pickup
-      var query = _client
+      // Build query for ALL orders that need pickup - no rider filtering
+      final response = await _client
           .from('orders')
           .select('''
             id,
@@ -62,17 +63,7 @@ class RiderService {
             customers(first_name, last_name, customer_code, phone, address, landmark)
           ''')
           .eq('pickup_requested', true)
-          .eq('status', 'pending_pickup');
-
-      // Filter by assigned rider if provided
-      if (assignedRiderId != null) {
-        query = query.or('assigned_rider_id.is.null,assigned_rider_id.eq.$assignedRiderId');
-      } else {
-        // Show all unassigned orders or orders assigned to any rider (for now)
-        // Later can add rider assignment logic
-      }
-
-      final response = await query
+          .eq('status', 'pending_pickup')
           .order('created_at', ascending: true) // FIFO - oldest first
           .limit(limit);
 
@@ -87,15 +78,16 @@ class RiderService {
 
   /// Fetch orders that need delivery by rider
   /// Filters: delivery_requested = true AND status IN ('ready', 'out_for_delivery')
+  /// Shows ALL delivery orders to ALL riders (no rider assignment filtering)
   Future<List<LaundryOrder>> fetchDeliveryOrders({
-    String? assignedRiderId,
+    String? assignedRiderId,  // Kept for backwards compatibility, but not used for filtering
     int limit = 50,
   }) async {
     try {
-      print('📦 Fetching rider delivery orders...');
+      print('📦 Fetching ALL rider delivery orders (no filtering by rider)...');
       
-      // Build query for orders that need delivery
-      var query = _client
+      // Build query for ALL orders that need delivery - no rider filtering
+      final response = await _client
           .from('orders')
           .select('''
             id,
@@ -138,14 +130,7 @@ class RiderService {
             customers(first_name, last_name, customer_code, phone, address, landmark)
           ''')
           .eq('delivery_requested', true)
-          .inFilter('status', ['ready', 'out_for_delivery']);
-
-      // Filter by assigned rider if provided
-      if (assignedRiderId != null) {
-        query = query.or('assigned_rider_id.is.null,assigned_rider_id.eq.$assignedRiderId');
-      }
-
-      final response = await query
+          .inFilter('status', ['ready', 'out_for_delivery'])
           .order('ready_at', ascending: true) // Oldest ready orders first
           .limit(limit);
 
@@ -343,6 +328,7 @@ class RiderService {
 
   /// Get all dispatch jobs for a rider
   /// Uses cache for faster loading and offline support
+  /// Also includes unassigned jobs (NULL rider_id) so all riders see them
   Future<List<DispatchJob>> getRiderJobs(String riderId) async {
     try {
       // Try cache first (fast)
@@ -356,7 +342,19 @@ class RiderService {
 
       // Cache miss - fetch from Supabase
       print('🌐 Fetching jobs from Supabase...');
-      final jobs = await _supabaseService.getDispatchJobsByRider(riderId);
+      
+      // Fetch jobs assigned to this rider OR unassigned jobs (NULL rider_id)
+      final response = await _supabaseClient
+          .from('dispatch_jobs')
+          .select()
+          .or('rider_id.eq.$riderId,rider_id.is.null')  // NULL for unassigned
+          .order('created_at', ascending: true);
+
+      final jobs = (response as List)
+          .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
+          .toList();
+
+      print('✅ Fetched ${jobs.length} jobs (assigned + unassigned)');
 
       // Cache for next time
       await JobCacheService.cacheJobs(riderId, jobs);
@@ -383,7 +381,17 @@ class RiderService {
   /// Refresh jobs in background (don't wait for result)
   Future<void> _refreshJobsInBackground(String riderId) async {
     try {
-      final jobs = await _supabaseService.getDispatchJobsByRider(riderId);
+      // Fetch jobs assigned to this rider OR unassigned (NULL)
+      final response = await _supabaseClient
+          .from('dispatch_jobs')
+          .select()
+          .or('rider_id.eq.$riderId,rider_id.is.null')
+          .order('created_at', ascending: true);
+
+      final jobs = (response as List)
+          .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
+          .toList();
+
       await JobCacheService.cacheJobs(riderId, jobs);
       print('🔄 Background refresh complete');
     } catch (e) {
@@ -401,18 +409,19 @@ class RiderService {
     }
   }
 
-  /// Get pending jobs (assigned but not started)
+  /// Get pending jobs (not yet started)
+  /// Includes jobs assigned to this rider AND unassigned jobs (NULL rider_id)
   Future<List<DispatchJob>> getPendingJobs(String riderId) async {
     try {
       final response = await _supabaseClient
           .from('dispatch_jobs')
           .select()
-          .eq('rider_id', riderId)
-          .eq('status', 'assigned')
+          .eq('status', 'pending')
+          .or('rider_id.eq.$riderId,rider_id.is.null')  // Include unassigned (NULL)
           .order('created_at', ascending: true);
 
       return (response as List)
-          .map((json) => DispatchJob.fromJson(json as Map<String, dynamic>))
+          .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
           .toList();
     } catch (e) {
       print('❌ Error getting pending jobs: $e');
@@ -427,11 +436,11 @@ class RiderService {
           .from('dispatch_jobs')
           .select()
           .eq('rider_id', riderId)
-          .eq('status', 'delivery_done')
+          .or('status.eq.pickup_done,status.eq.delivery_done')
           .order('completed_at', ascending: false);
 
       return (response as List)
-          .map((json) => DispatchJob.fromJson(json as Map<String, dynamic>))
+          .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
           .toList();
     } catch (e) {
       print('❌ Error getting completed jobs: $e');
@@ -491,9 +500,9 @@ class RiderService {
 
       return {
         'total': allJobs.length,
-        'pending': allJobs.where((j) => j.status == 'assigned').length,
+        'pending': allJobs.where((j) => j.status == 'pending').length,
         'in_progress': allJobs.where((j) => j.status == 'in_progress').length,
-        'completed': allJobs.where((j) => j.status == 'delivery_done').length,
+        'completed': allJobs.where((j) => j.status == 'pickup_done' || j.status == 'delivery_done').length,
       };
     } catch (e) {
       print('❌ Error getting rider stats: $e');
@@ -518,7 +527,7 @@ class RiderService {
           .order('created_at', ascending: true);
 
       return (response as List)
-          .map((json) => DispatchJob.fromJson(json as Map<String, dynamic>))
+          .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
           .toList();
     } catch (e) {
       print('❌ Error fetching pickup dispatch jobs: $e');
@@ -543,7 +552,7 @@ class RiderService {
           .order('created_at', ascending: true);
 
       return (response as List)
-          .map((json) => DispatchJob.fromJson(json as Map<String, dynamic>))
+          .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
           .toList();
     } catch (e) {
       print('❌ Error fetching delivery dispatch jobs: $e');

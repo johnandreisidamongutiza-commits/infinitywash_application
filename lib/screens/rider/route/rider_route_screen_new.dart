@@ -460,9 +460,9 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
         ),
-        title: Text(job.address ?? 'No address'),
+        title: Text(job.customerName ?? 'Unknown Customer'),
         subtitle: Text(
-          '${job.jobType == 'pickup' ? 'Pickup' : 'Delivery'} • ${job.status}',
+          '${job.address ?? 'No address'} • ${job.jobType == 'pickup' ? 'Pickup' : 'Delivery'}',
           style: const TextStyle(fontSize: 12),
         ),
         trailing: const Icon(Icons.chevron_right),

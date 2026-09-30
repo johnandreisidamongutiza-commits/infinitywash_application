@@ -10,8 +10,10 @@ import '../../models/dispatch_job.dart';
 /// - Auto-refresh from Supabase
 /// - Timestamp tracking for staleness detection
 /// - No database conflicts (Supabase is source of truth)
+/// - Cache versioning for data compatibility
 class JobCacheService {
   static const String _boxName = 'jobCache';
+  static const int _cacheVersion = 2; // Increment to invalidate old caches
   static Box? _box;
 
   /// Initialize Hive and open the job cache box
@@ -21,7 +23,22 @@ class JobCacheService {
     await Hive.initFlutter();
     _box = await Hive.openBox(_boxName);
     
-    print('✅ Job cache initialized');
+    // Clear old cache version on first init
+    await _checkAndClearOldCache();
+    
+    print('✅ Job cache initialized (v$_cacheVersion)');
+  }
+
+  /// Check cache version and clear if outdated
+  static Future<void> _checkAndClearOldCache() async {
+    final storedVersion = _box!.get('cache_version');
+    
+    if (storedVersion == null || storedVersion != _cacheVersion) {
+      print('🔄 Cache version mismatch (stored: $storedVersion, current: $_cacheVersion)');
+      await _box!.clear();
+      await _box!.put('cache_version', _cacheVersion);
+      print('✅ Cache cleared and updated to v$_cacheVersion');
+    }
   }
 
   /// Cache jobs for a specific rider
@@ -34,10 +51,11 @@ class JobCacheService {
       'jobs': jobs.map((job) => job.toJson()).toList(),
       'cached_at': DateTime.now().toIso8601String(),
       'job_count': jobs.length,
+      'cache_version': _cacheVersion, // Store version with data
     };
 
     await _box!.put('rider_$riderId', data);
-    print('✅ Cached ${jobs.length} jobs for rider $riderId');
+    print('✅ Cached ${jobs.length} jobs for rider $riderId (v$_cacheVersion)');
   }
 
   /// Get cached jobs for a rider
@@ -51,22 +69,33 @@ class JobCacheService {
       return null;
     }
 
-    final cachedData = Map<String, dynamic>.from(cached);
-    final cachedAt = DateTime.parse(cachedData['cached_at'] as String);
-    final age = DateTime.now().difference(cachedAt);
+    try {
+      final cachedData = Map<String, dynamic>.from(cached);
+      final cachedAt = DateTime.parse(cachedData['cached_at'] as String);
+      final age = DateTime.now().difference(cachedAt);
 
-    // Cache is only valid for 5 minutes (jobs update frequently)
-    if (age.inMinutes > 5) {
-      print('⚠️ Job cache expired (${age.inMinutes} minutes old)');
+      // Cache is only valid for 5 minutes (jobs update frequently)
+      if (age.inMinutes > 5) {
+        print('⚠️ Job cache expired (${age.inMinutes} minutes old)');
+        return null;
+      }
+
+      // Parse jobs with proper type conversion
+      final jobsList = (cachedData['jobs'] as List).map((item) {
+        // Convert each item to proper Map<String, dynamic>
+        return Map<String, dynamic>.from(item as Map);
+      }).toList();
+      
+      final jobs = jobsList.map((json) => DispatchJob.fromJson(json)).toList();
+
+      print('✅ Loaded ${jobs.length} cached jobs (${age.inSeconds}s old)');
+      return jobs;
+    } catch (e) {
+      print('❌ Error parsing cached jobs: $e');
+      // Clear corrupted cache
+      await clearRiderCache(riderId);
       return null;
     }
-
-    // Parse jobs
-    final jobsList = List<Map<String, dynamic>>.from(cachedData['jobs']);
-    final jobs = jobsList.map((json) => DispatchJob.fromJson(json)).toList();
-
-    print('✅ Loaded ${jobs.length} cached jobs (${age.inSeconds}s old)');
-    return jobs;
   }
 
   /// Check if cache exists and is fresh

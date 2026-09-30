@@ -27,7 +27,7 @@ class DispatchJobProvider with ChangeNotifier {
   /// Get pending jobs (not started yet)
   List<DispatchJob> get pendingJobs {
     return _allJobs
-        .where((job) => job.status == 'pending' || job.status == 'assigned')
+        .where((job) => job.status == 'pending')
         .toList();
   }
 
@@ -45,14 +45,14 @@ class DispatchJobProvider with ChangeNotifier {
     try {
       _allJobs = await _supabaseService.getDispatchJobsByRider(riderId);
       
-      // Set active job (first in_progress job, or first pending/assigned job)
+      // Set active job (first in_progress job, or first pending job)
       _activeJob = _allJobs.firstWhere(
         (job) => job.status == 'in_progress',
         orElse: () {
-          // If no in_progress, get first pending/assigned
+          // If no in_progress, get first pending
           try {
             return _allJobs.firstWhere(
-              (job) => job.status == 'pending' || job.status == 'assigned',
+              (job) => job.status == 'pending',
             );
           } catch (_) {
             // If no pending either, return first job or null

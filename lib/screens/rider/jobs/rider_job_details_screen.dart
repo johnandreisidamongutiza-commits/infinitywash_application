@@ -179,6 +179,14 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                   ),
                   const SizedBox(height: 24),
 
+                  // Customer name (most important info)
+                  _buildInfoRow(
+                    icon: Icons.person_outline,
+                    label: 'Customer',
+                    value: widget.job.customerName ?? 'Unknown Customer',
+                  ),
+                  const SizedBox(height: 16),
+
                   // Job number
                   if (widget.job.jobNumber != null) ...[
                     _buildInfoRow(
@@ -236,7 +244,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                   ],
 
                   // Start button
-                  if (widget.job.status == 'pending' || widget.job.status == 'assigned')
+                  if (widget.job.status == 'pending')
                     SizedBox(
                       width: double.infinity,
                       height: 48,

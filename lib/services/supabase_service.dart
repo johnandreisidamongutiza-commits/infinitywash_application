@@ -112,28 +112,34 @@ class SupabaseService {
   /// Create a new dispatch job
   Future<DispatchJob> createDispatchJob({
     required String orderId,
-    required String riderId,
+    String? riderId,  // Nullable to allow unassigned jobs
     required String jobType,
     required double latitude,
     required double longitude,
     String? address,
     String? landmark,
+    String? customerName,  // Customer full name for display
     String? notes,
     DateTime? scheduledAt,
   }) async {
     try {
+      // Generate job number (JOB-YYMMDD-NNN format)
+      final jobNumber = await _generateJobNumber();
+      
       final data = {
+        'job_number': jobNumber,
         'order_id': orderId,
-        'rider_id': riderId,
+        'rider_id': riderId,  // Can be NULL for unassigned
         'job_type': jobType,
-        'status': 'assigned',
+        'status': 'pending',  // Start as pending, becomes assigned when rider accepts
         'latitude': latitude,
         'longitude': longitude,
         'address': address,
         'landmark': landmark,
+        'customer_name': customerName,  // Store customer name
         'notes': notes,
         'scheduled_at': scheduledAt?.toUtc().toIso8601String(),
-        'assigned_at': DateTime.now().toUtc().toIso8601String(),
+        'assigned_at': riderId != null ? DateTime.now().toUtc().toIso8601String() : null,
       };
       
       final response = await client
@@ -142,11 +148,49 @@ class SupabaseService {
           .select()
           .single();
       
-      print('✅ Created dispatch job: ${response['id']}');
+      print('✅ Created dispatch job: ${response['id']} ($jobNumber) for ${customerName ?? "unknown customer"}');
       return DispatchJob.fromJson(response as Map<String, dynamic>);
     } catch (e) {
       print('❌ Error creating dispatch job: $e');
       rethrow;
+    }
+  }
+  
+  /// Generate unique job number (JOB-YYMMDD-001, up to 999/day)
+  Future<String> _generateJobNumber() async {
+    try {
+      final now = DateTime.now();
+      final yy = (now.year % 100).toString().padLeft(2, '0');
+      final mm = now.month.toString().padLeft(2, '0');
+      final dd = now.day.toString().padLeft(2, '0');
+      final dateStr = '$yy$mm$dd';
+      final prefix = 'JOB-$dateStr-';
+      
+      final response = await client
+          .from('dispatch_jobs')
+          .select('job_number')
+          .like('job_number', '$prefix%')
+          .order('job_number', ascending: false)
+          .limit(1);
+
+      if (response.isEmpty) {
+        return '${prefix}001';
+      }
+
+      final lastJobNumber = response.first['job_number'] as String;
+      final sequencePart = lastJobNumber.replaceAll(prefix, '');
+      final lastSequence = int.tryParse(sequencePart) ?? 0;
+      final nextSequence = lastSequence + 1;
+      
+      return '$prefix${nextSequence.toString().padLeft(3, '0')}';
+    } catch (e) {
+      print('⚠️ Error generating job number: $e');
+      // Fallback to timestamp-based
+      final now = DateTime.now();
+      final yy = (now.year % 100).toString().padLeft(2, '0');
+      final mm = now.month.toString().padLeft(2, '0');
+      final dd = now.day.toString().padLeft(2, '0');
+      return 'JOB-$yy$mm$dd-${(now.millisecondsSinceEpoch % 1000).toString().padLeft(3, '0')}';
     }
   }
   

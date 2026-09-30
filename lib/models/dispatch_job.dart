@@ -13,6 +13,7 @@ class DispatchJob {
   final String status; // 'pending', 'assigned', 'in_progress', 'done', 'cancelled'
   final String? address;
   final String? landmark;
+  final String? customerName; // Customer full name for display
   final double? latitude;
   final double? longitude;
   final DateTime? scheduledAt;
@@ -32,6 +33,7 @@ class DispatchJob {
     required this.status,
     this.address,
     this.landmark,
+    this.customerName,
     this.latitude,
     this.longitude,
     this.scheduledAt,
@@ -58,10 +60,10 @@ class DispatchJob {
   bool get isActive => status == 'in_progress';
 
   /// Check if job is completed
-  bool get isCompleted => status == 'done';
+  bool get isCompleted => status == 'pickup_done' || status == 'delivery_done';
 
-  /// Check if job is pending assignment or start
-  bool get isPending => status == 'pending' || status == 'assigned';
+  /// Check if job is pending (waiting to start)
+  bool get isPending => status == 'pending';
 
   /// Get user-friendly status text
   String get statusText {
@@ -97,6 +99,7 @@ class DispatchJob {
       status: json['status'] as String,
       address: json['address'] as String?,
       landmark: json['landmark'] as String?,
+      customerName: json['customer_name'] as String?,
       latitude: json['latitude'] != null ? (json['latitude'] as num).toDouble() : null,
       longitude: json['longitude'] != null ? (json['longitude'] as num).toDouble() : null,
       scheduledAt: json['scheduled_at'] != null
@@ -128,6 +131,7 @@ class DispatchJob {
       'status': status,
       'address': address,
       'landmark': landmark,
+      'customer_name': customerName,
       'latitude': latitude,
       'longitude': longitude,
       'scheduled_at': scheduledAt?.toUtc().toIso8601String(),
@@ -150,6 +154,7 @@ class DispatchJob {
     String? status,
     String? address,
     String? landmark,
+    String? customerName,
     double? latitude,
     double? longitude,
     DateTime? scheduledAt,
@@ -169,6 +174,7 @@ class DispatchJob {
       status: status ?? this.status,
       address: address ?? this.address,
       landmark: landmark ?? this.landmark,
+      customerName: customerName ?? this.customerName,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       scheduledAt: scheduledAt ?? this.scheduledAt,
