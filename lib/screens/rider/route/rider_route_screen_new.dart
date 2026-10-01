@@ -96,6 +96,16 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
       final completedPickupJobs = await _riderService.fetchCompletedPickupJobs();
       final completedDeliveryJobs = await _riderService.fetchCompletedDeliveryJobs();
       
+      print('🔍 DEBUG - Completed jobs fetched:');
+      print('   Completed Pickups: ${completedPickupJobs.length}');
+      print('   Completed Deliveries: ${completedDeliveryJobs.length}');
+      if (completedPickupJobs.isNotEmpty) {
+        print('   First pickup: ${completedPickupJobs.first.customerName} - ${completedPickupJobs.first.status}');
+      }
+      if (completedDeliveryJobs.isNotEmpty) {
+        print('   First delivery: ${completedDeliveryJobs.first.customerName} - ${completedDeliveryJobs.first.status}');
+      }
+      
       if (mounted) {
         setState(() {
           _pickupJobs = activePickupJobs;
@@ -225,7 +235,9 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
   List<DispatchJob> get _filteredJobs {
     if (_filter == 'completed') {
       // Return ALL completed jobs together (pickups + deliveries)
-      return [..._completedPickupJobs, ..._completedDeliveryJobs];
+      final completed = [..._completedPickupJobs, ..._completedDeliveryJobs];
+      print('🔍 DEBUG - Filtered completed jobs: ${completed.length}');
+      return completed;
     } else {
       // Active jobs only
       if (_filter == 'pickup') return _pickupJobs;

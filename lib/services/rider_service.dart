@@ -653,11 +653,32 @@ class RiderService {
       }
 
       print('📦 Fetching completed pickup jobs (today only)...');
+      print('   Rider ID: $riderId');
 
-      // Calculate midnight today in local timezone
-      final now = DateTime.now();
-      final todayMidnight = DateTime(now.year, now.month, now.day);
-      final todayMidnightUtc = todayMidnight.toUtc().toIso8601String();
+      // Calculate midnight today in UTC (not local time)
+      final nowUtc = DateTime.now().toUtc();
+      final todayMidnightUtc = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+      final todayMidnightUtcString = todayMidnightUtc.toIso8601String();
+      
+      print('   Today midnight UTC: $todayMidnightUtcString');
+      print('   Current time UTC: ${nowUtc.toIso8601String()}');
+      
+      // First, check if ANY completed pickup jobs exist for this rider (ignoring date)
+      final testResponse = await _supabaseClient
+          .from('dispatch_jobs')
+          .select()
+          .eq('job_type', 'pickup')
+          .eq('status', 'pickup_done')
+          .eq('rider_id', riderId)
+          .order('completed_at', ascending: false)
+          .limit(5);
+      
+      print('   TEST: Found ${(testResponse as List).length} total completed pickups (any date)');
+      if ((testResponse as List).isNotEmpty) {
+        final firstJob = testResponse.first;
+        print('   TEST: First job completed_at = ${firstJob['completed_at']}');
+        print('   TEST: First job status = ${firstJob['status']}');
+      }
 
       final response = await _supabaseClient
           .from('dispatch_jobs')
@@ -665,7 +686,7 @@ class RiderService {
           .eq('job_type', 'pickup')
           .eq('status', 'pickup_done')
           .eq('rider_id', riderId)  // Only this rider's completed jobs
-          .gte('completed_at', todayMidnightUtc)  // Today only
+          .gte('completed_at', todayMidnightUtcString)  // Today only
           .order('completed_at', ascending: false)  // Most recent first
           .limit(limit);
 
@@ -674,6 +695,12 @@ class RiderService {
           .toList();
 
       print('✅ Fetched ${jobs.length} completed pickup jobs (today)');
+      if (jobs.isEmpty) {
+        print('⚠️ No completed pickup jobs found. Check:');
+        print('   - status = "pickup_done"?');
+        print('   - rider_id = "$riderId"?');
+        print('   - completed_at >= "$todayMidnightUtc"?');
+      }
       return jobs;
     } catch (e) {
       print('❌ Error fetching completed pickup jobs: $e');
@@ -692,11 +719,14 @@ class RiderService {
       }
 
       print('📦 Fetching completed delivery jobs (today only)...');
+      print('   Rider ID: $riderId');
 
-      // Calculate midnight today in local timezone
-      final now = DateTime.now();
-      final todayMidnight = DateTime(now.year, now.month, now.day);
-      final todayMidnightUtc = todayMidnight.toUtc().toIso8601String();
+      // Calculate midnight today in UTC (not local time)
+      final nowUtc = DateTime.now().toUtc();
+      final todayMidnightUtc = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+      final todayMidnightUtcString = todayMidnightUtc.toIso8601String();
+      
+      print('   Today midnight UTC: $todayMidnightUtcString');
 
       final response = await _supabaseClient
           .from('dispatch_jobs')
@@ -704,7 +734,7 @@ class RiderService {
           .eq('job_type', 'delivery')
           .eq('status', 'delivery_done')
           .eq('rider_id', riderId)  // Only this rider's completed jobs
-          .gte('completed_at', todayMidnightUtc)  // Today only
+          .gte('completed_at', todayMidnightUtcString)  // Today only
           .order('completed_at', ascending: false)  // Most recent first
           .limit(limit);
 
@@ -713,6 +743,12 @@ class RiderService {
           .toList();
 
       print('✅ Fetched ${jobs.length} completed delivery jobs (today)');
+      if (jobs.isEmpty) {
+        print('⚠️ No completed delivery jobs found. Check:');
+        print('   - status = "delivery_done"?');
+        print('   - rider_id = "$riderId"?');
+        print('   - completed_at >= "$todayMidnightUtc"?');
+      }
       return jobs;
     } catch (e) {
       print('❌ Error fetching completed delivery jobs: $e');

@@ -3,6 +3,7 @@ import '../../../theme/app_theme.dart';
 import '../../../services/rider_service.dart';
 import '../../../models/order.dart';
 import 'rider_route_map_screen.dart';
+import 'rider_route_screen_new.dart';
 import '../rider_main_screen.dart';
 import '../../../widgets/top_notification.dart';
 
@@ -970,9 +971,9 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.home_outlined, size: 20),
+                    Icon(Icons.check_circle_outline, size: 20),
                     SizedBox(width: 8),
-                    Text('Go to Dashboard', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text('View Completed Jobs', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   ],
                 ),
               ),
@@ -985,15 +986,16 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
   }
 
   void _returnToDashboard() {
-    if (widget.onBackToHome != null) {
-      widget.onBackToHome!();
-    } else if (Navigator.canPop(context)) {
-      Navigator.pop(context);
+    // Navigate to RiderRouteScreenNew to see completed jobs
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context); // Pop back to route overview
     } else {
-      Navigator.pushAndRemoveUntil(
+      // Replace current screen with route overview
+      Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const RiderMainScreen(initialIndex: 0)),
-        (route) => false,
+        MaterialPageRoute(
+          builder: (context) => const RiderRouteScreenNew(),
+        ),
       );
     }
   }
