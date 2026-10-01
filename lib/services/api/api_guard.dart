@@ -29,14 +29,11 @@ class GuardedResponse {
 /// Fully injectable: pass a custom `send` function or fake clock in tests.
 class ApiGuard {
   ApiGuard({
-    Future<http.Response> Function(http.BaseRequest request)? send,
-    Duration Function(int attempt)? backoffFor,
+    this._send,
+    this._backoffFor,
     DateTime Function()? now,
-    Duration minInterval = CacheConfig.outboundMinInterval,
-  })  : _send = send,
-        _backoffFor = backoffFor,
-        _now = now ?? DateTime.now,
-        _minInterval = minInterval;
+    this._minInterval = CacheConfig.outboundMinInterval,
+  })  : _now = now ?? DateTime.now;
 
   final Future<http.Response> Function(http.BaseRequest request)? _send;
   final Duration Function(int attempt)? _backoffFor;

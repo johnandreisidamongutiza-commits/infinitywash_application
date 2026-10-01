@@ -193,8 +193,8 @@ class _RiderJobsMapScreenState extends State<RiderJobsMapScreen> {
                     point: LocationConstants.shopLocation,
                     radius: LocationConstants.deliveryRadiusMeters,
                     useRadiusInMeter: true,
-                    color: AppTheme.accentBlue.withOpacity(0.1),
-                    borderColor: AppTheme.accentBlue.withOpacity(0.3),
+                    color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                    borderColor: AppTheme.accentBlue.withValues(alpha: 0.3),
                     borderStrokeWidth: 2,
                   ),
                 ],
@@ -303,7 +303,7 @@ class _RiderJobsMapScreenState extends State<RiderJobsMapScreen> {
                       Icon(
                         Icons.inbox_outlined,
                         size: 64,
-                        color: AppTheme.textLight.withOpacity(0.5),
+                        color: AppTheme.textLight.withValues(alpha: 0.5),
                       ),
                       const SizedBox(height: 16),
                       const Text(
@@ -494,7 +494,7 @@ class _RiderJobsMapScreenState extends State<RiderJobsMapScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppTheme.accentBlue.withOpacity(0.1),
+                color: AppTheme.accentBlue.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Row(

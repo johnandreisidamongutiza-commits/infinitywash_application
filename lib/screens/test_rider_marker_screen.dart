@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_location_marker/flutter_map_location_marker.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../widgets/map_widget.dart';
 import '../config/location_constants.dart';
@@ -260,7 +259,7 @@ class _TestRiderMarkerScreenState extends State<TestRiderMarkerScreen> {
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 4,
                         offset: const Offset(0, -2),
                       ),

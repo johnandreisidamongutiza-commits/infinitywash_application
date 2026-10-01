@@ -32,7 +32,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   String? _errorMessage;
   
   // Feedback cache: orderId -> hasFeedback
-  Map<String, bool> _feedbackStatus = {};
+  final Map<String, bool> _feedbackStatus = {};
 
   @override
   void initState() {

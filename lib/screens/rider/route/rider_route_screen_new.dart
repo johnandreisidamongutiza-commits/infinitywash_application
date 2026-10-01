@@ -33,10 +33,12 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
   List<DispatchJob> _allJobs = [];
   List<DispatchJob> _pickupJobs = [];
   List<DispatchJob> _deliveryJobs = [];
+  List<DispatchJob> _completedPickupJobs = [];
+  List<DispatchJob> _completedDeliveryJobs = [];
   bool _isLoading = false;
   String? _error;
   LatLng? _riderLocation;
-  String _filter = 'all'; // 'all', 'pickup', 'delivery'
+  String _filter = 'all'; // 'all', 'pickup', 'delivery', 'completed'
   
   // Cache for route points following roads
   List<LatLng> _routePoints = [];
@@ -86,23 +88,35 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
         throw Exception('Not authenticated');
       }
 
-      final jobs = await _riderService.getRiderJobs(riderId);
+      // Fetch active jobs (pending/in_progress only)
+      final activePickupJobs = await _riderService.fetchActivePickupJobs();
+      final activeDeliveryJobs = await _riderService.fetchActiveDeliveryJobs();
+      
+      // Fetch completed jobs (today only)
+      final completedPickupJobs = await _riderService.fetchCompletedPickupJobs();
+      final completedDeliveryJobs = await _riderService.fetchCompletedDeliveryJobs();
       
       if (mounted) {
         setState(() {
-          _allJobs = jobs;
-          _pickupJobs = jobs.where((j) => j.jobType == 'pickup').toList();
-          _deliveryJobs = jobs.where((j) => j.jobType == 'delivery').toList();
+          _pickupJobs = activePickupJobs;
+          _deliveryJobs = activeDeliveryJobs;
+          _allJobs = [...activePickupJobs, ...activeDeliveryJobs]; // Only active jobs
+          _completedPickupJobs = completedPickupJobs;
+          _completedDeliveryJobs = completedDeliveryJobs;
           _isLoading = false;
         });
+
+        print('✅ Jobs loaded:');
+        print('   Active Pickups: ${_pickupJobs.length}');
+        print('   Active Deliveries: ${_deliveryJobs.length}');
+        print('   Completed Pickups: ${_completedPickupJobs.length}');
+        print('   Completed Deliveries: ${_completedDeliveryJobs.length}');
 
         // Calculate route along roads
         await _calculateRoute();
         
-        // Center map to show all jobs
-        if (jobs.isNotEmpty) {
-          _fitMapToJobs();
-        }
+        // Center map to show all jobs (including completed if needed)
+        _fitMapToJobs();
       }
     } catch (e) {
       print('❌ Error loading jobs: $e');
@@ -117,6 +131,12 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
 
   /// Calculate the actual road route through all job locations
   Future<void> _calculateRoute() async {
+    // Don't calculate route for completed jobs view
+    if (_filter == 'completed') {
+      setState(() => _routePoints = []);
+      return;
+    }
+    
     if (_filteredJobs.isEmpty) {
       setState(() => _routePoints = []);
       return;
@@ -161,8 +181,28 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
   }
 
   void _fitMapToJobs() {
-    final jobsWithCoords = _allJobs.where((j) => j.latitude != null && j.longitude != null).toList();
-    if (jobsWithCoords.isEmpty) return;
+    // Use filtered jobs to include completed jobs when on that tab
+    final jobsWithCoords = _filteredJobs
+        .where((j) => 
+            j.latitude != null && 
+            j.longitude != null &&
+            j.latitude!.isFinite && 
+            j.longitude!.isFinite)
+        .toList();
+    
+    if (jobsWithCoords.isEmpty) {
+      // If no jobs with coordinates, just center on shop
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          try {
+            _mapController.move(LocationConstants.shopLocation, 13.0);
+          } catch (e) {
+            print('⚠️ Could not center map: $e');
+          }
+        }
+      });
+      return;
+    }
 
     final points = jobsWithCoords.map((j) => LatLng(j.latitude!, j.longitude!)).toList();
     points.add(LocationConstants.shopLocation);
@@ -183,9 +223,15 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
   }
 
   List<DispatchJob> get _filteredJobs {
-    if (_filter == 'pickup') return _pickupJobs;
-    if (_filter == 'delivery') return _deliveryJobs;
-    return _allJobs;
+    if (_filter == 'completed') {
+      // Return ALL completed jobs together (pickups + deliveries)
+      return [..._completedPickupJobs, ..._completedDeliveryJobs];
+    } else {
+      // Active jobs only
+      if (_filter == 'pickup') return _pickupJobs;
+      if (_filter == 'delivery') return _deliveryJobs;
+      return _allJobs; // all active
+    }
   }
 
   @override
@@ -214,9 +260,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? _buildErrorState()
-              : _allJobs.isEmpty
-                  ? _buildEmptyState()
-                  : _buildRouteView(),
+              : _buildRouteView(), // Always show route view with filters
     );
   }
 
@@ -241,23 +285,51 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildFilteredEmptyState() {
+    String message;
+    IconData icon;
+    
+    switch (_filter) {
+      case 'completed':
+        message = 'No completed jobs today';
+        icon = Icons.check_circle_outline;
+        break;
+      case 'pickup':
+        message = 'No pickup jobs available';
+        icon = Icons.shopping_bag_outlined;
+        break;
+      case 'delivery':
+        message = 'No delivery jobs available';
+        icon = Icons.local_shipping_outlined;
+        break;
+      default: // 'all'
+        final hasCompleted = _completedPickupJobs.isNotEmpty || _completedDeliveryJobs.isNotEmpty;
+        if (hasCompleted) {
+          message = 'All jobs completed!\nCheck the Completed tab to view.';
+        } else {
+          message = 'No jobs available';
+        }
+        icon = Icons.inbox_outlined;
+    }
+    
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.route_outlined, size: 64, color: AppTheme.textLight.withOpacity(0.5)),
-          const SizedBox(height: 16),
-          const Text(
-            'No route today',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Check Jobs tab for new assignments',
-            style: TextStyle(color: AppTheme.textLight),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 64, color: AppTheme.textLight.withValues(alpha: 0.5)),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppTheme.textLight,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -274,10 +346,13 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
           child: Stack(
             children: [
               FlutterMap(
+                key: ValueKey('map_$_filter'), // Force rebuild on filter change
                 mapController: _mapController,
                 options: MapOptions(
                   initialCenter: LocationConstants.shopLocation,
                   initialZoom: 13.0,
+                  minZoom: 5.0,
+                  maxZoom: 18.0,
                 ),
                 children: [
                   TileLayer(
@@ -289,7 +364,8 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                   if (_routePoints.isNotEmpty)
                     PolylineLayer(polylines: _buildRouteLines()),
                   // Markers
-                  MarkerLayer(markers: _buildMarkers()),
+                  if (_buildMarkers().isNotEmpty)
+                    MarkerLayer(markers: _buildMarkers()),
                 ],
               ),
               // Stats overlay
@@ -355,18 +431,15 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                     _buildFilterTab('Pickups (${_pickupJobs.length})', 'pickup'),
                     const SizedBox(width: 8),
                     _buildFilterTab('Deliveries (${_deliveryJobs.length})', 'delivery'),
+                    const SizedBox(width: 8),
+                    _buildFilterTab('Completed (${_completedPickupJobs.length + _completedDeliveryJobs.length})', 'completed'),
                   ],
                 ),
               ),
               // Jobs list
               Expanded(
                 child: _filteredJobs.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No $_filter jobs',
-                          style: const TextStyle(color: AppTheme.textLight),
-                        ),
-                      )
+                    ? _buildFilteredEmptyState()
                     : ListView.builder(
                         itemCount: _filteredJobs.length,
                         itemBuilder: (context, index) => _buildJobCard(_filteredJobs[index], index + 1),
@@ -377,7 +450,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
         ),
 
         // Start route button
-        if (_allJobs.isNotEmpty)
+        if (_allJobs.isNotEmpty && _filter != 'completed')
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: SizedBox(
@@ -428,6 +501,20 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
           setState(() => _filter = value);
           // Recalculate route when filter changes
           await _calculateRoute();
+          // Recenter map to show filtered jobs
+          _fitMapToJobs();
+          // Force map to repaint tiles
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              try {
+                // Trigger a tiny zoom change to force tile refresh
+                final currentZoom = _mapController.camera.zoom;
+                _mapController.move(_mapController.camera.center, currentZoom);
+              } catch (e) {
+                print('⚠️ Could not refresh map: $e');
+              }
+            }
+          });
         },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -450,20 +537,94 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
   }
 
   Widget _buildJobCard(DispatchJob job, int number) {
+    final isCompleted = _filter == 'completed';
+    
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      color: isCompleted ? Colors.grey.withValues(alpha: 0.1) : Colors.white,
       child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: job.jobType == 'pickup' ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
-          child: Text(
-            '$number',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
+        leading: isCompleted
+            ? Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_circle, color: Colors.green, size: 24),
+              )
+            : CircleAvatar(
+                backgroundColor: job.jobType == 'pickup' ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
+                child: Text(
+                  '$number',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                job.customerName ?? 'Unknown Customer',
+                style: TextStyle(
+                  color: isCompleted ? AppTheme.textLight : AppTheme.textDark,
+                  fontWeight: isCompleted ? FontWeight.normal : FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (isCompleted && job.jobType != null) ...[
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: job.jobType == 'pickup' 
+                      ? AppTheme.errorRed.withValues(alpha: 0.1) 
+                      : AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  job.jobType == 'pickup' ? 'PICKUP' : 'DELIVERY',
+                  style: TextStyle(
+                    color: job.jobType == 'pickup' 
+                        ? AppTheme.errorRed 
+                        : AppTheme.teamMemberIconOrange,
+                    fontSize: 8,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
-        title: Text(job.customerName ?? 'Unknown Customer'),
-        subtitle: Text(
-          '${job.address ?? 'No address'} • ${job.jobType == 'pickup' ? 'Pickup' : 'Delivery'}',
-          style: const TextStyle(fontSize: 12),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              job.address ?? 'No address',
+              style: TextStyle(
+                fontSize: 12,
+                color: isCompleted ? AppTheme.textLight : AppTheme.textDark,
+              ),
+            ),
+            if (isCompleted && job.completedAt != null) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(Icons.access_time, size: 12, color: Colors.green),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Completed ${_formatCompletionTime(job.completedAt!)}',
+                    style: const TextStyle(
+                      color: Colors.green,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () {
@@ -521,10 +682,18 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
       ));
     }
     
-    // Job markers
+    // Job markers - only add if coordinates are valid
+    final isCompleted = _filter == 'completed';
     for (int i = 0; i < _filteredJobs.length; i++) {
       final job = _filteredJobs[i];
-      if (job.latitude == null) continue;
+      if (job.latitude == null || job.longitude == null) continue;
+      
+      // Validate coordinates are not NaN or Infinity
+      if (!job.latitude!.isFinite || !job.longitude!.isFinite) continue;
+      
+      final Color markerColor = isCompleted
+          ? Colors.green
+          : (job.jobType == 'pickup' ? AppTheme.errorRed : AppTheme.teamMemberIconOrange);
       
       markers.add(Marker(
         point: LatLng(job.latitude!, job.longitude!),
@@ -534,22 +703,24 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
           children: [
             Icon(
               Icons.location_on,
-              color: job.jobType == 'pickup' ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
+              color: markerColor,
               size: 40,
             ),
             Positioned(
               top: 8,
               left: 0,
               right: 0,
-              child: Text(
-                '${i + 1}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: isCompleted
+                  ? const Icon(Icons.check, color: Colors.white, size: 16)
+                  : Text(
+                      '${i + 1}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ],
         ),
@@ -560,34 +731,64 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
   }
 
   double _calculateTotalDistance() {
-    if (_filteredJobs.isEmpty || _riderLocation == null) return 0;
+    // Filter jobs with valid coordinates
+    final validJobs = _filteredJobs
+        .where((j) => 
+            j.latitude != null && 
+            j.longitude != null &&
+            j.latitude!.isFinite && 
+            j.longitude!.isFinite)
+        .toList();
+    
+    if (validJobs.isEmpty || _riderLocation == null) return 0;
     
     const Distance distance = Distance();
     double total = 0;
     
     // Distance to first job
-    if (_filteredJobs.first.latitude != null) {
+    try {
       total += distance.as(
         LengthUnit.Kilometer,
         _riderLocation!,
-        LatLng(_filteredJobs.first.latitude!, _filteredJobs.first.longitude!),
+        LatLng(validJobs.first.latitude!, validJobs.first.longitude!),
       );
+    } catch (e) {
+      print('⚠️ Error calculating distance to first job: $e');
     }
     
     // Distance between jobs
-    for (int i = 0; i < _filteredJobs.length - 1; i++) {
-      final current = _filteredJobs[i];
-      final next = _filteredJobs[i + 1];
-      if (current.latitude != null && next.latitude != null) {
+    for (int i = 0; i < validJobs.length - 1; i++) {
+      final current = validJobs[i];
+      final next = validJobs[i + 1];
+      try {
         total += distance.as(
           LengthUnit.Kilometer,
           LatLng(current.latitude!, current.longitude!),
           LatLng(next.latitude!, next.longitude!),
         );
+      } catch (e) {
+        print('⚠️ Error calculating distance between jobs: $e');
       }
     }
     
     return total;
+  }
+
+  String _formatCompletionTime(DateTime completedAt) {
+    final now = DateTime.now();
+    final difference = now.difference(completedAt);
+    
+    if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} min ago';
+    } else if (difference.inHours < 24) {
+      final hour = completedAt.hour;
+      final minute = completedAt.minute;
+      final period = hour >= 12 ? 'PM' : 'AM';
+      final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+      return 'at $displayHour:${minute.toString().padLeft(2, '0')} $period';
+    } else {
+      return 'on ${completedAt.month}/${completedAt.day}';
+    }
   }
 
   @override

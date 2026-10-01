@@ -4,11 +4,13 @@ import '../models/dispatch_job.dart';
 import '../config/cache_config.dart';
 import 'cache/job_cache_service.dart';
 import 'supabase_service.dart';
+import 'dispatch_job_adapter.dart';
 
 class RiderService {
   final SupabaseClient _client = SupabaseService.client;
   final _supabaseClient = SupabaseService.client;
   final SupabaseService _supabaseService = SupabaseService();
+  final DispatchJobAdapter _adapter = DispatchJobAdapter();
 
   /// Fetch orders that need pickup by rider
   /// Filters: pickup_requested = true AND status = 'pending_pickup'
@@ -568,6 +570,192 @@ class RiderService {
       print('❌ Error fetching delivery dispatch jobs: $e');
       return [];
     }
+  }
+
+  // =========================================================================
+  // NEW METHODS FOR DISPATCH JOBS-BASED FETCHING (TASK 1)
+  // =========================================================================
+
+  /// Fetch active pickup jobs (pending or in_progress)
+  /// Shows ALL unassigned jobs and jobs assigned to this rider
+  Future<List<DispatchJob>> fetchActivePickupJobs({int limit = 50}) async {
+    try {
+      final riderId = _supabaseClient.auth.currentUser?.id;
+      if (riderId == null) {
+        print('❌ No authenticated rider');
+        return [];
+      }
+
+      print('📦 Fetching active pickup jobs...');
+
+      final response = await _supabaseClient
+          .from('dispatch_jobs')
+          .select()
+          .eq('job_type', 'pickup')
+          .inFilter('status', ['pending', 'in_progress'])
+          .or('rider_id.eq.$riderId,rider_id.is.null')  // Include unassigned (NULL)
+          .order('created_at', ascending: true)  // FIFO - oldest first
+          .limit(limit);
+
+      final jobs = (response as List)
+          .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
+          .toList();
+
+      print('✅ Fetched ${jobs.length} active pickup jobs');
+      return jobs;
+    } catch (e) {
+      print('❌ Error fetching active pickup jobs: $e');
+      rethrow;
+    }
+  }
+
+  /// Fetch active delivery jobs (pending or in_progress)
+  /// Shows ALL unassigned jobs and jobs assigned to this rider
+  Future<List<DispatchJob>> fetchActiveDeliveryJobs({int limit = 50}) async {
+    try {
+      final riderId = _supabaseClient.auth.currentUser?.id;
+      if (riderId == null) {
+        print('❌ No authenticated rider');
+        return [];
+      }
+
+      print('📦 Fetching active delivery jobs...');
+
+      final response = await _supabaseClient
+          .from('dispatch_jobs')
+          .select()
+          .eq('job_type', 'delivery')
+          .inFilter('status', ['pending', 'in_progress'])
+          .or('rider_id.eq.$riderId,rider_id.is.null')  // Include unassigned (NULL)
+          .order('created_at', ascending: true)  // FIFO - oldest first
+          .limit(limit);
+
+      final jobs = (response as List)
+          .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
+          .toList();
+
+      print('✅ Fetched ${jobs.length} active delivery jobs');
+      return jobs;
+    } catch (e) {
+      print('❌ Error fetching active delivery jobs: $e');
+      rethrow;
+    }
+  }
+
+  /// Fetch completed pickup jobs (completed today only)
+  /// Only shows jobs completed by this rider
+  Future<List<DispatchJob>> fetchCompletedPickupJobs({int limit = 50}) async {
+    try {
+      final riderId = _supabaseClient.auth.currentUser?.id;
+      if (riderId == null) {
+        print('❌ No authenticated rider');
+        return [];
+      }
+
+      print('📦 Fetching completed pickup jobs (today only)...');
+
+      // Calculate midnight today in local timezone
+      final now = DateTime.now();
+      final todayMidnight = DateTime(now.year, now.month, now.day);
+      final todayMidnightUtc = todayMidnight.toUtc().toIso8601String();
+
+      final response = await _supabaseClient
+          .from('dispatch_jobs')
+          .select()
+          .eq('job_type', 'pickup')
+          .eq('status', 'pickup_done')
+          .eq('rider_id', riderId)  // Only this rider's completed jobs
+          .gte('completed_at', todayMidnightUtc)  // Today only
+          .order('completed_at', ascending: false)  // Most recent first
+          .limit(limit);
+
+      final jobs = (response as List)
+          .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
+          .toList();
+
+      print('✅ Fetched ${jobs.length} completed pickup jobs (today)');
+      return jobs;
+    } catch (e) {
+      print('❌ Error fetching completed pickup jobs: $e');
+      rethrow;
+    }
+  }
+
+  /// Fetch completed delivery jobs (completed today only)
+  /// Only shows jobs completed by this rider
+  Future<List<DispatchJob>> fetchCompletedDeliveryJobs({int limit = 50}) async {
+    try {
+      final riderId = _supabaseClient.auth.currentUser?.id;
+      if (riderId == null) {
+        print('❌ No authenticated rider');
+        return [];
+      }
+
+      print('📦 Fetching completed delivery jobs (today only)...');
+
+      // Calculate midnight today in local timezone
+      final now = DateTime.now();
+      final todayMidnight = DateTime(now.year, now.month, now.day);
+      final todayMidnightUtc = todayMidnight.toUtc().toIso8601String();
+
+      final response = await _supabaseClient
+          .from('dispatch_jobs')
+          .select()
+          .eq('job_type', 'delivery')
+          .eq('status', 'delivery_done')
+          .eq('rider_id', riderId)  // Only this rider's completed jobs
+          .gte('completed_at', todayMidnightUtc)  // Today only
+          .order('completed_at', ascending: false)  // Most recent first
+          .limit(limit);
+
+      final jobs = (response as List)
+          .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
+          .toList();
+
+      print('✅ Fetched ${jobs.length} completed delivery jobs (today)');
+      return jobs;
+    } catch (e) {
+      print('❌ Error fetching completed delivery jobs: $e');
+      rethrow;
+    }
+  }
+
+  // =========================================================================
+  // CONVENIENCE METHODS - DISPATCH JOBS TO LAUNDRY ORDERS (TASK 2)
+  // =========================================================================
+
+  /// Fetch active pickup jobs as LaundryOrders (for UI compatibility)
+  Future<List<LaundryOrder>> fetchActivePickupOrders({int limit = 50}) async {
+    final jobs = await fetchActivePickupJobs(limit: limit);
+    return await _adapter.toLaundryOrders(jobs);
+  }
+
+  /// Fetch active delivery jobs as LaundryOrders (for UI compatibility)
+  Future<List<LaundryOrder>> fetchActiveDeliveryOrders({int limit = 50}) async {
+    final jobs = await fetchActiveDeliveryJobs(limit: limit);
+    return await _adapter.toLaundryOrders(jobs);
+  }
+
+  /// Fetch completed pickup jobs as LaundryOrders (for UI compatibility)
+  Future<List<LaundryOrder>> fetchCompletedPickupOrders({int limit = 50}) async {
+    final jobs = await fetchCompletedPickupJobs(limit: limit);
+    return await _adapter.toLaundryOrders(jobs);
+  }
+
+  /// Fetch completed delivery jobs as LaundryOrders (for UI compatibility)
+  Future<List<LaundryOrder>> fetchCompletedDeliveryOrders({int limit = 50}) async {
+    final jobs = await fetchCompletedDeliveryJobs(limit: limit);
+    return await _adapter.toLaundryOrders(jobs);
+  }
+
+  /// Clear adapter cache (useful when refreshing data)
+  void clearAdapterCache() {
+    _adapter.clearCache();
+  }
+  
+  /// Get completion time for an order from adapter
+  DateTime? getOrderCompletionTime(String orderId) {
+    return _adapter.getCompletionTime(orderId);
   }
 
 }

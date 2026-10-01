@@ -26,7 +26,7 @@ class _TestRiderUploadScreenState extends State<TestRiderUploadScreen> {
   
   // Test rider ID (replace with actual rider ID in production)
   final String _testRiderId = 'test-rider-123';
-  final String? _testDispatchJobId = 'test-job-456';
+  final String _testDispatchJobId = 'test-job-456';
   
   final StreamController<LatLng> _locationStreamController = StreamController<LatLng>.broadcast();
   
@@ -431,9 +431,9 @@ class _TestRiderUploadScreenState extends State<TestRiderUploadScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [

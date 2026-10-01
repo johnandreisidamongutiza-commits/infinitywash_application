@@ -15,7 +15,7 @@ class RiderRouteScreen extends StatefulWidget {
   State<RiderRouteScreen> createState() => _RiderRouteScreenState();
 }
 
-enum NavigationPhase { onTheWay, arrived, completed }
+enum NavigationPhase { onTheWay, arrived, completing, completed }
 
 class _RiderRouteScreenState extends State<RiderRouteScreen> {
   final RiderService _riderService = RiderService();
@@ -28,6 +28,9 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
   List<LaundryOrder> _pickupOrders = [];
   List<LaundryOrder> _deliveryOrders = [];
   List<LaundryOrder> _routeOrders = [];
+  
+  // Track dispatch job IDs for completion
+  final Map<String, String> _orderToJobMap = {};
 
   @override
   void initState() {
@@ -42,13 +45,30 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
     });
 
     try {
+      // Clear adapter cache for fresh data
+      _riderService.clearAdapterCache();
+      
+      // Fetch active dispatch jobs
+      final pickupJobs = await _riderService.fetchActivePickupJobs();
+      final deliveryJobs = await _riderService.fetchActiveDeliveryJobs();
+      
+      // Convert to LaundryOrders using adapter
       final results = await Future.wait([
-        _riderService.fetchPickupOrders(),
-        _riderService.fetchDeliveryOrders(),
+        _riderService.fetchActivePickupOrders(),
+        _riderService.fetchActiveDeliveryOrders(),
       ]);
 
       _pickupOrders = results[0];
       _deliveryOrders = results[1];
+      
+      // Build mapping from order ID to dispatch job ID
+      _orderToJobMap.clear();
+      for (var job in pickupJobs) {
+        _orderToJobMap[job.orderId] = job.id;
+      }
+      for (var job in deliveryJobs) {
+        _orderToJobMap[job.orderId] = job.id;
+      }
 
       // Combine and sort by creation time (FIFO - oldest first)
       _routeOrders = [..._pickupOrders, ..._deliveryOrders]
@@ -63,6 +83,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
       print('✅ Route loaded: ${_routeOrders.length} stops');
       print('   Pickups: ${_pickupOrders.length}');
       print('   Deliveries: ${_deliveryOrders.length}');
+      print('   Order->Job mapping: ${_orderToJobMap.length} entries');
     } catch (e) {
       print('❌ Error loading route: $e');
       if (mounted) {
@@ -98,49 +119,77 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
 
     final orderName = _currentOrder!.customerName;
     final orderId = _currentOrder!.id;
-
-    try {
-      // Update order status in database
-      if (_isPickup) {
-        // Pickup confirmed: pending_pickup → processing
-        await _riderService.updateOrderStatus(orderId!, 'processing');
+    
+    // Get the dispatch job ID from our mapping
+    final jobId = _orderToJobMap[orderId];
+    if (jobId == null) {
+      print('❌ Error: No dispatch job ID found for order $orderId');
+      if (mounted) {
         showTopNotification(
           context,
-          message: 'Pickup from $orderName confirmed!',
-          icon: Icons.check_circle,
-          backgroundColor: Colors.green,
-        );
-      } else {
-        // Delivery confirmed: ready/out_for_delivery → completed
-        await _riderService.updateOrderStatus(orderId!, 'completed');
-        showTopNotification(
-          context,
-          message: 'Delivery to $orderName completed!',
-          icon: Icons.check_circle,
-          backgroundColor: Colors.green,
+          message: 'Error: Job information not found. Please refresh.',
+          icon: Icons.error,
+          backgroundColor: AppTheme.errorRed,
         );
       }
+      return;
+    }
 
-      // Move to next stop
+    try {
+      // Set to completing state to show animation
       setState(() {
-        _currentStopIndex++;
-        if (_currentStopIndex < _routeOrders.length) {
-          _phase = NavigationPhase.onTheWay;
-        } else {
-          _phase = NavigationPhase.completed;
-        }
+        _phase = NavigationPhase.completing;
       });
 
-      // Reload orders to get fresh data
-      await _loadOrders();
-    } catch (e) {
-      print('❌ Error confirming stop: $e');
+      // Complete dispatch job (this also updates order status automatically)
+      if (_isPickup) {
+        print('📦 Completing pickup: jobId=$jobId, orderId=$orderId');
+        await _riderService.completePickup(jobId, orderId);
+      } else {
+        print('🚚 Completing delivery: jobId=$jobId, orderId=$orderId');
+        await _riderService.completeDelivery(jobId, orderId);
+      }
+
+      // Show success notification
       showTopNotification(
         context,
-        message: 'Error updating order. Please try again.',
-        icon: Icons.error,
-        backgroundColor: AppTheme.errorRed,
+        message: _isPickup 
+            ? 'Pickup from $orderName confirmed!' 
+            : 'Delivery to $orderName completed!',
+        icon: Icons.check_circle,
+        backgroundColor: Colors.green,
       );
+
+      // Wait 2.5 seconds to show completion animation
+      await Future.delayed(const Duration(milliseconds: 2500));
+
+      // Move to next stop
+      if (mounted) {
+        setState(() {
+          _currentStopIndex++;
+          if (_currentStopIndex < _routeOrders.length) {
+            _phase = NavigationPhase.onTheWay;
+          } else {
+            _phase = NavigationPhase.completed;
+          }
+        });
+
+        // Reload orders to get fresh data
+        await _loadOrders();
+      }
+    } catch (e) {
+      print('❌ Error confirming stop: $e');
+      if (mounted) {
+        setState(() {
+          _phase = NavigationPhase.arrived; // Revert to arrived state
+        });
+        showTopNotification(
+          context,
+          message: 'Error updating order. Please try again.',
+          icon: Icons.error,
+          backgroundColor: AppTheme.errorRed,
+        );
+      }
     }
   }
 
@@ -316,7 +365,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Route Progress: ${_currentStopIndex}/${_routeOrders.length} completed',
+                'Route Progress: $_currentStopIndex/${_routeOrders.length} completed',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
               ),
               Container(
@@ -701,6 +750,57 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                   ),
                 ),
               ],
+            )
+          else if (_phase == NavigationPhase.completing)
+            // Completing state - show animated success indicator
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Column(
+                children: [
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 500),
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: 0.8 + (value * 0.2),
+                        child: Opacity(
+                          opacity: value,
+                          child: Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.check_circle,
+                              color: Colors.green,
+                              size: 50,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _isPickup ? '✓ Pickup Confirmed!' : '✓ Delivery Completed!',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Moving to next stop...',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppTheme.textLight,
+                    ),
+                  ),
+                ],
+              ),
             )
           else
             Row(

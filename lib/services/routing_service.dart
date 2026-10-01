@@ -122,7 +122,7 @@ class RoutingService {
   Future<RouteResult?> _fetchOpenRouteService(List<LatLng> waypoints) async {
     try {
       final url = Uri.parse('${RoutingConfig.openRouteServiceBaseUrl}/geojson');
-      final requestFactory = () => http.Request('POST', url)
+      http.Request requestFactory() => http.Request('POST', url)
         ..headers.addAll({
           ..._headers,
           'Authorization': RoutingConfig.openRouteServiceApiKey,
@@ -186,7 +186,7 @@ class RoutingService {
         '$_osrmBaseUrl/$coordinates?overview=full&geometries=geojson&radiuses=$radiuses',
       );
 
-      final requestFactory = () => http.Request('GET', url)..headers.addAll(_headers);
+      http.Request requestFactory() => http.Request('GET', url)..headers.addAll(_headers);
 
       final guarded = await _guard.execute(
         ApiGuard.providerOsrm,

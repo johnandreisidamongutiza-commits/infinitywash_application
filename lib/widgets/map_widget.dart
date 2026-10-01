@@ -86,8 +86,8 @@ class _MapWidgetState extends State<MapWidget> {
                 point: LocationConstants.infinityWashShop,
                 radius: LocationConstants.deliveryRadiusKm * 1000, // Convert km to meters
                 useRadiusInMeter: true,
-                color: Colors.blue.withOpacity(0.1),
-                borderColor: Colors.blue.withOpacity(0.5),
+                color: Colors.blue.withValues(alpha: 0.1),
+                borderColor: Colors.blue.withValues(alpha: 0.5),
                 borderStrokeWidth: 2.0,
               ),
             ],
@@ -204,7 +204,7 @@ class MapMarkers {
               border: Border.all(color: Colors.white, width: 2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.3),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),
@@ -217,7 +217,7 @@ class MapMarkers {
               margin: const EdgeInsets.only(top: 4),
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: color, width: 1),
               ),

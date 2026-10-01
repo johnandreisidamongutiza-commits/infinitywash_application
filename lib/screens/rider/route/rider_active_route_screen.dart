@@ -482,7 +482,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
               shadows: [
                 Shadow(
                   blurRadius: 4,
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   offset: const Offset(0, 2),
                 ),
               ],
@@ -513,7 +513,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
+                        color: Colors.black.withValues(alpha: 0.3),
                         blurRadius: 6,
                         offset: const Offset(0, 2),
                       ),

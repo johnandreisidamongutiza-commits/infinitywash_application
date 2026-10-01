@@ -162,8 +162,8 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: widget.job.jobType == 'pickup'
-                          ? AppTheme.errorRed.withOpacity(0.1)
-                          : AppTheme.teamMemberIconOrange.withOpacity(0.1),
+                          ? AppTheme.errorRed.withValues(alpha: 0.1)
+                          : AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(

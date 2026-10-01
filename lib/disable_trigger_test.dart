@@ -1,4 +1,3 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
 
 /// Test script to disable/enable trigger and test registration

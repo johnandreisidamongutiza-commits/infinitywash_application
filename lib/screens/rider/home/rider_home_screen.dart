@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/rider_service.dart';
 import '../../../services/supabase_service.dart';
 import '../../../models/dispatch_job.dart';
+import '../../../config/location_constants.dart';
+import '../../../widgets/cached_tile_provider.dart';
 import '../route/rider_route_screen_new.dart';
 import '../jobs/rider_job_details_screen.dart';
 import '../notifications/rider_notifications_screen.dart';
@@ -43,17 +47,14 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     setState(() => _isLoading = true);
     
     try {
-      final riderId = SupabaseService.client.auth.currentUser?.id;
-      if (riderId == null) {
-        throw Exception('Not authenticated');
-      }
-
-      final allJobs = await _riderService.getRiderJobs(riderId);
+      // Fetch only ACTIVE jobs (pending/in_progress) for today's route
+      final pickupJobs = await _riderService.fetchActivePickupJobs();
+      final deliveryJobs = await _riderService.fetchActiveDeliveryJobs();
       
       if (mounted) {
         setState(() {
-          _pickupJobs = allJobs.where((j) => j.jobType == 'pickup').toList();
-          _deliveryJobs = allJobs.where((j) => j.jobType == 'delivery').toList();
+          _pickupJobs = pickupJobs;
+          _deliveryJobs = deliveryJobs;
           _isLoading = false;
         });
       }
@@ -370,7 +371,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          // Mock Map Area (tap to view full map)
+          // Mini Map Preview (tap to view full map)
           InkWell(
             onTap: () => widget.onSelectTab?.call(1),
             borderRadius: BorderRadius.circular(16),
@@ -378,38 +379,62 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               height: 150,
               width: double.infinity,
               decoration: BoxDecoration(
-                color: AppTheme.softGray,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppTheme.borderGray),
               ),
+              clipBehavior: Clip.antiAlias,
               child: Stack(
-                alignment: Alignment.center,
                 children: [
-                  Icon(Icons.map_outlined, size: 60, color: AppTheme.textLight.withValues(alpha: 0.1)),
+                  // Actual map with markers
+                  AbsorbPointer(
+                    child: FlutterMap(
+                      options: MapOptions(
+                        initialCenter: _getMapCenter(),
+                        initialZoom: _getMapZoom(),
+                        interactionOptions: const InteractionOptions(
+                          flags: InteractiveFlag.none,
+                        ),
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.infinitywash.app',
+                          tileProvider: CachedTileProvider(),
+                        ),
+                        if (_buildMiniMapMarkers().isNotEmpty)
+                          MarkerLayer(markers: _buildMiniMapMarkers()),
+                      ],
+                    ),
+                  ),
+                  // Tap hint overlay
                   Positioned(
                     bottom: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 4,
-                          ),
-                        ],
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.touch_app_outlined, size: 14, color: AppTheme.accentBlue),
-                          SizedBox(width: 4),
-                          Text(
-                            'Tap to explore route map',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.accentBlue),
-                          ),
-                        ],
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.touch_app_outlined, size: 14, color: AppTheme.accentBlue),
+                            SizedBox(width: 4),
+                            Text(
+                              'Tap to explore route map',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.accentBlue),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -523,5 +548,134 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
         ),
       ),
     );
+  }
+
+  /// Get map center based on job locations
+  LatLng _getMapCenter() {
+    final allJobs = [..._pickupJobs, ..._deliveryJobs];
+    
+    // If no jobs, center on shop
+    if (allJobs.isEmpty) {
+      return LocationConstants.shopLocation;
+    }
+
+    // Get jobs with valid coordinates
+    final jobsWithCoords = allJobs
+        .where((j) => 
+            j.latitude != null && 
+            j.longitude != null &&
+            j.latitude!.isFinite && 
+            j.longitude!.isFinite)
+        .toList();
+
+    // If no valid coordinates, center on shop
+    if (jobsWithCoords.isEmpty) {
+      return LocationConstants.shopLocation;
+    }
+
+    // Calculate center point
+    double avgLat = jobsWithCoords.fold(0.0, (sum, j) => sum + j.latitude!) / jobsWithCoords.length;
+    double avgLng = jobsWithCoords.fold(0.0, (sum, j) => sum + j.longitude!) / jobsWithCoords.length;
+
+    return LatLng(avgLat, avgLng);
+  }
+
+  /// Get appropriate zoom level based on job spread
+  double _getMapZoom() {
+    final allJobs = [..._pickupJobs, ..._deliveryJobs];
+    
+    if (allJobs.isEmpty || allJobs.length == 1) {
+      return 14.0;
+    }
+
+    // Get jobs with valid coordinates
+    final jobsWithCoords = allJobs
+        .where((j) => 
+            j.latitude != null && 
+            j.longitude != null &&
+            j.latitude!.isFinite && 
+            j.longitude!.isFinite)
+        .toList();
+
+    if (jobsWithCoords.length <= 1) {
+      return 14.0;
+    }
+
+    // Calculate rough bounds
+    final lats = jobsWithCoords.map((j) => j.latitude!).toList();
+    final lngs = jobsWithCoords.map((j) => j.longitude!).toList();
+    
+    final latDiff = lats.reduce((a, b) => a > b ? a : b) - lats.reduce((a, b) => a < b ? a : b);
+    final lngDiff = lngs.reduce((a, b) => a > b ? a : b) - lngs.reduce((a, b) => a < b ? a : b);
+    
+    final maxDiff = latDiff > lngDiff ? latDiff : lngDiff;
+
+    // Adjust zoom based on spread
+    if (maxDiff > 0.1) return 11.0;
+    if (maxDiff > 0.05) return 12.0;
+    if (maxDiff > 0.02) return 13.0;
+    return 14.0;
+  }
+
+  /// Build markers for mini map preview
+  List<Marker> _buildMiniMapMarkers() {
+    final markers = <Marker>[];
+    final allJobs = [..._pickupJobs, ..._deliveryJobs];
+
+    // Always show shop marker
+    markers.add(Marker(
+      point: LocationConstants.shopLocation,
+      width: 30,
+      height: 30,
+      child: const Icon(Icons.store, color: AppTheme.accentBlue, size: 30),
+    ));
+
+    // If no jobs, return just the shop marker
+    if (allJobs.isEmpty) {
+      return markers;
+    }
+
+    // Job markers (max 10 to avoid clutter)
+    final displayJobs = allJobs.take(10).toList();
+    
+    for (int i = 0; i < displayJobs.length; i++) {
+      final job = displayJobs[i];
+      if (job.latitude == null || job.longitude == null) continue;
+      if (!job.latitude!.isFinite || !job.longitude!.isFinite) continue;
+
+      final isPickup = job.jobType == 'pickup';
+      final markerColor = isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange;
+
+      markers.add(Marker(
+        point: LatLng(job.latitude!, job.longitude!),
+        width: 30,
+        height: 30,
+        child: Stack(
+          children: [
+            Icon(
+              Icons.location_on,
+              color: markerColor,
+              size: 30,
+            ),
+            Positioned(
+              top: 6,
+              left: 0,
+              right: 0,
+              child: Text(
+                '${i + 1}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ));
+    }
+
+    return markers;
   }
 }

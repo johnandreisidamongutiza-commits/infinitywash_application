@@ -69,7 +69,7 @@ class _MapLoadingOverlayState extends State<MapLoadingOverlay>
                     child: Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: AppTheme.accentBlue.withOpacity(0.1),
+                        color: AppTheme.accentBlue.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -111,7 +111,7 @@ class _MapLoadingOverlayState extends State<MapLoadingOverlay>
               'Please wait',
               style: TextStyle(
                 fontSize: 14,
-                color: AppTheme.textLight.withOpacity(0.7),
+                color: AppTheme.textLight.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -137,7 +137,7 @@ class SimpleMapLoadingOverlay extends StatelessWidget {
     }
 
     return Container(
-      color: Colors.white.withOpacity(0.95),
+      color: Colors.white.withValues(alpha: 0.95),
       child: const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

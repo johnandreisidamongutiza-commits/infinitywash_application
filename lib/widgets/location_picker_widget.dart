@@ -156,8 +156,8 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                           point: LocationConstants.infinityWashShop,
                           radius: LocationConstants.deliveryRadiusKm * 1000, // Convert to meters
                           useRadiusInMeter: true,
-                          color: Colors.blue.withOpacity(0.1),
-                          borderColor: Colors.blue.withOpacity(0.3),
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderColor: Colors.blue.withValues(alpha: 0.3),
                           borderStrokeWidth: 2,
                         ),
                       ],
@@ -228,7 +228,7 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                   child: Icon(
                     Icons.add,
                     size: 32,
-                    color: Colors.grey.withOpacity(0.5),
+                    color: Colors.grey.withValues(alpha: 0.5),
                   ),
                 ),
             ],
@@ -244,7 +244,7 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 4,
                   offset: const Offset(0, -2),
                 ),

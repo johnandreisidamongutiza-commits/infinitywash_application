@@ -7,6 +7,7 @@
 /// 1. Sign up at https://openrouteservice.org/dev/#/signup
 /// 2. Go to https://openrouteservice.org/dev/#/api-key
 /// 3. Copy your API key and paste it below
+library;
 
 class RoutingConfig {
   /// OpenRouteService API Key

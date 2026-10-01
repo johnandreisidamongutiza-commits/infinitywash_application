@@ -1,4 +1,3 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
 
 /// Diagnostic tool to test registration with minimal data

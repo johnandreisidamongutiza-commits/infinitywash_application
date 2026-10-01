@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/map_widget.dart';
 import '../config/location_constants.dart';
-import 'package:flutter_map/flutter_map.dart';
 
 /// Test Screen - Delivery Area Visualization
 /// 
@@ -76,7 +75,7 @@ class TestDeliveryAreaScreen extends StatelessWidget {
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 4,
                   offset: const Offset(0, -2),
                 ),
@@ -98,7 +97,7 @@ class TestDeliveryAreaScreen extends StatelessWidget {
                 ),
                 _buildLegendItem(
                   Icons.circle,
-                  Colors.blue.withOpacity(0.3),
+                  Colors.blue.withValues(alpha: 0.3),
                   'Delivery Area',
                   '10km radius from shop',
                 ),
@@ -134,7 +133,7 @@ class TestDeliveryAreaScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
+              color: color.withValues(alpha: 0.2),
               shape: BoxShape.circle,
               border: Border.all(color: color, width: 2),
             ),

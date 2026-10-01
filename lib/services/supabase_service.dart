@@ -48,7 +48,7 @@ class SupabaseService {
           .maybeSingle();
 
       if (response != null) {
-        return DispatchJob.fromJson(response as Map<String, dynamic>);
+        return DispatchJob.fromJson(response);
       }
       return null;
     } catch (e) {
@@ -68,7 +68,7 @@ class SupabaseService {
           .maybeSingle();
 
       if (response != null) {
-        return DispatchJob.fromJson(response as Map<String, dynamic>);
+        return DispatchJob.fromJson(response);
       }
       return null;
     } catch (e) {
@@ -149,7 +149,7 @@ class SupabaseService {
           .single();
       
       print('✅ Created dispatch job: ${response['id']} ($jobNumber) for ${customerName ?? "unknown customer"}');
-      return DispatchJob.fromJson(response as Map<String, dynamic>);
+      return DispatchJob.fromJson(response);
     } catch (e) {
       print('❌ Error creating dispatch job: $e');
       rethrow;
@@ -294,14 +294,12 @@ class SupabaseService {
           return;
       }
 
-      if (orderStatus != null) {
-        await client.from('orders').update({
-          'status': orderStatus,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        }).eq('id', orderId);
-        
-        print('✅ Synced order $orderId status to $orderStatus');
-      }
+      await client.from('orders').update({
+        'status': orderStatus,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', orderId);
+      
+      print('✅ Synced order $orderId status to $orderStatus');
     } catch (e) {
       print('❌ Error syncing order status: $e');
       rethrow;

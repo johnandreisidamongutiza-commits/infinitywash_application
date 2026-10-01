@@ -94,7 +94,7 @@ class DispatchService {
           .eq('id', orderId)
           .single();
 
-      final order = LaundryOrder.fromJson(orderResponse as Map<String, dynamic>);
+      final order = LaundryOrder.fromJson(orderResponse);
 
       // 3. Create dispatch jobs
       await createDispatchJobsForOrder(
