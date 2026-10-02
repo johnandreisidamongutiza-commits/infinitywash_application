@@ -26,6 +26,7 @@ class ServiceRequestService {
   }) async {
     try {
       print('🔄 Starting authenticated service request submission...');
+      print('💰 Payment preference: $paymentPreference'); // Debug log
 
       // Step 1: Get authenticated customer ID
       final customerId = await _customerService.getCurrentAuthenticatedCustomerId();
@@ -74,6 +75,7 @@ class ServiceRequestService {
         'delivery_fee': 0,
         'total_amount': basePrice,
         'payment_status': 'pending',
+        'payment_preference': paymentPreference, // ← ADD THIS: Customer's preferred payment method
         'status': 'pending_approval',
         
         // Service request specific fields
@@ -207,6 +209,7 @@ class ServiceRequestService {
         'delivery_fee': 0, // Free delivery
         'total_amount': basePrice, // Will be updated after staff review
         'payment_status': 'pending', // Payment pending until staff approval
+        'payment_preference': paymentPreference, // Customer's preferred payment method
         'status': 'pending_approval', // Waiting for staff review
         
         // Service request specific fields
@@ -238,7 +241,8 @@ class ServiceRequestService {
           .from('orders')
           .select('''
             *,
-            customers!inner(first_name, last_name, phone, address, landmark)
+            customers!inner(first_name, last_name, phone, address, landmark),
+            order_loads(*)
           ''')
           .eq('customer_id', customerId)
           .order('created_at', ascending: false);
@@ -252,6 +256,12 @@ class ServiceRequestService {
             customer['last_name'] as String?,
           );
 
+          // Parse order loads
+          final loadsData = orderData['order_loads'] as List?;
+          final loads = loadsData?.map((loadJson) {
+            return OrderLoad.fromJson(loadJson as Map<String, dynamic>);
+          }).toList() ?? [];
+
           final order = LaundryOrder(
             id: orderData['id'] as String,
             orderNumber: orderData['order_number'] as String?,
@@ -264,11 +274,12 @@ class ServiceRequestService {
             returnMethod: (orderData['delivery_requested'] as bool) ? ReturnMethod.delivery : ReturnMethod.shopPickup,
             status: _mapDatabaseStatus(orderData['status'] as String),
             paymentStatus: _mapPaymentStatus(orderData['payment_status'] as String),
-            loads: [],
+            loads: loads, // ← Now includes actual loads from database
             instructions: orderData['customer_notes'] as String?,
             rfidTag: null,
             createdAt: _parseLocalDateTime(orderData['created_at'])!,
             paymentMethod: null,
+            paymentPreference: orderData['payment_preference'] as String?,
             paidAt: null,
             
             // Service request specific fields
@@ -281,6 +292,7 @@ class ServiceRequestService {
             reviewedBy: orderData['reviewed_by'] as String?,
             expiresAt: _parseLocalDateTime(orderData['expires_at']),
             underReviewBy: null,
+            totalAmount: (orderData['total_amount'] as num?)?.toDouble(), // ← Add total_amount from database
           );
 
           orders.add(order);

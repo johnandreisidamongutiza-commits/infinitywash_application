@@ -110,7 +110,8 @@ class LaundryOrder {
   final String? instructions;
   final String? rfidTag;
   final DateTime createdAt;
-  final String? paymentMethod; // 'Cash', 'GCash', null
+  final String? paymentMethod; // 'Cash', 'GCash', null - Actual payment method used when payment is made
+  final String? paymentPreference; // 'GCash', 'Cash on Delivery', etc. - Customer's preferred payment method from order request
   final DateTime? paidAt; // When payment was received
   
   // Photo request fields
@@ -142,6 +143,7 @@ class LaundryOrder {
     this.rfidTag,
     required this.createdAt,
     this.paymentMethod,
+    this.paymentPreference,
     this.paidAt,
     this.laundryPhotoUrls,
     this.customerDescription,
@@ -253,6 +255,7 @@ class LaundryOrder {
       'rfid_tag': rfidTag,
       'created_at': createdAt.toIso8601String(),
       'payment_method': paymentMethod,
+      'payment_preference': paymentPreference,
       'paid_at': paidAt?.toIso8601String(),
       // Photo request fields
       'laundry_photo_urls': laundryPhotoUrls,
@@ -293,6 +296,7 @@ class LaundryOrder {
       rfidTag: json['rfid_tag'] as String?,
       createdAt: _parseLocalDateTime(json['created_at'])!,
       paymentMethod: json['payment_method'] as String?,
+      paymentPreference: json['payment_preference'] as String?,
       paidAt: _parseLocalDateTime(json['paid_at']),
       laundryPhotoUrls: _parsePhotoUrls(json['laundry_photo_urls']),
       customerDescription: json['customer_description'] as String?,

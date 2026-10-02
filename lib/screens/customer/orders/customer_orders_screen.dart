@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/top_notification.dart';
 import '../../../models/order.dart';
@@ -33,12 +35,59 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   
   // Feedback cache: orderId -> hasFeedback
   final Map<String, bool> _feedbackStatus = {};
+  
+  // Real-time subscription
+  StreamSubscription? _ordersSubscription;
+  String? _currentCustomerId;
 
   @override
   void initState() {
     super.initState();
     _loadCustomerOrders();
+    _subscribeToOrderUpdates();
   }
+
+  @override
+  void dispose() {
+    _ordersSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Subscribe to real-time order updates
+  void _subscribeToOrderUpdates() async {
+    try {
+      // Get customer ID
+      final customerId = await _customerService.getCurrentAuthenticatedCustomerId();
+      _currentCustomerId = customerId;
+      
+      // Subscribe to orders table changes for this customer
+      // NOTE: Real-time stream only includes orders table, not joined data (order_loads, etc.)
+      // So we refetch full data when changes are detected
+      _ordersSubscription = Supabase.instance.client
+          .from('orders')
+          .stream(primaryKey: ['id'])
+          .eq('customer_id', customerId)
+          .listen((data) {
+            if (mounted) {
+              // Don't use real-time data directly - it lacks joins
+              // Instead, trigger a full refresh to get complete data
+              _loadCustomerOrders();
+            }
+          });
+      
+      print('✅ Subscribed to real-time order updates for customer: $customerId');
+    } catch (e) {
+      print('⚠️ Error setting up real-time subscription: $e');
+    }
+  }
+
+  /// Handle real-time order updates (Deprecated - now triggers full refresh)
+  /// Kept for reference but no longer used
+  // void _handleOrdersUpdate(List<Map<String, dynamic>> data) {
+  //   // Real-time stream data doesn't include joins (order_loads, customers, etc.)
+  //   // So parsing it directly creates incomplete order objects
+  //   // Instead, we now trigger _loadCustomerOrders() which uses proper query with joins
+  // }
 
   /// Load customer orders from database
   Future<void> _loadCustomerOrders() async {
@@ -132,6 +181,36 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
       order.status == OrderStatus.completed || 
       order.status == OrderStatus.rejected ||
       order.status == OrderStatus.cancelled).toList();
+
+  /// Get payment method display text based on order's payment preference
+  String _getPaymentMethodDisplay(LaundryOrder order) {
+    // If already paid, show the actual payment method used
+    if (order.paymentStatus == PaymentStatus.paid && order.paymentMethod != null) {
+      return order.paymentMethod!;
+    }
+    
+    // Otherwise, show the customer's preferred payment method
+    if (order.paymentPreference != null && order.paymentPreference!.isNotEmpty) {
+      return order.paymentPreference!;
+    }
+    
+    // Default to GCash for old orders without preference
+    return 'GCash';
+  }
+
+  /// Get pay button text based on payment preference
+  String _getPayButtonText(LaundryOrder order, double amount) {
+    final preference = order.paymentPreference ?? 'GCash';
+    final amountStr = '₱${amount.toStringAsFixed(2)}';
+    
+    if (preference == 'Cash on Delivery') {
+      return 'Confirm Cash on Delivery ($amountStr)';
+    } else if (preference == 'GCash') {
+      return 'Pay $amountStr via GCash';
+    } else {
+      return 'Pay $amountStr via $preference';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -687,7 +766,10 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   Widget _buildActiveOrderCard(LaundryOrder order) {
     final bool isExpanded = _expandedOrderIds.contains(order.id);
     final bool needsPayment = order.paymentStatus == PaymentStatus.unpaid;
-    final double estimatedPrice = order.totalWeight * 30.0; // ₱30/kg estimate
+    // Use totalAmount from database if available, otherwise estimate from weight
+    final double displayPrice = order.totalAmount != null && order.totalAmount! > 0 
+        ? order.totalAmount! 
+        : order.totalWeight * 30.0; // Fallback to ₱30/kg estimate
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -797,8 +879,10 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                   // Progress tracker - always visible
                   _buildCompactProgressTracker(order.status),
 
-                  // Payment banner if unpaid
-                  if (needsPayment && order.totalWeight > 0) ...[
+                  // Payment banner for GCash/online payments if unpaid
+                  if (needsPayment && 
+                      order.totalWeight > 0 &&
+                      order.paymentPreference != 'Cash on Delivery') ...[
                     const SizedBox(height: 14),
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -815,12 +899,12 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Verified Bill Ready • GCash Due',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
+                                Text(
+                                  'Verified Bill Ready • ${_getPaymentMethodDisplay(order)} Due',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
                                 ),
                                 Text(
-                                  'Total Due: ₱${estimatedPrice.toStringAsFixed(2)} (${order.totalWeight.toStringAsFixed(1)} kg)',
+                                  'Total Due: ₱${displayPrice.toStringAsFixed(2)} (${order.totalWeight.toStringAsFixed(1)} kg)',
                                   style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
                                 ),
                               ],
@@ -838,6 +922,53 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                               ),
                             ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  // Cash on Delivery banner if COD selected  
+                  if (needsPayment &&
+                      order.totalWeight > 0 &&
+                      order.paymentPreference == 'Cash on Delivery') ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.payments, color: Colors.green, size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Verified Bill Ready • Cash on Delivery',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
+                                ),
+                                Text(
+                                  'Amount: ₱${displayPrice.toStringAsFixed(2)} (${order.totalWeight.toStringAsFixed(1)} kg)',
+                                  style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'COD',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1039,7 +1170,10 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   }
 
   Widget _buildActiveOrderExpandedDetails(LaundryOrder order) {
-    final double estimatedPrice = order.totalWeight * 30.0;
+    // Use totalAmount from database if available, otherwise estimate from weight
+    final double displayPrice = order.totalAmount != null && order.totalAmount! > 0 
+        ? order.totalAmount! 
+        : order.totalWeight * 30.0; // Fallback to ₱30/kg estimate
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1183,28 +1317,41 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                     style: TextStyle(fontSize: 12, color: AppTheme.textLight),
                   ),
                   SizedBox(height: 2),
+                ],
+              ),
+              // Dynamic payment method display
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Total Amount',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                  ),
+                  const SizedBox(height: 2),
                   Text(
-                    'GCash payment',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                    _getPaymentMethodDisplay(order),
+                    style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
                   ),
                 ],
               ),
               Text(
-                '₱${estimatedPrice.toStringAsFixed(2)}',
+                '₱${displayPrice.toStringAsFixed(2)}',
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textDark),
               ),
             ],
           ),
         ),
 
-        // Pay button if unpaid
-        if (order.paymentStatus == PaymentStatus.unpaid && order.totalWeight > 0) ...[
+        // Pay button for GCash/online payments if unpaid
+        if (order.paymentStatus == PaymentStatus.unpaid && 
+            order.totalWeight > 0 &&
+            order.paymentPreference != 'Cash on Delivery') ...[
           const SizedBox(height: 14),
           ElevatedButton(
             onPressed: () {
               showTopNotification(
                 context,
-                message: 'Opening GCash payment...',
+                message: 'Opening ${order.paymentPreference ?? "GCash"} payment...',
                 icon: Icons.payment,
                 backgroundColor: AppTheme.accentBlue,
               );
@@ -1215,8 +1362,49 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             child: Text(
-              'Pay ₱${estimatedPrice.toStringAsFixed(2)} via GCash',
+              _getPayButtonText(order, displayPrice),
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+
+        // Cash on Delivery notice if COD selected
+        if (order.paymentStatus == PaymentStatus.unpaid &&
+            order.totalWeight > 0 &&
+            order.paymentPreference == 'Cash on Delivery') ...[
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.payments, color: Colors.green, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Cash on Delivery',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Please prepare ₱${displayPrice.toStringAsFixed(2)} when the rider arrives',
+                        style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ],
