@@ -89,8 +89,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   void initState() {
     super.initState();
 
-    // Start with one load (empty weight so it is not marked complete until staff enters weight)
-    _loads.add(LoadDraft(initialWeight: ''));
+    // Initialize with one load only if drop-off is selected (default)
+    // For rider pickup, loads will be empty until staff checks in the order
+    if (_selectedCollection == CollectionMethod.dropOff) {
+      _loads.add(LoadDraft(initialWeight: ''));
+    }
+    
     _firstNameController.addListener(_checkForCustomerSuggestion);
     _lastNameController.addListener(_checkForCustomerSuggestion);
   }
@@ -245,9 +249,15 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   }
 
   bool get _isStep2Complete {
+    // For rider pickup orders, step 2 is complete if address is provided
+    if (_selectedCollection == CollectionMethod.riderPickup) {
+      return _addressController.text.trim().isNotEmpty;
+    }
+    
+    // For drop-off orders, require loads with weights
     return _loads.isNotEmpty &&
         _loads.every((load) => _getLoadWeight(_loads.indexOf(load)) > 0) &&
-        ((_selectedCollection != CollectionMethod.riderPickup && _selectedReturn != ReturnMethod.delivery) || 
+        (_selectedReturn != ReturnMethod.delivery || 
          _addressController.text.trim().isNotEmpty);
   }
 
@@ -570,34 +580,39 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       return;
     }
 
-    // Validation 4: At least one load
-    if (_loads.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please add at least one load.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    // Validation 5: All loads must have valid weight
-    for (int i = 0; i < _loads.length; i++) {
-      final weight = _getLoadWeight(i);
-      if (weight <= 0) {
+    // Validation 4: Different requirements for rider pickup vs drop-off
+    if (_selectedCollection == CollectionMethod.riderPickup) {
+      // Rider pickup: No loads required (will be added after pickup)
+      // Address validation already done above
+    } else {
+      // Drop-off: Require at least one load with weight
+      if (_loads.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Load ${i + 1} must have a weight greater than 0.'),
+          const SnackBar(
+            content: Text('Please add at least one load.'),
             backgroundColor: Colors.orange,
           ),
         );
         return;
       }
 
-      // Warning for very high weights (possible typo)
-      if (weight > 50) {
-        final confirmed = await showDialog<bool>(
-          context: context,
+      // Validation 5: All loads must have valid weight
+      for (int i = 0; i < _loads.length; i++) {
+        final weight = _getLoadWeight(i);
+        if (weight <= 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Load ${i + 1} must have a weight greater than 0.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+
+        // Warning for very high weights (possible typo)
+        if (weight > 50) {
+          final confirmed = await showDialog<bool>(
+            context: context,
           builder: (context) => AlertDialog(
             title: const Text('Confirm Weight'),
             content: Text('Load ${i + 1} has ${weight}kg. Is this correct? This seems unusually high.'),
@@ -615,6 +630,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         );
 
         if (confirmed != true) return;
+        }
       }
     }
 
@@ -678,28 +694,35 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
       // Step 4: Create OrderLoad objects
       final List<OrderLoad> orderLoads = [];
-      for (int i = 0; i < _loads.length; i++) {
-        final load = _loads[i];
-        final category = load.category;
-        final weight = _getLoadWeight(i);
-        final limit = _categories[category]!['limit'] as double;
-        final unit = _categories[category]!['unit'] as String;
-        final desc = _categories[category]!['desc'] as String;
+      
+      // Only create loads for drop-off orders; rider pickup orders have no loads yet
+      if (_selectedCollection == CollectionMethod.dropOff) {
+        for (int i = 0; i < _loads.length; i++) {
+          final load = _loads[i];
+          final category = load.category;
+          final weight = _getLoadWeight(i);
+          final limit = _categories[category]!['limit'] as double;
+          final unit = _categories[category]!['unit'] as String;
+          final desc = _categories[category]!['desc'] as String;
 
-        orderLoads.add(OrderLoad(
-          loadNumber: i + 1,
-          category: category,
-          weight: weight,
-          categoryLimit: limit,
-          unit: unit,
-          description: desc,
-          isOverLimit: weight > limit,
-          notes: null,
-        ));
+          orderLoads.add(OrderLoad(
+            loadNumber: i + 1,
+            category: category,
+            weight: weight,
+            categoryLimit: limit,
+            unit: unit,
+            description: desc,
+            isOverLimit: weight > limit,
+            notes: null,
+          ));
+        }
       }
 
       // Step 5: Calculate totals
-      final subtotal = (basePrice * _loads.length) + addonsTotal;
+      // For rider pickup, subtotal is 0 until laundry is weighed
+      final subtotal = _selectedCollection == CollectionMethod.dropOff 
+          ? (basePrice * _loads.length) + addonsTotal 
+          : 0.0;
       final totalAmount = subtotal; // delivery_fee is always 0
 
       // Step 6: Build customer notes
@@ -709,11 +732,17 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
       // Step 7: Build staff notes with order details
       final String staffNotes = [
-        if (_loads.length > 1) '${_loads.length} loads: ${orderLoads.map((l) => '${l.weight}${l.unit} ${l.category}').join(', ')}',
-        if (_loads.length == 1) 'Load: ${orderLoads[0].weight}${orderLoads[0].unit} ${orderLoads[0].category}',
+        // Different notes for rider pickup vs drop-off
+        if (_selectedCollection == CollectionMethod.riderPickup) ...[
+          'Awaiting rider pickup and intake',
+          if (_addressController.text.trim().isNotEmpty)
+            'Pickup Address: ${_addressController.text.trim()}${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
+        ] else ...[
+          // Drop-off: Include load details
+          if (_loads.length > 1) '${_loads.length} loads: ${orderLoads.map((l) => '${l.weight}${l.unit} ${l.category}').join(', ')}',
+          if (_loads.length == 1) 'Load: ${orderLoads[0].weight}${orderLoads[0].unit} ${orderLoads[0].category}',
+        ],
         if (_loyaltyCardUid != null) 'Loyalty Card: $_loyaltyCardUid',
-        if (_selectedCollection == CollectionMethod.riderPickup && _addressController.text.trim().isNotEmpty)
-          'Pickup Address: ${_addressController.text.trim()}${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
         if (_selectedReturn == ReturnMethod.delivery && _selectedCollection != CollectionMethod.riderPickup && _addressController.text.trim().isNotEmpty)
           'Delivery Address: ${_addressController.text.trim()}${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
         if (_selectedReturn == ReturnMethod.delivery && _selectedCollection == CollectionMethod.riderPickup)
@@ -790,14 +819,23 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
       if (!mounted) return;
 
+      // Different success messages for rider pickup vs drop-off
+      final String successMessage;
+      if (_selectedCollection == CollectionMethod.riderPickup) {
+        successMessage = 'Order $orderNumber Created!\n'
+            'Rider pickup scheduled. Price will be calculated after laundry is received.';
+      } else if (isPaidImmediately) {
+        successMessage = 'Order $orderNumber Created! ₱${totalAmount.toStringAsFixed(2)} paid via $paymentMethod.';
+      } else {
+        successMessage = 'Order $orderNumber Created! Saved as UNPAID (to pay on claiming).';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            isPaidImmediately
-                ? 'Order $orderNumber Created! ₱${totalAmount.toStringAsFixed(2)} paid via $paymentMethod.'
-                : 'Order $orderNumber Created! Saved as UNPAID (to pay on claiming).',
-          ),
-          backgroundColor: isPaidImmediately ? Colors.green : AppTheme.accentBlue,
+          content: Text(successMessage),
+          backgroundColor: _selectedCollection == CollectionMethod.riderPickup 
+              ? Colors.blue 
+              : (isPaidImmediately ? Colors.green : AppTheme.accentBlue),
           duration: const Duration(seconds: 3),
         ),
       );
@@ -1410,7 +1448,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                         if (!isExpanded && _isStep2Complete) ...[
                           const SizedBox(height: 2),
                           Text(
-                            '${_loads.length} load(s) • ${_totalWeight.toStringAsFixed(1)}kg${_loyaltyCardUid != null ? " • Card: $_loyaltyCardUid" : ""}',
+                            _selectedCollection == CollectionMethod.riderPickup
+                                ? 'Rider pickup • Address provided'
+                                : '${_loads.length} load(s) • ${_totalWeight.toStringAsFixed(1)}kg${_loyaltyCardUid != null ? " • Card: $_loyaltyCardUid" : ""}',
                             style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1453,49 +1493,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Multiple loads
-                  ...List.generate(_loads.length, (index) => _buildLoadCard(index)),
-
-                  // Add Load Button - Right Aligned
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: _addLoad,
-                        icon: const Icon(Icons.add, size: 16),
-                        label: const Text('Add Another Load', style: TextStyle(fontSize: 13)),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          side: BorderSide(color: AppTheme.accentBlue.withValues(alpha: 0.5)),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const Divider(height: 24),
-
-                  // Total Weight Summary
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accentBlue.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Total Weight:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        Text('${_totalWeight.toStringAsFixed(1)}kg across ${_loads.length} load(s)',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.accentBlue)),
-                      ],
-                    ),
-                  ),
-
-                  const Divider(height: 24),
-
-                  // Collection Method
+                  // Collection Method - MOVED TO TOP
                   const Text(
                     'Collection Method',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
@@ -1508,7 +1506,15 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                           icon: Icons.store_outlined,
                           title: 'Walk-in Drop-off',
                           isSelected: _selectedCollection == CollectionMethod.dropOff,
-                          onTap: () => setState(() => _selectedCollection = CollectionMethod.dropOff),
+                          onTap: () {
+                            setState(() {
+                              _selectedCollection = CollectionMethod.dropOff;
+                              // Ensure at least one load exists for drop-off
+                              if (_loads.isEmpty) {
+                                _loads.add(LoadDraft(initialWeight: ''));
+                              }
+                            });
+                          },
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -1540,6 +1546,93 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   ],
 
                   const Divider(height: 24),
+
+                  // CONDITIONAL: Show loads only for drop-off, show placeholder for rider pickup
+                  if (_selectedCollection == CollectionMethod.dropOff) ...[
+                    // Multiple loads
+                    ...List.generate(_loads.length, (index) => _buildLoadCard(index)),
+
+                    // Add Load Button - Right Aligned
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _addLoad,
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text('Add Another Load', style: TextStyle(fontSize: 13)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            side: BorderSide(color: AppTheme.accentBlue.withValues(alpha: 0.5)),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const Divider(height: 24),
+
+                    // Total Weight Summary
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentBlue.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total Weight:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          Text('${_totalWeight.toStringAsFixed(1)}kg across ${_loads.length} load(s)',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.accentBlue)),
+                        ],
+                      ),
+                    ),
+
+                    const Divider(height: 24),
+                  ] else ...[
+                    // Rider Pickup: Show placeholder message
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.blue.shade700, size: 24),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Laundry Not Yet Received',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'The rider will pick up the laundry from the customer. Weight and intake will be done after the rider returns.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: AppTheme.textDark.withValues(alpha: 0.8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const Divider(height: 24),
+                  ],
 
                   // Return Method
                   const Text(
@@ -2178,70 +2271,98 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.05),
+                      color: _selectedCollection == CollectionMethod.riderPickup 
+                          ? Colors.blue.withValues(alpha: 0.05)
+                          : Colors.green.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green.withValues(alpha: 0.2), width: 1),
+                      border: Border.all(
+                        color: _selectedCollection == CollectionMethod.riderPickup 
+                            ? Colors.blue.withValues(alpha: 0.2)
+                            : Colors.green.withValues(alpha: 0.2), 
+                        width: 1
+                      ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.receipt_outlined, size: 16, color: Colors.green),
-                            SizedBox(width: 6),
-                            Text(
-                              'Final Pricing Summary',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textDark),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
+                    child: _selectedCollection == CollectionMethod.riderPickup
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Pricing to be Determined',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blue.shade700),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Final price will be calculated after the rider picks up and delivers the laundry for weighing.',
+                                style: TextStyle(fontSize: 13, color: AppTheme.textDark.withValues(alpha: 0.8)),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.receipt_outlined, size: 16, color: Colors.green),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Final Pricing Summary',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textDark),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
 
-                        // Base price
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Laundry (${_loads.length} load${_loads.length > 1 ? 's' : ''}):', style: const TextStyle(fontSize: 13)),
-                            Text('₱${(170 * _loads.length).toStringAsFixed(2)}',
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
+                              // Base price
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('Laundry (${_loads.length} load${_loads.length > 1 ? 's' : ''}):', style: const TextStyle(fontSize: 13)),
+                                  Text('₱${(170 * _loads.length).toStringAsFixed(2)}',
+                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
 
-                        // Add-ons
-                        if (_addExtraFabCon || _addExtraDetergent) ...[
-                          const SizedBox(height: 4),
-                          if (_addExtraFabCon)
-                            const Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Extra Fabric Conditioner:', style: TextStyle(fontSize: 13)),
-                                Text('₱20.00', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                              // Add-ons
+                              if (_addExtraFabCon || _addExtraDetergent) ...[
+                                const SizedBox(height: 4),
+                                if (_addExtraFabCon)
+                                  const Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('Extra Fabric Conditioner:', style: TextStyle(fontSize: 13)),
+                                      Text('₱20.00', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                if (_addExtraDetergent)
+                                  const Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('Extra Detergent:', style: TextStyle(fontSize: 13)),
+                                      Text('₱20.00', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
                               ],
-                            ),
-                          if (_addExtraDetergent)
-                            const Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Extra Detergent:', style: TextStyle(fontSize: 13)),
-                                Text('₱20.00', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                        ],
 
-                        const Divider(height: 16),
+                              const Divider(height: 16),
 
-                        // Total
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Total Amount:',
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
-                            Text('₱${_calculateTotalPrice().toStringAsFixed(2)}',
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)),
-                          ],
-                        ),
-                      ],
-                    ),
+                              // Total
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Total Amount:',
+                                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
+                                  Text('₱${_calculateTotalPrice().toStringAsFixed(2)}',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)),
+                                ],
+                              ),
+                            ],
+                          ),
                   ),
                 ],
               ),
@@ -2313,7 +2434,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Order summary
+            // Order summary - Different for rider pickup vs drop-off
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
@@ -2321,70 +2442,124 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.credit_card, size: 12, color: Colors.green),
+                      Icon(
+                        _selectedCollection == CollectionMethod.riderPickup 
+                            ? Icons.two_wheeler 
+                            : Icons.credit_card, 
+                        size: 12, 
+                        color: _selectedCollection == CollectionMethod.riderPickup 
+                            ? Colors.blue 
+                            : Colors.green
+                      ),
                       const SizedBox(width: 4),
                       Text(
-                        '${_loyaltyCardUid != null ? "Card: $_loyaltyCardUid • " : ""}${_loads.length} load(s) • ${_totalWeight.toStringAsFixed(1)}kg',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green),
+                        _selectedCollection == CollectionMethod.riderPickup
+                            ? 'Rider pickup order${_loyaltyCardUid != null ? " • Card: $_loyaltyCardUid" : ""}'
+                            : '${_loyaltyCardUid != null ? "Card: $_loyaltyCardUid • " : ""}${_loads.length} load(s) • ${_totalWeight.toStringAsFixed(1)}kg',
+                        style: TextStyle(
+                          fontSize: 11, 
+                          fontWeight: FontWeight.bold, 
+                          color: _selectedCollection == CollectionMethod.riderPickup 
+                              ? Colors.blue 
+                              : Colors.green
+                        ),
                       ),
                     ],
                   ),
                   Text(
-                    '₱${_calculateTotalPrice().toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green),
+                    _selectedCollection == CollectionMethod.riderPickup
+                        ? 'TBD'
+                        : '₱${_calculateTotalPrice().toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 16, 
+                      fontWeight: FontWeight.bold, 
+                      color: _selectedCollection == CollectionMethod.riderPickup 
+                          ? Colors.blue 
+                          : Colors.green
+                    ),
                   ),
                 ],
               ),
             ),
 
-            // Payment Buttons Row
-            Row(
-              children: [
-                // Pay Later Button
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _isSubmitting ? null : () => _submitOrder(isPaidImmediately: false, paymentMethod: null),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.accentBlue,
-                      side: const BorderSide(color: AppTheme.accentBlue, width: 2),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: _isSubmitting
-                        ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        color: AppTheme.accentBlue,
-                        strokeWidth: 2,
+            // Payment Buttons Row - Different for rider pickup
+            if (_selectedCollection == CollectionMethod.riderPickup)
+              // Rider Pickup: Only one button to create order
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : () => _submitOrder(isPaidImmediately: false, paymentMethod: null),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          'Create Rider Pickup Order',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                ),
+              )
+            else
+              // Drop-off: Show Pay Later and Pay Now options
+              Row(
+                children: [
+                  // Pay Later Button
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _isSubmitting ? null : () => _submitOrder(isPaidImmediately: false, paymentMethod: null),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.accentBlue,
+                        side: const BorderSide(color: AppTheme.accentBlue, width: 2),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                    )
-                        : const Text(
-                      'Pay Later',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      child: _isSubmitting
+                          ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: AppTheme.accentBlue,
+                          strokeWidth: 2,
+                        ),
+                      )
+                          : const Text(
+                        'Pay Later',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                // Pay Now Button
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _isSubmitting ? null : _showPaymentMethodModal,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'Pay Now',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  const SizedBox(width: 12),
+                  // Pay Now Button
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _isSubmitting ? null : _showPaymentMethodModal,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Pay Now',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
           ],
         ),
       ),

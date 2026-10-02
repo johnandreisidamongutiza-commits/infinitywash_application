@@ -115,7 +115,8 @@ class OrderService {
       if (orderNumber.isEmpty) {
         throw Exception('Order number is required');
       }
-      if (loads.isEmpty) {
+      // Allow empty loads for rider pickup orders (will be added after pickup)
+      if (loads.isEmpty && !pickupRequested) {
         throw Exception('At least one load is required');
       }
       if (subtotal < 0 || totalAmount < 0) {
