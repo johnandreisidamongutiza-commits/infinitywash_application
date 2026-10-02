@@ -249,7 +249,6 @@ class AuthService {
     required String email,
     required String password,
     bool rememberMe = false,
-    String? role,
   }) async {
     try {
       final response = await _auth.signInWithPassword(
@@ -271,7 +270,6 @@ class AuthService {
           user: response.user!,
           session: response.session!,
           email: email,
-          role: role,
         );
       }
 
@@ -396,50 +394,54 @@ class AuthService {
     }
   }
 
-  Future<bool> hasActiveRole(String role) async {
-    final user = _auth.currentUser;
-    if (user == null) return false;
+  /// Discover the authenticated user's active role from the backend.
+  ///
+  /// Returns 'customer', 'staff', 'rider', 'admin' or 'superadmin' when the
+  /// account has an active profile (for staff/rider an active employee record
+  /// matching the role is also required). Returns null when no active role can
+  /// be determined, or when the lookup fails — callers must treat null as
+  /// "not authorized" and sign the user out.
+  Future<String?> getUserRole() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return null;
 
-    final profile = await SupabaseService.client
-        .from('profiles')
-        .select('role, status')
-        .eq('supabase_user_id', user.id)
-        .maybeSingle();
+      final client = SupabaseService.client;
+      final profile = await client
+          .from('profiles')
+          .select('id, role, status')
+          .eq('supabase_user_id', user.id)
+          .maybeSingle();
 
-    if (profile == null) return false;
+      if (profile == null) return null;
 
-    final profileRole = (profile['role'] as String?)?.toLowerCase();
-    final profileStatus = (profile['status'] as String?)?.toLowerCase();
-    return profileRole == role.toLowerCase() && profileStatus == 'active';
-  }
+      final profileStatus = (profile['status'] as String?)?.toLowerCase() ?? '';
+      if (profileStatus != 'active') return null;
 
-  Future<bool> hasActiveEmployeeRole(String role) async {
-    final user = _auth.currentUser;
-    if (user == null) return false;
+      final role = (profile['role'] as String?)?.toLowerCase() ?? '';
+      if (role.isEmpty) return null;
 
-    final client = SupabaseService.client;
-    final profile = await client
-        .from('profiles')
-        .select('id, role, status')
-        .eq('supabase_user_id', user.id)
-        .maybeSingle();
+      // Staff and riders must also have an active employee record that matches.
+      if (role == 'staff' || role == 'rider') {
+        final employee = await client
+            .from('employees')
+            .select('role, status')
+            .eq('profile_id', profile['id'])
+            .maybeSingle();
 
-    if (profile == null ||
-        (profile['role'] as String?)?.toLowerCase() != role.toLowerCase() ||
-        (profile['status'] as String?)?.toLowerCase() != 'active') {
-      return false;
+        if (employee == null) return null;
+
+        final employeeRole = (employee['role'] as String?)?.toLowerCase() ?? '';
+        final employeeStatus = (employee['status'] as String?)?.toLowerCase() ?? '';
+
+        if (employeeRole != role || employeeStatus != 'active') return null;
+      }
+
+      return role;
+    } catch (e) {
+      print('❌ Error discovering user role: $e');
+      return null;
     }
-
-    final employee = await client
-        .from('employees')
-        .select('role, status, profile_id')
-        .eq('profile_id', profile['id'])
-        .maybeSingle();
-
-    if (employee == null) return false;
-
-    return (employee['role'] as String?)?.toLowerCase() == role.toLowerCase() &&
-        (employee['status'] as String?)?.toLowerCase() == 'active';
   }
 
   // Sign out
@@ -503,18 +505,16 @@ class AuthService {
     required User user,
     required Session session,
     required String email,
-    String? role,
   }) async {
     try {
       print('🔐 REMEMBER ME: Starting save process...');
       print('🔐 User ID: ${user.id}');
       print('🔐 Email: $email');
-      print('🔐 Role: $role');
       
-      // Fetch profile data to get name and role
+      // Fetch profile data to get name
       final profile = await SupabaseService.client
           .from('profiles')
-          .select('first_name, last_name, role')
+          .select('first_name, last_name')
           .eq('supabase_user_id', user.id)
           .maybeSingle();
 
@@ -522,16 +522,13 @@ class AuthService {
 
       final firstName = profile?['first_name'] as String?;
       final lastName = profile?['last_name'] as String?;
-      final userRole = role ?? profile?['role'] as String? ?? 'Customer';
 
-      print('🔐 Using role: $userRole');
       print('🔐 User name: ${firstName ?? "N/A"} ${lastName ?? "N/A"}');
 
       // Create saved account
       final savedAccount = SavedAccount(
         id: user.id,
         email: email,
-        role: userRole,
         firstName: firstName,
         lastName: lastName,
         profilePictureUrl: null, // Can be extended later
@@ -677,16 +674,6 @@ class AuthService {
   // Get all saved accounts
   Future<List<SavedAccount>> getSavedAccounts() async {
     return await _savedAccountsDb.getAllAccounts();
-  }
-
-  // Get saved accounts for a specific role
-  Future<List<SavedAccount>> getSavedAccountsByRole(String role) async {
-    return await _savedAccountsDb.getAccountsByRole(role);
-  }
-
-  // Get a specific saved account
-  Future<SavedAccount?> getSavedAccount(String email, String role) async {
-    return await _savedAccountsDb.getAccount(email, role);
   }
 
   // Remove remember me data for a user

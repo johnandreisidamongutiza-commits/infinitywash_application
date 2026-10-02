@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:infinitywash/services/auth_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'supabase_test_setup.dart';
 
 /// Account Deactivation Tests
 /// 
@@ -20,18 +20,24 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// - Active rider (status: 'active', role: 'rider')
 /// - Deactivated rider (status: 'deactivated', role: 'rider')
 
+const _skipReason =
+    'Requires a live Supabase test project with seeded accounts '
+    '(see setup notes at the top of this file).';
+
 void main() {
   late AuthService authService;
 
   setUpAll(() async {
-    // Initialize Supabase for testing
-    // NOTE: Replace with your test Supabase credentials
-    await Supabase.initialize(
-      url: 'YOUR_SUPABASE_URL',
-      anonKey: 'YOUR_SUPABASE_ANON_KEY',
-    );
-    
+    // Initialize a hermetic Supabase instance. All test groups below are
+    // skipped until live test credentials are provided; remove the `skip`
+    // arguments and pass real URL/key values to exercise the full suite.
+    await initializeTestSupabase();
+
     authService = AuthService();
+  });
+
+  tearDownAll(() async {
+    await disposeTestSupabase();
   });
 
   tearDown(() async {
@@ -53,7 +59,6 @@ void main() {
       final response = await authService.signIn(
         email: email,
         password: password,
-        role: 'Customer',
       );
 
       // Assert
@@ -71,7 +76,6 @@ void main() {
         () async => await authService.signIn(
           email: email,
           password: password,
-          role: 'Customer',
         ),
         throwsA(predicate((e) => 
           e.toString().contains('ACCOUNT_DEACTIVATED')
@@ -90,7 +94,6 @@ void main() {
         await authService.signIn(
           email: email,
           password: password,
-          role: 'Customer',
         );
         fail('Should have thrown an exception');
       } catch (e) {
@@ -109,7 +112,6 @@ void main() {
         await authService.signIn(
           email: email,
           password: password,
-          role: 'Customer',
         );
         fail('Should have thrown an exception');
       } catch (e) {
@@ -128,7 +130,6 @@ void main() {
       final response = await authService.signIn(
         email: email,
         password: password,
-        role: 'Customer',
       );
 
       // Assert
@@ -145,7 +146,6 @@ void main() {
       final response = await authService.signIn(
         email: email,
         password: password,
-        role: 'Staff',
       );
 
       // Assert
@@ -163,7 +163,6 @@ void main() {
         () async => await authService.signIn(
           email: email,
           password: password,
-          role: 'Staff',
         ),
         throwsA(predicate((e) => 
           e.toString().contains('ACCOUNT_DEACTIVATED')
@@ -180,7 +179,6 @@ void main() {
       final response = await authService.signIn(
         email: email,
         password: password,
-        role: 'Rider',
       );
 
       // Assert
@@ -198,7 +196,6 @@ void main() {
         () async => await authService.signIn(
           email: email,
           password: password,
-          role: 'Rider',
         ),
         throwsA(predicate((e) => 
           e.toString().contains('ACCOUNT_DEACTIVATED')
@@ -216,7 +213,6 @@ void main() {
         () async => await authService.signIn(
           email: email,
           password: password,
-          role: 'Customer',
         ),
         throwsA(predicate((e) => 
           e.toString().contains('ACCOUNT_DEACTIVATED') &&
@@ -224,7 +220,7 @@ void main() {
         )),
       );
     });
-  });
+  }, skip: _skipReason);
 
   group('Account Deactivation - Auto-Login Tests', () {
     test('Test 11: Auto-login fails for deactivated account', () async {
@@ -237,7 +233,6 @@ void main() {
         email: email,
         password: password,
         rememberMe: true,
-        role: 'Customer',
       );
       
       final user = authService.getCurrentUser();
@@ -265,7 +260,6 @@ void main() {
         email: email,
         password: password,
         rememberMe: true,
-        role: 'Customer',
       );
       
       final user = authService.getCurrentUser();
@@ -281,7 +275,7 @@ void main() {
       expect(response, isNotNull);
       expect(response!.user!.id, equals(userId));
     });
-  });
+  }, skip: _skipReason);
 
   group('Account Deactivation - Database Persistence Tests', () {
     test('Test 13: Deactivation reason persists in database', () async {
@@ -298,7 +292,6 @@ void main() {
         await authService.signIn(
           email: email,
           password: password,
-          role: 'Customer',
         );
         fail('Should have thrown an exception');
       } catch (e) {
@@ -318,7 +311,6 @@ void main() {
       final response = await authService.signIn(
         email: email,
         password: password,
-        role: 'Customer',
       );
 
       // Assert - Should login successfully
@@ -327,7 +319,7 @@ void main() {
       // Verify in database that deactivation_reason is null
       // (This would require a direct database query)
     });
-  });
+  }, skip: _skipReason);
 }
 
 /// MANUAL TESTING CHECKLIST

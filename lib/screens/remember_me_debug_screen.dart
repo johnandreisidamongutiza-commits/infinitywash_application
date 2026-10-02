@@ -56,7 +56,6 @@ class _RememberMeDebugScreenState extends State<RememberMeDebugScreen> {
       } else {
         for (var account in accounts) {
           buffer.writeln('   - ${account.email}');
-          buffer.writeln('     Role: ${account.role}');
           buffer.writeln('     Name: ${account.displayName}');
           buffer.writeln('     Last login: ${account.lastLoginDate}');
         }

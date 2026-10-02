@@ -4,16 +4,20 @@ import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/auth_service.dart';
 import '../models/saved_account.dart';
+import '../config/location_constants.dart';
 import 'staff/staff_main_screen.dart';
 import 'customer/customer_main_screen.dart';
 import 'rider/rider_main_screen.dart';
 import 'customer/customer_registration_screen.dart';
 import 'forgot_password_screen.dart';
 
+/// Single, role-agnostic login screen and the app's logged-out entry point.
+///
+/// The role is never chosen here: after sign-in it is discovered from the
+/// backend ([AuthService.getUserRole]) and the user is routed to the matching
+/// main screen.
 class LoginScreen extends StatefulWidget {
-  final String role;
-
-  const LoginScreen({super.key, required this.role});
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -44,29 +48,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _loadSavedAccounts() async {
     try {
-      print('📋 LOGIN SCREEN: Loading saved accounts for role: ${widget.role}');
-      
-      final accounts = await _authService.getSavedAccountsByRole(widget.role);
-      print('📋 LOGIN SCREEN: Found ${accounts.length} saved accounts');
-      
-      for (var account in accounts) {
-        print('📋   - ${account.email} (${account.displayName})');
-      }
-      
+      final accounts = await _authService.getSavedAccounts();
+
+      if (!mounted) return;
       setState(() {
         _savedAccounts = accounts;
         _isLoadingSavedAccounts = false;
-        
+
         // Pre-fill the most recent account if available
         if (_savedAccounts.isNotEmpty) {
           _selectedAccount = _savedAccounts.first;
           _emailController.text = _selectedAccount!.email;
           rememberMe = true;
-          print('📋 LOGIN SCREEN: Pre-filled with ${_selectedAccount!.email}');
         }
       });
     } catch (e) {
-      print('❌ LOGIN SCREEN: Failed to load saved accounts: $e');
+      if (!mounted) return;
       setState(() {
         _isLoadingSavedAccounts = false;
       });
@@ -99,6 +96,16 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Map an active backend role to its main screen (null = unsupported role).
+  Widget? _destinationForRole(String role) {
+    return switch (role) {
+      'customer' => const CustomerMainScreen(),
+      'staff' => const StaffMainScreen(),
+      'rider' => const RiderMainScreen(),
+      _ => null,
+    };
+  }
+
   Future<void> _signIn() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
@@ -108,61 +115,62 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    print('\n========== LOGIN ATTEMPT ==========');
-    print('Email: $email');
-    print('Role: ${widget.role}');
-    print('Remember Me: $rememberMe');
-    print('===================================\n');
-
     setState(() => _isLoading = true);
     try {
       await _authService.signIn(
         email: email,
         password: password,
         rememberMe: rememberMe,
-        role: widget.role,
       );
-      
-      print('✅ LOGIN: Sign in successful');
-      
-      if (widget.role == 'Customer') {
+
+      // Discover the role from the backend — never from local state.
+      final role = await _authService.getUserRole();
+
+      if (role == null) {
+        await _authService.signOut();
+        if (mounted) {
+          _showMessage(
+            'No active role found for this account. Please contact support.',
+          );
+        }
+        return;
+      }
+
+      // Ensure the customer record exists and stays up to date, but only
+      // for accounts the backend confirms as customers. Running this
+      // before role discovery could overwrite the profile of a promoted
+      // staff/rider/admin user whose auth metadata still says 'customer'.
+      if (role == 'customer') {
         await _authService.ensureCustomerProfileFromMetadata();
       }
-      
-      final hasRole = widget.role == 'Customer'
-          ? await _authService.hasActiveRole(widget.role)
-          : await _authService.hasActiveEmployeeRole(widget.role);
-      
-      print('✅ LOGIN: Role check passed: $hasRole');
-          
-      if (!hasRole) {
+
+      final maybeDestination = _destinationForRole(role);
+
+      if (maybeDestination == null) {
         await _authService.signOut();
-        throw Exception('This account is not authorized for the ${widget.role} role.');
+        if (mounted) {
+          _showMessage(
+            'This account type is not supported in the app yet. '
+            'Please contact support.',
+          );
+        }
+        return;
       }
+
+      final Widget destination = maybeDestination;
 
       if (!mounted) return;
 
-      final destination = switch (widget.role) {
-        'Staff' => const StaffMainScreen(),
-        'Customer' => const CustomerMainScreen(),
-        'Rider' => const RiderMainScreen(),
-        _ => null,
-      };
-
-      if (destination != null) {
-        print('✅ LOGIN: Navigating to main screen');
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => destination),
-          (route) => false,
-        );
-      }
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => destination),
+        (route) => false,
+      );
     } catch (error) {
-      print('❌ LOGIN: Failed - $error');
       if (mounted) {
         String message;
         final errorStr = error.toString();
-        
+
         // Check if it's a deactivation error with reason
         if (errorStr.contains('ACCOUNT_DEACTIVATED:')) {
           final reason = errorStr.split('ACCOUNT_DEACTIVATED:').last.trim();
@@ -172,7 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           message = 'Login failed: ${error.toString()}';
         }
-        
+
         _showMessage(message);
       }
     } finally {
@@ -215,6 +223,66 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _showContactSupportDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.headset_mic_outlined, color: AppTheme.errorRed),
+            SizedBox(width: 12),
+            Text('Contact Support'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'We\'re here to help with your account, bookings, or deliveries.',
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(Icons.phone_outlined,
+                    size: 20, color: AppTheme.accentBlue),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    LocationConstants.shopPhone,
+                    style: AppTheme.lightTheme.textTheme.bodyLarge,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.location_on_outlined,
+                    size: 20, color: AppTheme.accentBlue),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    LocationConstants.shopAddress,
+                    style: AppTheme.lightTheme.textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close',
+                style: TextStyle(color: AppTheme.accentBlue)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -222,49 +290,69 @@ class _LoginScreenState extends State<LoginScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
+        // This screen is the logged-out entry point, so only offer going
+        // back when it was actually pushed on top of another route.
+        leading: Navigator.of(context).canPop()
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
         child: Column(
           children: [
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppTheme.softGray,
-                  shape: BoxShape.circle,
-                ),
-                child: ClipOval(
-                  child: Image.asset(
-                    'assets/images/logo.jpg',
-                    height: 100,
-                    width: 100,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => const Icon(
-                      Icons.wash,
-                      size: 100,
-                      color: AppTheme.accentBlue,
-                    ),
+            const SizedBox(height: 8),
+
+            // Branding: mascot logo in a soft circle.
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: AppTheme.softGray,
+                shape: BoxShape.circle,
+              ),
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/images/logo.jpg',
+                  height: 120,
+                  width: 120,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const Icon(
+                    Icons.wash,
+                    size: 120,
+                    color: AppTheme.accentBlue,
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 12),
+
+            // Brand name.
+            const Text(
+              'INFINITY WASH',
+              style: TextStyle(
+                color: AppTheme.primaryBlue,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Welcome heading.
             Text(
-              '${widget.role} Login',
-              style: AppTheme.lightTheme.textTheme.headlineMedium,
+              'Welcome to\nInfinity Wash',
+              textAlign: TextAlign.center,
+              style: AppTheme.lightTheme.textTheme.displaySmall,
             ),
             const SizedBox(height: 8),
             Text(
-              'Sign in to continue to your ${widget.role} account.',
+              'Sign in to continue to your account.',
               style: AppTheme.lightTheme.textTheme.bodyMedium,
             ),
-            const SizedBox(height: 30),
-            
+            const SizedBox(height: 28),
+
             // Saved Accounts Section
             if (_isLoadingSavedAccounts)
               const Padding(
@@ -290,7 +378,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   itemBuilder: (context, index) {
                     final account = _savedAccounts[index];
                     final isSelected = _selectedAccount?.id == account.id;
-                    
+
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       decoration: BoxDecoration(
@@ -338,36 +426,10 @@ class _LoginScreenState extends State<LoginScreen> {
               const Divider(),
               const SizedBox(height: 20),
             ],
-            
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppTheme.borderGray),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.person_outline, color: AppTheme.accentBlue),
-                  const SizedBox(width: 12),
-                  Text(
-                    widget.role,
-                    style: AppTheme.lightTheme.textTheme.titleMedium,
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text(
-                      'Change',
-                      style: TextStyle(color: AppTheme.accentBlue),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
+
             CustomTextField(
-              label: 'Work Email',
-              hint: 'Enter your work email',
+              label: 'Email',
+              hint: 'Enter your email',
               prefixIcon: Icons.email_outlined,
               controller: _emailController,
             ),
@@ -394,7 +456,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => ForgotPasswordScreen(role: widget.role)),
+                      MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
                     );
                   },
                   child: const Text(
@@ -422,31 +484,59 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  widget.role == 'Customer' ? "Don't have an account? " : 'Need help? ',
+                  "Don't have an account? ",
                   style: AppTheme.lightTheme.textTheme.bodyMedium,
                 ),
                 TextButton(
                   onPressed: () {
-                    if (widget.role == 'Customer') {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const CustomerRegistrationScreen()),
-                      );
-                    }
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const CustomerRegistrationScreen()),
+                    );
                   },
-                  child: Text(
-                    widget.role == 'Customer' ? 'Register' : 'Contact administrator.',
-                    style: const TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
+                  child: const Text(
+                    'Register',
+                    style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+
+            // Help footer.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.headset_mic_outlined,
+                    color: AppTheme.errorRed, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Need help? ',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium,
+                ),
+                TextButton(
+                  onPressed: _showContactSupportDialog,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 0),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'Contact support.',
+                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                      color: AppTheme.accentBlue,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
           ],
         ),
       ),

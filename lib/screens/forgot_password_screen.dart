@@ -8,8 +8,7 @@ import '../services/rate_limit_service.dart';
 enum ForgotPasswordStep { identity, otp, reset, success }
 
 class ForgotPasswordScreen extends StatefulWidget {
-  final String role;
-  const ForgotPasswordScreen({super.key, required this.role});
+  const ForgotPasswordScreen({super.key});
 
   @override
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();

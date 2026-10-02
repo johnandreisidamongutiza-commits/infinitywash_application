@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
-import 'role_selection_screen.dart';
+import 'login_screen.dart';
 import 'staff/staff_main_screen.dart';
 import 'customer/customer_main_screen.dart';
 import 'rider/rider_main_screen.dart';
@@ -22,19 +22,19 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    
+
     // Setup animation
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
-    
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
-    
+
     _animationController.forward();
-    
+
     // Start auto-login check
     _checkAutoLogin();
   }
@@ -49,74 +49,70 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     try {
       // Add a small delay for better UX
       await Future.delayed(const Duration(milliseconds: 800));
-      
+
       setState(() {
         _statusMessage = 'Checking saved accounts...';
       });
 
       // Try to auto-login with the last saved account
       final authResponse = await _authService.tryAutoLogin();
-      
+
       if (authResponse != null && authResponse.user != null) {
         setState(() {
           _statusMessage = 'Logging in...';
         });
-        
-        // Get the user's role from saved accounts
-        final savedAccounts = await _authService.getSavedAccounts();
-        final savedAccount = savedAccounts.firstWhere(
-          (account) => account.id == authResponse.user!.id,
-          orElse: () => savedAccounts.first,
-        );
-        
-        final role = savedAccount.role;
-        
-        // Verify the role is still active
-        final hasRole = role == 'Customer'
-            ? await _authService.hasActiveRole(role)
-            : await _authService.hasActiveEmployeeRole(role);
-        
-        if (!hasRole) {
-          // Role no longer active, remove saved data and go to role selection
-          await _authService.removeSavedAccount(authResponse.user!.id);
+
+        // Discover the user's role from the backend
+        final role = await _authService.getUserRole();
+
+        if (role == null) {
+          // No active role — deny auto-login. Saved data is intentionally
+          // left in place so a transient backend error cannot wipe tokens.
           await _authService.signOut();
-          _navigateToRoleSelection();
+          _navigateToLogin();
           return;
         }
-        
+
         // Navigate to appropriate screen based on role
+        final maybeDestination = switch (role) {
+          'customer' => const CustomerMainScreen(),
+          'staff' => const StaffMainScreen(),
+          'rider' => const RiderMainScreen(),
+          _ => null,
+        };
+
+        if (maybeDestination == null) {
+          // Role known but not supported in the app yet (admin/superadmin)
+          await _authService.signOut();
+          _navigateToLogin();
+          return;
+        }
+
+        final Widget destination = maybeDestination;
+
         if (mounted) {
-          final destination = switch (role) {
-            'Staff' => const StaffMainScreen(),
-            'Customer' => const CustomerMainScreen(),
-            'Rider' => const RiderMainScreen(),
-            _ => null,
-          };
-          
-          if (destination != null) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => destination),
-            );
-            return;
-          }
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => destination),
+          );
+          return;
         }
       }
-      
-      // No auto-login or failed, go to role selection
-      _navigateToRoleSelection();
-      
+
+      // No auto-login or failed, go to login
+      _navigateToLogin();
+
     } catch (e) {
       print('Auto-login error: $e');
-      _navigateToRoleSelection();
+      _navigateToLogin();
     }
   }
 
-  void _navigateToRoleSelection() {
+  void _navigateToLogin() {
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
       );
     }
   }
@@ -160,7 +156,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 ),
               ),
               const SizedBox(height: 40),
-              
+
               // App Name
               Text(
                 'Infinity Wash',
@@ -177,7 +173,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 ),
               ),
               const SizedBox(height: 60),
-              
+
               // Loading Indicator
               const SizedBox(
                 width: 40,
@@ -188,7 +184,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 ),
               ),
               const SizedBox(height: 20),
-              
+
               // Status Message
               Text(
                 _statusMessage,

@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../models/saved_account.dart';
-import 'role_selection_screen.dart';
+import 'login_screen.dart';
+import 'staff/staff_main_screen.dart';
+import 'customer/customer_main_screen.dart';
+import 'rider/rider_main_screen.dart';
 
 class AccountManagementScreen extends StatefulWidget {
   const AccountManagementScreen({super.key});
@@ -76,24 +79,52 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
       final authResponse = await _authService.tryAutoLogin(userId: account.id);
 
       if (authResponse != null && authResponse.user != null) {
-        // Verify role is still active
-        final role = account.role;
-        final hasRole = role == 'Customer'
-            ? await _authService.hasActiveRole(role)
-            : await _authService.hasActiveEmployeeRole(role);
+        // Discover the account's role from the backend
+        final role = await _authService.getUserRole();
 
-        if (!hasRole) {
-          await _authService.removeSavedAccount(account.id);
-          throw Exception('Account no longer has access to ${account.role} role');
+        if (role == null) {
+          await _authService.signOut();
+          if (mounted) {
+            setState(() => _isLoading = false);
+            _showMessage('Could not verify account access. Please log in again.');
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+              (route) => false,
+            );
+          }
+          return;
         }
+
+        final maybeDestination = switch (role) {
+          'customer' => const CustomerMainScreen(),
+          'staff' => const StaffMainScreen(),
+          'rider' => const RiderMainScreen(),
+          _ => null,
+        };
+
+        if (maybeDestination == null) {
+          await _authService.signOut();
+          if (mounted) {
+            setState(() => _isLoading = false);
+            _showMessage('This account type is not supported in the app yet. Please contact support.');
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+              (route) => false,
+            );
+          }
+          return;
+        }
+
+        final Widget destination = maybeDestination;
 
         if (!mounted) return;
 
-        // Navigate to role selection, which will redirect to appropriate screen
         _showMessage('Switched to ${account.displayName}');
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+          MaterialPageRoute(builder: (context) => destination),
           (route) => false,
         );
       } else {
@@ -102,7 +133,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         _showMessage('Session expired. Please log in again.');
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
           (route) => false,
         );
       }
@@ -160,7 +191,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         _showMessage('Account removed. Please log in again.');
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
           (route) => false,
         );
       } else {
@@ -214,7 +245,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
       _showMessage('All accounts cleared');
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
         (route) => false,
       );
     } catch (e) {
@@ -379,20 +410,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
             const SizedBox(height: 4),
             Row(
               children: [
-                Icon(
-                  Icons.badge_outlined,
-                  size: 14,
-                  color: Colors.grey[600],
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  account.role,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(width: 16),
                 Icon(
                   Icons.access_time,
                   size: 14,

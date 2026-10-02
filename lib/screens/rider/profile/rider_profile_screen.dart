@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/auth_service.dart';
-import '../../role_selection_screen.dart';
+import '../../login_screen.dart';
 import 'options/account_details_screen.dart';
 import 'options/change_password_screen.dart';
 
@@ -131,7 +131,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                 _authService.signOut();
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
                   (route) => false,
                 );
               },
