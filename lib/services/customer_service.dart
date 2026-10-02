@@ -77,6 +77,12 @@ class CustomerService {
         throw Exception('Customer first name is required');
       }
 
+      // Normalize phone number before saving
+      String? normalizedPhone;
+      if (phone != null && phone.trim().isNotEmpty) {
+        normalizedPhone = normalizePhone(phone.trim());
+      }
+
       // Generate unique customer code
       final customerCode = await generateCustomerCode();
 
@@ -89,7 +95,7 @@ class CustomerService {
             'customer_code': customerCode,
             'first_name': firstName.trim(),
             'last_name': lastName?.trim(),
-            'phone': phone?.trim(),
+            'phone': normalizedPhone,
             'email': email?.trim(),
             'address': address?.trim(),
             'landmark': landmark?.trim(),
@@ -142,15 +148,22 @@ class CustomerService {
         final needsUpdate = 
             (address != null && address.isNotEmpty && existing['address'] != address) ||
             (landmark != null && landmark.isNotEmpty && existing['landmark'] != landmark) ||
-            (phone != null && phone.isNotEmpty && existing['phone'] != phone) ||
+            (phone != null && phone.isNotEmpty && normalizePhone(existing['phone'] ?? '') != normalizePhone(phone)) ||
             (email != null && email.isNotEmpty && existing['email'] != email);
         
         if (needsUpdate) {
           print('ℹ️ Updating customer info for $customerId');
+          
+          // Normalize phone if updating
+          String? normalizedPhone;
+          if (phone != null && phone.trim().isNotEmpty) {
+            normalizedPhone = normalizePhone(phone.trim());
+          }
+          
           await _client.from('customers').update({
             if (firstName.trim().isNotEmpty) 'first_name': firstName.trim(),
             if (lastName != null && lastName.trim().isNotEmpty) 'last_name': lastName.trim(),
-            if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+            if (normalizedPhone != null) 'phone': normalizedPhone,
             if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
             if (address != null && address.trim().isNotEmpty) 'address': address.trim(),
             if (landmark != null && landmark.trim().isNotEmpty) 'landmark': landmark.trim(),
@@ -173,6 +186,12 @@ class CustomerService {
       final customerCode = await generateCustomerCode();
       final now = DateTime.now().toIso8601String();
 
+      // Normalize phone before saving
+      String? normalizedPhone;
+      if (phone != null && phone.trim().isNotEmpty) {
+        normalizedPhone = normalizePhone(phone.trim());
+      }
+
       // Insert customer record with profile_id
       final response = await _client
           .from('customers')
@@ -181,7 +200,7 @@ class CustomerService {
             'profile_id': profileId,
             'first_name': firstName.trim(),
             'last_name': lastName?.trim(),
-            'phone': phone?.trim(),
+            'phone': normalizedPhone,
             'email': email?.trim(),
             'address': address?.trim(),
             'landmark': landmark?.trim(),
@@ -317,6 +336,117 @@ class CustomerService {
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       print('Error searching customers: $e');
+      return [];
+    }
+  }
+
+  /// Normalize phone number by removing all non-digit characters
+  /// Example: "0912-345-6789" -> "09123456789"
+  String normalizePhone(String phone) {
+    return phone.replaceAll(RegExp(r'[^\d]'), '');
+  }
+
+  /// Search customers by name and/or phone with order history
+  /// Returns customers sorted by most recent order date
+  /// Normalizes phone numbers for flexible matching
+  Future<List<Map<String, dynamic>>> searchCustomersWithHistory({
+    String? name,
+    String? phone,
+  }) async {
+    try {
+      // Build search conditions
+      if ((name == null || name.trim().isEmpty) && 
+          (phone == null || phone.trim().isEmpty)) {
+        return [];
+      }
+
+      // Normalize phone for database comparison
+      String? normalizedPhone;
+      if (phone != null && phone.trim().isNotEmpty) {
+        normalizedPhone = normalizePhone(phone.trim());
+      }
+
+      // Query customers with their most recent order
+      var query = _client
+          .from('customers')
+          .select('''
+            id,
+            customer_code,
+            first_name,
+            last_name,
+            phone,
+            email,
+            address,
+            landmark,
+            customer_type,
+            joined_at,
+            orders!customer_id (
+              id,
+              created_at,
+              delivery_requested,
+              customer_notes
+            )
+          ''')
+          .eq('status', 'active');
+
+      // Build OR condition for name and phone search
+      List<String> orConditions = [];
+      
+      if (name != null && name.trim().isNotEmpty) {
+        final searchName = name.trim();
+        orConditions.add('first_name.ilike.%$searchName%');
+        orConditions.add('last_name.ilike.%$searchName%');
+      }
+      
+      if (normalizedPhone != null && normalizedPhone.isNotEmpty) {
+        // Search normalized phone (matches "09123456789")
+        orConditions.add('phone.ilike.%$normalizedPhone%');
+      }
+
+      if (orConditions.isNotEmpty) {
+        query = query.or(orConditions.join(','));
+      }
+
+      final response = await query.limit(10);
+      
+      // Process results to include most recent order date for sorting
+      final customers = List<Map<String, dynamic>>.from(response as List);
+      
+      for (var customer in customers) {
+        // Extract most recent order
+        final orders = customer['orders'] as List?;
+        if (orders != null && orders.isNotEmpty) {
+          // Sort orders by created_at descending
+          orders.sort((a, b) {
+            final aDate = DateTime.parse(a['created_at'] as String);
+            final bDate = DateTime.parse(b['created_at'] as String);
+            return bDate.compareTo(aDate);
+          });
+          
+          customer['last_order'] = orders.first;
+          customer['last_order_date'] = orders.first['created_at'];
+        } else {
+          customer['last_order'] = null;
+          customer['last_order_date'] = null;
+        }
+      }
+
+      // Sort by most recent order date (customers with recent orders first)
+      customers.sort((a, b) {
+        final aDate = a['last_order_date'] as String?;
+        final bDate = b['last_order_date'] as String?;
+        
+        if (aDate == null && bDate == null) return 0;
+        if (aDate == null) return 1; // No orders go last
+        if (bDate == null) return -1; // No orders go last
+        
+        return DateTime.parse(bDate).compareTo(DateTime.parse(aDate));
+      });
+
+      print('✅ Found ${customers.length} customers matching query');
+      return customers;
+    } catch (e) {
+      print('❌ Error searching customers with history: $e');
       return [];
     }
   }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_text_field.dart';
@@ -10,6 +11,7 @@ import '../../../services/loyalty_service.dart';
 import '../../../services/supabase_service.dart';
 
 class _CustomerProfile {
+  final String? customerId;
   final String firstName;
   final String lastName;
   final String phone;
@@ -17,8 +19,10 @@ class _CustomerProfile {
   final String? address;
   final String? landmark;
   final String? instructions;
+  final DateTime? lastOrderDate;
 
   const _CustomerProfile({
+    this.customerId,
     required this.firstName,
     required this.lastName,
     required this.phone,
@@ -26,9 +30,35 @@ class _CustomerProfile {
     this.address,
     this.landmark,
     this.instructions,
+    this.lastOrderDate,
   });
 
   String get fullName => '$firstName $lastName'.trim();
+
+  /// Create from database JSON
+  factory _CustomerProfile.fromJson(Map<String, dynamic> json) {
+    // Parse return method from last order
+    ReturnMethod returnMethod = ReturnMethod.shopPickup;
+    final lastOrder = json['last_order'] as Map<String, dynamic>?;
+    if (lastOrder != null && lastOrder['delivery_requested'] != null) {
+      final deliveryRequested = lastOrder['delivery_requested'] as bool;
+      returnMethod = deliveryRequested ? ReturnMethod.delivery : ReturnMethod.shopPickup;
+    }
+
+    return _CustomerProfile(
+      customerId: json['id'] as String?,
+      firstName: json['first_name'] as String? ?? '',
+      lastName: json['last_name'] as String? ?? '',
+      phone: json['phone'] as String? ?? '',
+      returnMethod: returnMethod,
+      address: json['address'] as String?,
+      landmark: json['landmark'] as String?,
+      instructions: lastOrder?['customer_notes'] as String?,
+      lastOrderDate: json['last_order_date'] != null 
+          ? DateTime.tryParse(json['last_order_date'] as String)
+          : null,
+    );
+  }
 }
 
 class CreateOrderFlow extends StatefulWidget {
@@ -79,8 +109,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   final GlobalKey _step2Key = GlobalKey();
   final GlobalKey _step3Key = GlobalKey();
 
+  // Customer suggestion state
   _CustomerProfile? _suggestedCustomer;
   bool _dismissedSuggestion = false;
+  Timer? _searchDebounce;
 
   // Multiple loads support
   final List<LoadDraft> _loads = [];
@@ -97,6 +129,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     
     _firstNameController.addListener(_checkForCustomerSuggestion);
     _lastNameController.addListener(_checkForCustomerSuggestion);
+    _phoneController.addListener(_checkForCustomerSuggestion);
   }
 
   /// Look up a loyalty card by UID and optionally auto-fill customer info.
@@ -156,59 +189,6 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       _loyaltyCardController.clear();
     });
   }
-
-  static const List<_CustomerProfile> _knownCustomers = [
-    _CustomerProfile(
-      firstName: 'Juan',
-      lastName: 'Dela Cruz',
-      phone: '0917-123-4567',
-      returnMethod: ReturnMethod.delivery,
-      address: '123 Mango Ave, Brgy. Guadalupe, Cebu City',
-      landmark: 'Near yellow gate across 7-Eleven',
-      instructions: 'Separate whites, delicate wash',
-    ),
-    _CustomerProfile(
-      firstName: 'Maria',
-      lastName: 'Santos',
-      phone: '0922-555-0192',
-      returnMethod: ReturnMethod.delivery,
-      address: '456 Banilad Rd, Cebu City',
-      landmark: 'Beside green pharmacy',
-      instructions: 'Extra gentle cycle on shirts',
-    ),
-    _CustomerProfile(
-      firstName: 'Carlos',
-      lastName: 'Reyes',
-      phone: '0918-999-4321',
-      returnMethod: ReturnMethod.shopPickup,
-      instructions: 'Fold neatly in plastic',
-    ),
-    _CustomerProfile(
-      firstName: 'John',
-      lastName: 'Doe',
-      phone: '0912-345-6789',
-      returnMethod: ReturnMethod.shopPickup,
-      instructions: 'Heavy wash for denim',
-    ),
-    _CustomerProfile(
-      firstName: 'Jane',
-      lastName: 'Smith',
-      phone: '0920-111-2233',
-      returnMethod: ReturnMethod.delivery,
-      address: '789 Parkmall Area, Mandaue City',
-      landmark: 'Opposite Shell station',
-      instructions: 'Gentle cycle, hypoallergenic detergent',
-    ),
-    _CustomerProfile(
-      firstName: 'Bob',
-      lastName: 'Brown',
-      phone: '0919-888-7766',
-      returnMethod: ReturnMethod.delivery,
-      address: '88 Jones Ave, Cebu City',
-      landmark: 'Beside BDO bank',
-      instructions: 'Extra fabric softener please',
-    ),
-  ];
 
   Map<String, Map<String, dynamic>> get _categories => LaundryIntake.categories;
 
@@ -359,44 +339,82 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   }
 
   void _checkForCustomerSuggestion() {
+    // Cancel previous search timer
+    _searchDebounce?.cancel();
+
+    // If suggestion was already dismissed, don't search again
     if (_dismissedSuggestion) return;
-    final first = _firstNameController.text.trim().toLowerCase();
-    final last = _lastNameController.text.trim().toLowerCase();
-    final query = '$first $last'.trim();
 
-    if (query.length < 2) {
-      if (_suggestedCustomer != null) {
-        setState(() => _suggestedCustomer = null);
+    // Debounce the search to avoid excessive database queries
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        final firstName = _firstNameController.text.trim();
+        final lastName = _lastNameController.text.trim();
+        final phone = _phoneController.text.trim();
+
+        // Build name query
+        final nameQuery = '$firstName $lastName'.trim();
+
+        // Require minimum characters
+        final hasValidName = nameQuery.length >= 2;
+        final hasValidPhone = phone.length >= 4;
+
+        if (!hasValidName && !hasValidPhone) {
+          // Clear suggestion if query too short
+          if (_suggestedCustomer != null) {
+            setState(() => _suggestedCustomer = null);
+          }
+          return;
+        }
+
+        // Search database by name and/or phone
+        final results = await _customerService.searchCustomersWithHistory(
+          name: hasValidName ? nameQuery : null,
+          phone: hasValidPhone ? phone : null,
+        );
+
+        if (!mounted) return;
+
+        if (results.isEmpty) {
+          // No matches found
+          if (_suggestedCustomer != null) {
+            setState(() => _suggestedCustomer = null);
+          }
+          return;
+        }
+
+        // Get first match (prioritized by most recent order)
+        final matchJson = results.first;
+        final match = _CustomerProfile.fromJson(matchJson);
+
+        // Normalize phone numbers for comparison
+        final normalizePhone = (String? phone) {
+          if (phone == null) return '';
+          return phone.replaceAll(RegExp(r'[^\d]'), '');
+        };
+
+        // Hide suggestion if fields already exactly match this customer
+        final firstNameMatches = firstName.toLowerCase() == match.firstName.toLowerCase();
+        final lastNameMatches = lastName.toLowerCase() == match.lastName.toLowerCase();
+        final phoneMatches = normalizePhone(phone) == normalizePhone(match.phone);
+
+        if (firstNameMatches && lastNameMatches && phoneMatches) {
+          // Already filled with this customer's data
+          if (_suggestedCustomer != null) {
+            setState(() => _suggestedCustomer = null);
+          }
+          return;
+        }
+
+        // Show suggestion
+        if (_suggestedCustomer?.customerId != match.customerId) {
+          setState(() => _suggestedCustomer = match);
+        }
+      } catch (e) {
+        print('❌ Error in customer suggestion: $e');
+        // Don't show error to user, just fail silently
       }
-      return;
-    }
-
-    _CustomerProfile? match;
-    for (final customer in _knownCustomers) {
-      final custFirst = customer.firstName.toLowerCase();
-      final custLast = customer.lastName.toLowerCase();
-      final custFull = customer.fullName.toLowerCase();
-
-      if (custFirst.startsWith(first) && (last.isEmpty || custLast.startsWith(last))) {
-        match = customer;
-        break;
-      } else if (custLast.startsWith(first) || custFull.contains(query)) {
-        match = customer;
-        break;
-      }
-    }
-
-    // Hide if fields already match this customer
-    if (match != null &&
-        _firstNameController.text.trim().toLowerCase() == match.firstName.toLowerCase() &&
-        _lastNameController.text.trim().toLowerCase() == match.lastName.toLowerCase() &&
-        _phoneController.text.trim() == match.phone) {
-      match = null;
-    }
-
-    if (_suggestedCustomer != match) {
-      setState(() => _suggestedCustomer = match);
-    }
+    });
   }
 
   Widget _buildProgressIndicator() {
@@ -521,8 +539,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _firstNameController.removeListener(_checkForCustomerSuggestion);
     _lastNameController.removeListener(_checkForCustomerSuggestion);
+    _phoneController.removeListener(_checkForCustomerSuggestion);
     _firstNameController.dispose();
     _lastNameController.dispose();
     _phoneController.dispose();
@@ -648,10 +668,16 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       final firstName = nameParts.first;
       final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : null;
 
+      // Normalize phone number before saving to database
+      String? normalizedPhone;
+      if (_phoneController.text.trim().isNotEmpty) {
+        normalizedPhone = _customerService.normalizePhone(_phoneController.text.trim());
+      }
+
       final customerId = await _customerService.createCustomer(
         firstName: firstName,
         lastName: lastName,
-        phone: _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null,
+        phone: normalizedPhone,
         email: null, // Email not collected in walk-in flow
         address: _selectedReturn == ReturnMethod.delivery ? _addressController.text.trim() : null,
         landmark: _selectedReturn == ReturnMethod.delivery ? _landmarkController.text.trim() : null,
