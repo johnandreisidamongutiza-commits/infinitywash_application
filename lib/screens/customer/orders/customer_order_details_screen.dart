@@ -35,7 +35,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
   LaundryOrder? _latestOrder;
   bool _isRefreshing = false;
   bool _wasUpdated = false;
-  StreamSubscription? _orderSubscription;
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
@@ -43,14 +43,27 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     _latestOrder = widget.order;
     _loadFeedback();
     _refreshOrder();
-    _subscribeToOrderUpdates();
+    _startAutoRefresh();
   }
 
   @override
   void dispose() {
     _commentController.dispose();
-    _orderSubscription?.cancel();
+    _autoRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  /// Start auto-refresh timer (30 seconds for order detail view)
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (timer) {
+        if (mounted && !_isRefreshing) {
+          _refreshOrder();
+        }
+      },
+    );
+    print('✅ Started customer order detail auto-refresh timer (30s interval)');
   }
 
   Future<void> _refreshOrder() async {
@@ -68,89 +81,53 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
       );
 
       if (mounted && updated != null) {
+        // Check if total amount or status changed
+        final oldTotal = _latestOrder?.totalAmount;
+        final newTotal = updated.totalAmount;
+        final oldStatus = _latestOrder?.status;
+        final newStatus = updated.status;
+
         setState(() {
-          // Check if order was updated
-          if (_latestOrder != null && 
-              updated.totalAmount != null && 
-              _latestOrder!.totalAmount != updated.totalAmount) {
-            _wasUpdated = true;
-            // Reset the flag after 3 seconds
-            Future.delayed(const Duration(seconds: 3), () {
-              if (mounted) {
-                setState(() => _wasUpdated = false);
-              }
-            });
-          }
           _latestOrder = updated;
           _isRefreshing = false;
         });
+
+        // Show notification if amount or status changed
+        if ((oldTotal != null && newTotal != null && oldTotal != newTotal) ||
+            (oldStatus != null && oldStatus != newStatus)) {
+          _wasUpdated = true;
+          
+          String message = '';
+          if (oldTotal != newTotal && newTotal != null) {
+            message = 'Order updated! New total: ₱${newTotal.toStringAsFixed(2)}';
+          } else if (oldStatus != newStatus) {
+            message = 'Order status updated to: ${updated.statusText}';
+          }
+          
+          if (message.isNotEmpty && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: AppTheme.accentBlue,
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          
+          // Reset update flag after 3 seconds
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              setState(() => _wasUpdated = false);
+            }
+          });
+        }
       }
     } catch (e) {
       print('Error refreshing order: $e');
       if (mounted) {
         setState(() => _isRefreshing = false);
       }
-    }
-  }
-
-  void _subscribeToOrderUpdates() {
-    try {
-      _orderSubscription = Supabase.instance.client
-          .from('orders')
-          .stream(primaryKey: ['id'])
-          .eq('id', widget.order.id)
-          .listen((data) {
-            if (data.isNotEmpty && mounted) {
-              try {
-                final updatedOrder = LaundryOrder.fromJson(data.first);
-                
-                // Check if total amount or status changed
-                final oldTotal = _latestOrder?.totalAmount;
-                final newTotal = updatedOrder.totalAmount;
-                final oldStatus = _latestOrder?.status;
-                final newStatus = updatedOrder.status;
-                
-                setState(() {
-                  _latestOrder = updatedOrder;
-                });
-
-                // Show notification if amount or status changed
-                if ((oldTotal != null && newTotal != null && oldTotal != newTotal) ||
-                    (oldStatus != null && oldStatus != newStatus)) {
-                  _wasUpdated = true;
-                  
-                  String message = '';
-                  if (oldTotal != newTotal && newTotal != null) {
-                    message = 'Order updated! New total: ₱${newTotal.toStringAsFixed(2)}';
-                  } else if (oldStatus != newStatus) {
-                    message = 'Order status updated to: ${updatedOrder.statusText}';
-                  }
-                  
-                  if (message.isNotEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(message),
-                        backgroundColor: AppTheme.accentBlue,
-                        behavior: SnackBarBehavior.floating,
-                        duration: const Duration(seconds: 4),
-                      ),
-                    );
-                  }
-                  
-                  // Reset update flag after 3 seconds
-                  Future.delayed(const Duration(seconds: 3), () {
-                    if (mounted) {
-                      setState(() => _wasUpdated = false);
-                    }
-                  });
-                }
-              } catch (e) {
-                print('Error parsing real-time order update: $e');
-              }
-            }
-          });
-    } catch (e) {
-      print('Error setting up real-time subscription: $e');
     }
   }
 

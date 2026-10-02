@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
@@ -23,12 +24,34 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   int _unreadNotificationCount = 0;
   bool _isLoading = true;
   String? _error;
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadOrders();
     _loadUnreadCount();
+    _startAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Start auto-refresh timer (45 seconds for staff dashboard)
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(
+      const Duration(seconds: 45),
+      (timer) {
+        if (mounted && !_isLoading) {
+          _loadOrders();
+          _loadUnreadCount();
+        }
+      },
+    );
+    print('✅ Started staff auto-refresh timer (45s interval)');
   }
 
   Future<void> _loadUnreadCount() async {

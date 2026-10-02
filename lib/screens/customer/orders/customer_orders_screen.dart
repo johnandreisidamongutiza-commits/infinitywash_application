@@ -36,58 +36,35 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   // Feedback cache: orderId -> hasFeedback
   final Map<String, bool> _feedbackStatus = {};
   
-  // Real-time subscription
-  StreamSubscription? _ordersSubscription;
+  // Auto-refresh timer (replaces real-time subscription)
+  Timer? _autoRefreshTimer;
   String? _currentCustomerId;
 
   @override
   void initState() {
     super.initState();
     _loadCustomerOrders();
-    _subscribeToOrderUpdates();
+    _startAutoRefresh();
   }
 
   @override
   void dispose() {
-    _ordersSubscription?.cancel();
+    _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
-  /// Subscribe to real-time order updates
-  void _subscribeToOrderUpdates() async {
-    try {
-      // Get customer ID
-      final customerId = await _customerService.getCurrentAuthenticatedCustomerId();
-      _currentCustomerId = customerId;
-      
-      // Subscribe to orders table changes for this customer
-      // NOTE: Real-time stream only includes orders table, not joined data (order_loads, etc.)
-      // So we refetch full data when changes are detected
-      _ordersSubscription = Supabase.instance.client
-          .from('orders')
-          .stream(primaryKey: ['id'])
-          .eq('customer_id', customerId)
-          .listen((data) {
-            if (mounted) {
-              // Don't use real-time data directly - it lacks joins
-              // Instead, trigger a full refresh to get complete data
-              _loadCustomerOrders();
-            }
-          });
-      
-      print('✅ Subscribed to real-time order updates for customer: $customerId');
-    } catch (e) {
-      print('⚠️ Error setting up real-time subscription: $e');
-    }
+  /// Start auto-refresh timer (60 seconds for order list)
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(
+      const Duration(seconds: 60),
+      (timer) {
+        if (mounted && !_isLoading) {
+          _loadCustomerOrders();
+        }
+      },
+    );
+    print('✅ Started auto-refresh timer (60s interval)');
   }
-
-  /// Handle real-time order updates (Deprecated - now triggers full refresh)
-  /// Kept for reference but no longer used
-  // void _handleOrdersUpdate(List<Map<String, dynamic>> data) {
-  //   // Real-time stream data doesn't include joins (order_loads, customers, etc.)
-  //   // So parsing it directly creates incomplete order objects
-  //   // Instead, we now trigger _loadCustomerOrders() which uses proper query with joins
-  // }
 
   /// Load customer orders from database
   Future<void> _loadCustomerOrders() async {

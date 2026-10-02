@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
@@ -14,17 +15,57 @@ class OrderStatusScreen extends StatefulWidget {
 
 class _OrderStatusScreenState extends State<OrderStatusScreen> {
   late OrderStatus _currentStatus;
+  late LaundryOrder _currentOrder; // Track current order data
   final OrderService _orderService = OrderService();
   bool _isUpdating = false;
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
-    _currentStatus = widget.order.status;
+    _currentStatus = _currentOrder.status;
+    _currentOrder = _currentOrder;
+    _startAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Start auto-refresh timer (30 seconds for order detail screen)
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (timer) async {
+        if (mounted && !_isUpdating) {
+          await _refreshOrderData();
+        }
+      },
+    );
+    print('✅ Started order detail auto-refresh timer (30s interval)');
+  }
+
+  /// Refresh order data from database
+  Future<void> _refreshOrderData() async {
+    try {
+      final refreshedOrder = await _orderService.getOrderById(_currentOrder.id);
+      if (refreshedOrder != null && mounted) {
+        setState(() {
+          _currentOrder = refreshedOrder;
+          _currentStatus = refreshedOrder.status;
+        });
+        print('🔄 Refreshed order ${_currentOrder.displayNumber} - status: ${_currentStatus.name}');
+      }
+    } catch (e) {
+      print('⚠️ Error refreshing order data: $e');
+      // Don't show error to user, just log it
+    }
   }
 
   bool get _needsDelivery {
-    return widget.order.returnMethod == ReturnMethod.delivery;
+    return _currentOrder.returnMethod == ReturnMethod.delivery;
   }
 
   bool get _canMarkReady {
@@ -55,12 +96,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             const Text('Are you sure you want to mark this order as complete?'),
             const SizedBox(height: 16),
             Text(
-              'Order: ${widget.order.displayNumber}',
+              'Order: ${_currentOrder.displayNumber}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
             Text(
-              'Customer: ${widget.order.customerName}',
+              'Customer: ${_currentOrder.customerName}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ],
@@ -95,12 +136,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             const Text('Mark this order as ready for rider delivery?'),
             const SizedBox(height: 16),
             Text(
-              'Order: ${widget.order.displayNumber}',
+              'Order: ${_currentOrder.displayNumber}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
             Text(
-              'Customer: ${widget.order.customerName}',
+              'Customer: ${_currentOrder.customerName}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
@@ -153,13 +194,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     try {
       // Update order status to completed
-      await _orderService.updateOrderStatus(widget.order.id, 'completed');
+      await _orderService.updateOrderStatus(_currentOrder.id, 'completed');
 
       // Show success message
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Order ${widget.order.displayNumber} marked as complete ✓'),
+          content: Text('Order ${_currentOrder.displayNumber} marked as complete ✓'),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
         ),
@@ -191,13 +232,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     try {
       // Update order status to ready for delivery
-      await _orderService.updateOrderStatus(widget.order.id, 'ready');
+      await _orderService.updateOrderStatus(_currentOrder.id, 'ready');
 
       // Show success message
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Order ${widget.order.displayNumber} marked as ready for delivery ✓'),
+          content: Text('Order ${_currentOrder.displayNumber} marked as ready for delivery ✓'),
           backgroundColor: AppTheme.accentBlue,
           duration: const Duration(seconds: 2),
         ),
@@ -224,7 +265,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text('Order ${widget.order.displayNumber}'),
+        title: Text('Order ${_currentOrder.displayNumber}'),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -237,7 +278,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             const SizedBox(height: 40),
             _buildOrderDetails(),
             const SizedBox(height: 40),
-            if (widget.order.needsCheckIn)
+            if (_currentOrder.needsCheckIn)
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -246,11 +287,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     final done = await Navigator.push<bool>(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => CheckInRequestScreen(order: widget.order),
+                        builder: (context) => CheckInRequestScreen(order: _currentOrder),
                       ),
                     );
                     if (done == true && context.mounted) {
-                      Navigator.pop(context, true);
+                      // Refresh order data before popping
+                      await _refreshOrderData();
+                      if (context.mounted) {
+                        Navigator.pop(context, true);
+                      }
                     }
                   },
                   icon: const Icon(Icons.scale_outlined, color: Colors.white),
@@ -264,7 +309,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   ),
                 ),
               ),
-            if (_canMarkReady && !widget.order.needsCheckIn) ...[
+            if (_canMarkReady && !_currentOrder.needsCheckIn) ...[
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -299,7 +344,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
               ),
             ],
-            if (_canComplete && !widget.order.needsCheckIn) ...[
+            if (_canComplete && !_currentOrder.needsCheckIn) ...[
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -345,7 +390,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final steps = <OrderStatus>[];
     
     // Add pending_pickup if order was picked up by rider
-    if (widget.order.collectionMethod == CollectionMethod.riderPickup) {
+    if (_currentOrder.collectionMethod == CollectionMethod.riderPickup) {
       steps.add(OrderStatus.pending_pickup);
     }
     
@@ -353,7 +398,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     steps.add(OrderStatus.processing);
     
     // For delivery orders, show ready and out_for_delivery steps
-    if (widget.order.returnMethod == ReturnMethod.delivery) {
+    if (_currentOrder.returnMethod == ReturnMethod.delivery) {
       steps.add(OrderStatus.ready);
       steps.add(OrderStatus.out_for_delivery);
     }
@@ -435,34 +480,34 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildDetailRow('Customer', widget.order.customerName),
+          _buildDetailRow('Customer', _currentOrder.customerName),
           const Divider(),
-          _buildDetailRow('Collection', widget.order.collectionText),
+          _buildDetailRow('Collection', _currentOrder.collectionText),
           const Divider(),
-          _buildDetailRow('Return', widget.order.returnText),
+          _buildDetailRow('Return', _currentOrder.returnText),
           const Divider(),
           _buildDetailRow(
             'Total Weight',
-            widget.order.needsCheckIn ? 'Needs check-in' : widget.order.weightDisplay,
+            _currentOrder.needsCheckIn ? 'Needs check-in' : _currentOrder.weightDisplay,
           ),
-          if (widget.order.hasMultipleLoads) ...[
+          if (_currentOrder.hasMultipleLoads) ...[
             const Divider(),
-            _buildDetailRow('Multiple Loads', '${widget.order.totalLoads} loads'),
+            _buildDetailRow('Multiple Loads', '${_currentOrder.totalLoads} loads'),
           ],
           const Divider(),
-          _buildDetailRow('RFID Tag', widget.order.rfidTag ?? 'Not assigned'),
+          _buildDetailRow('RFID Tag', _currentOrder.rfidTag ?? 'Not assigned'),
           const Divider(),
-          _buildDetailRow('Instructions', widget.order.instructions ?? 'None'),
+          _buildDetailRow('Instructions', _currentOrder.instructions ?? 'None'),
           
           // Load Breakdown Section
-          if (widget.order.hasMultipleLoads) ...[
+          if (_currentOrder.hasMultipleLoads) ...[
             const SizedBox(height: 20),
             const Text(
               'Load Breakdown',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textDark),
             ),
             const SizedBox(height: 12),
-            ...widget.order.loads.map((load) => _buildLoadItem(load)),
+            ..._currentOrder.loads.map((load) => _buildLoadItem(load)),
           ],
         ],
       ),
