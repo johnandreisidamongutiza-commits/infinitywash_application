@@ -27,6 +27,11 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
+
+        // firebase_messaging requires minSdk 23 (Android 6.0+)
+        if (flutter.minSdkVersion < 23) {
+            minSdk = flutter.minSdkVersion
+        }
         targetSdk = flutter.targetSdkVersion
         ndk {
             abiFilters.addAll(setOf("armeabi-v7a", "arm64-v8a", "x86_64"))

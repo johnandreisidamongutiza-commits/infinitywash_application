@@ -41,13 +41,12 @@ dependencies:
   # Secure Storage and Database
   flutter_secure_storage: ^9.0.0
   sqflite: ^2.3.0
-  crypto: ^3.0.3
   
   # SMTP Email
-  mailer: ^6.1.2
   
   # Firebase (keeping for reference, you may want to remove these if fully migrating to Supabase)
   firebase_core: ^3.8.1
+  firebase_messaging: ^15.2.0
   firebase_auth: ^5.3.4
   cloud_firestore: ^5.5.2
   firebase_storage: ^12.3.7

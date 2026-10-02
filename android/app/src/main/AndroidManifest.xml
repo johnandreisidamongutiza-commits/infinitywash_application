@@ -8,6 +8,12 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- For background location tracking (optional, only if needed) -->
     <!-- <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" /> -->
+
+    <!-- Firebase Cloud Messaging (push notifications) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <meta-data
+        android:name="com.google.firebase.messaging.default_notification_channel_id"
+        android:value="infinitywash_default" />
     
     <application
         android:label="infinitywash"

@@ -3,6 +3,7 @@ import 'supabase_service.dart';
 import 'secure_storage_service.dart';
 import 'saved_accounts_db.dart';
 import 'customer_service.dart';
+import 'push_notification_service.dart';
 import '../models/saved_account.dart';
 
 class AuthService {
@@ -37,6 +38,8 @@ class AuthService {
     required String phone,
     required String address,
     required String landmark,
+    double? latitude,
+    double? longitude,
   }) async {
     final metadata = {
       'first_name': firstName,
@@ -45,6 +48,11 @@ class AuthService {
       'address': address,
       'landmark': landmark,
       'role': 'customer',
+      // Optional map pin picked during registration.
+      // Omitted (not empty) when the customer skips it so the
+      // DB trigger stores NULL instead of failing to parse.
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
     };
 
     // Don't pass phone to signUp - it's for SMS auth, not user data
@@ -95,6 +103,8 @@ class AuthService {
       'phone': metadata['phone'],
       'address': metadata['address'],
       'landmark': metadata['landmark'],
+      if (metadata['latitude'] is num) 'pin_latitude': (metadata['latitude'] as num).toDouble(),
+      if (metadata['longitude'] is num) 'pin_longitude': (metadata['longitude'] as num).toDouble(),
       'role': 'customer',
       'status': 'active',
       'updated_at': now,
@@ -147,6 +157,8 @@ class AuthService {
             'email': email,
             'address': address,
             'landmark': landmark,
+            if (metadata['latitude'] is num) 'pin_latitude': (metadata['latitude'] as num).toDouble(),
+            if (metadata['longitude'] is num) 'pin_longitude': (metadata['longitude'] as num).toDouble(),
             'updated_at': now,
           }).eq('id', existingCustomer['id']);
           
@@ -262,6 +274,10 @@ class AuthService {
         
         // Validate account status BEFORE allowing login
         await _validateAccountStatus(response.user!.id);
+
+        // Register this device for push notifications (every signed-in user).
+        // Fire-and-forget: never blocks or fails the login.
+        PushNotificationService.instance.initializeForCurrentUser();
       }
 
       // If remember me is enabled and login successful, save the account and tokens
@@ -317,6 +333,8 @@ class AuthService {
         'phone': metadata['phone'] ?? user.phone ?? '',
         'address': metadata['address'] ?? '',
         'landmark': metadata['landmark'] ?? '',
+        if (metadata['latitude'] is num) 'pin_latitude': (metadata['latitude'] as num).toDouble(),
+        if (metadata['longitude'] is num) 'pin_longitude': (metadata['longitude'] as num).toDouble(),
         'role': metadata['role'] ?? 'customer',
         'status': 'active',
         'created_at': now,
@@ -618,6 +636,8 @@ class AuthService {
         
         // Session is already active and account is valid
         await _savedAccountsDb.updateLastLogin(targetUserId);
+        // Register push for auto-logged-in users too (fire-and-forget).
+        PushNotificationService.instance.initializeForCurrentUser();
         return AuthResponse(
           user: currentSession.user,
           session: currentSession,
@@ -653,6 +673,8 @@ class AuthService {
             );
             
             await _savedAccountsDb.updateLastLogin(targetUserId);
+            // Register push for auto-logged-in users too (fire-and-forget).
+            PushNotificationService.instance.initializeForCurrentUser();
             return response;
           }
         } catch (e) {

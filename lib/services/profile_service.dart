@@ -31,9 +31,21 @@ class ProfileService {
     String? email,
     String? address,
     String? landmark,
+    double? pinLatitude,
+    double? pinLongitude,
+    bool removePin = false,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw Exception('No authenticated user.');
+
+    // Pin values to persist: explicit coordinates, or NULL when removePin
+    // is set (customer cleared their pin). Omitted entirely when neither is
+    // provided so unrelated saves don't touch the pin.
+    final pinColumns = <String, dynamic>{
+      if (pinLatitude != null) 'pin_latitude': pinLatitude,
+      if (pinLongitude != null) 'pin_longitude': pinLongitude,
+      if (removePin) ...{'pin_latitude': null, 'pin_longitude': null},
+    };
 
     // Update profiles table
     await _client
@@ -45,6 +57,7 @@ class ProfileService {
           'email': email,
           'address': address,
           'landmark': landmark,
+          ...pinColumns,
           'updated_at': DateTime.now().toIso8601String(),
         })
         .eq('supabase_user_id', user.id);
@@ -78,6 +91,7 @@ class ProfileService {
               'email': email,
               'address': address,
               'landmark': landmark,
+              ...pinColumns,
               'updated_at': DateTime.now().toIso8601String(),
             })
             .eq('profile_id', profileId);

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_text_field.dart';
+import '../../widgets/location_picker_widget.dart';
 import '../../services/auth_service.dart';
 
 class CustomerRegistrationScreen extends StatefulWidget {
@@ -22,6 +24,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   final _confirmPasswordController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
+  LatLng? _selectedLocation;
 
   @override
   void dispose() {
@@ -75,6 +78,8 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         phone: _phoneController.text.trim(),
         address: _addressController.text.trim(),
         landmark: _landmarkController.text.trim(),
+        latitude: _selectedLocation?.latitude,
+        longitude: _selectedLocation?.longitude,
       );
 
       if (!mounted) return;
@@ -90,6 +95,86 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  /// Opens the shared map picker so the customer can drop a pin.
+  /// Entirely optional - cancelling keeps the previous pin (if any).
+  Future<void> _pickPinLocation() async {
+    final result = await LocationPickerDialog.show(
+      context,
+      initialPosition: _selectedLocation,
+      // Registration never blocks on the delivery radius; the picker
+      // only shows a warning banner when the pin is out of range.
+      enforceDeliveryRadius: true,
+      title: 'Pin Your Location',
+    );
+    if (result != null && mounted) {
+      setState(() => _selectedLocation = result);
+    }
+  }
+
+  Widget _buildPinLocationCard() {
+    final hasPin = _selectedLocation != null;
+    return InkWell(
+      onTap: _pickPinLocation,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppTheme.softGray,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: hasPin ? AppTheme.accentBlue : AppTheme.borderGray,
+            width: hasPin ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.location_on_outlined,
+              color: hasPin ? AppTheme.accentBlue : AppTheme.textLight,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Pin Location (Optional)',
+                    style: AppTheme.lightTheme.textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    hasPin
+                        ? '${_selectedLocation!.latitude.toStringAsFixed(6)}, '
+                            '${_selectedLocation!.longitude.toStringAsFixed(6)}'
+                        : 'Tap to drop a pin on the map',
+                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                      color: hasPin ? AppTheme.textDark : AppTheme.textLight,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (hasPin) ...[
+              IconButton(
+                tooltip: 'Change pin',
+                icon: const Icon(Icons.edit_location_alt_outlined,
+                    color: AppTheme.accentBlue),
+                onPressed: _pickPinLocation,
+              ),
+              IconButton(
+                tooltip: 'Remove pin',
+                icon: const Icon(Icons.highlight_off_outlined,
+                    color: AppTheme.errorRed),
+                onPressed: () => setState(() => _selectedLocation = null),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   void _showMessage(String message, {bool isError = true}) {
@@ -204,6 +289,8 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                   prefixIcon: Icons.assistant_navigation,
                   controller: _landmarkController,
                 ),
+                const SizedBox(height: 20),
+                _buildPinLocationCard(),
                 const SizedBox(height: 20),
                 CustomTextField(
                   label: 'Password',

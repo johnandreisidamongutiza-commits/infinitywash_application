@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/password_reset_service.dart';
-import '../services/rate_limit_service.dart';
 
 enum ForgotPasswordStep { identity, otp, reset, success }
 
@@ -24,7 +23,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   
   final _passwordResetService = PasswordResetService();
   bool _isLoading = false;
-  String? _tokenId;
   String? _userEmail;
   int _resendCountdown = 60;
   bool _canResend = false;
@@ -164,12 +162,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       final result = await _passwordResetService.requestPasswordReset(
         _emailController.text.trim(),
       );
-      
-      _tokenId = result['token_id'];
-      _userEmail = result['email'];
-      
-      // Get rate limit status
-      await _updateRateLimitStatus();
+
+      _userEmail = result.email;
+
+      // Server-reported remaining resend attempts for this hour.
+      setState(() => _resendAttemptsLeft = result.attemptsLeft);
       
       if (mounted) {
         setState(() {
@@ -284,20 +281,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
     
     try {
-      final tokenId = await _passwordResetService.verifyResetCode(
-        _userEmail!,
-        code,
-      );
-      
-      if (tokenId != null) {
-        _tokenId = tokenId;
-        if (mounted) {
-          setState(() {
-            _currentStep = ForgotPasswordStep.reset;
-            _isLoading = false;
-          });
-          _showSuccess('Code verified successfully!');
-        }
+      await _passwordResetService.verifyResetCode(_userEmail!, code);
+
+      if (mounted) {
+        setState(() {
+          _currentStep = ForgotPasswordStep.reset;
+          _isLoading = false;
+        });
+        _showSuccess('Code verified successfully!');
       }
     } catch (e) {
       if (mounted) {
@@ -308,17 +299,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
   
   Future<void> _handleResendCode() async {
-    // Check rate limit first
-    final rateLimitCheck = await RateLimitService.canSendOtp(_userEmail!);
-    if (!rateLimitCheck.canSend) {
-      _showError(rateLimitCheck.message ?? 'Too many attempts');
-      return;
-    }
-    
     setState(() => _isLoading = true);
     
     try {
-      await _passwordResetService.resendResetCode(_userEmail!);
+      final result = await _passwordResetService.resendResetCode(_userEmail!);
+      setState(() => _resendAttemptsLeft = result.attemptsLeft);
       
       if (mounted) {
         // Clear OTP fields
@@ -326,9 +311,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           controller.clear();
         }
         _otpFocusNodes[0].requestFocus();
-        
-        // Update rate limit status
-        await _updateRateLimitStatus();
         
         setState(() => _isLoading = false);
         _showSuccess('A new code has been sent to your email! ($_resendAttemptsLeft resends left)');
@@ -338,17 +320,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         _showError(e.toString().replaceAll('Exception: ', ''));
-      }
-    }
-  }
-  
-  Future<void> _updateRateLimitStatus() async {
-    if (_userEmail != null) {
-      final status = await _passwordResetService.getRateLimitStatus(_userEmail!);
-      if (mounted) {
-        setState(() {
-          _resendAttemptsLeft = status['attemptsLeft'] ?? 3;
-        });
       }
     }
   }
@@ -462,7 +433,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
     
     try {
-      await _passwordResetService.resetPassword(_tokenId!, newPassword);
+      await _passwordResetService.resetPassword(
+        _userEmail!,
+        _otpControllers.map((c) => c.text).join(),
+        newPassword,
+      );
       
       if (mounted) {
         setState(() {

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../../services/profile_service.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../widgets/custom_text_field.dart';
+import '../../../../widgets/location_picker_widget.dart';
 
 class CustomerAccountDetailsScreen extends StatefulWidget {
   const CustomerAccountDetailsScreen({super.key});
@@ -18,6 +20,8 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
   final _emailController = TextEditingController();
   final _addressController = TextEditingController();
   final _landmarkController = TextEditingController();
+  LatLng? _pinLocation;
+  bool _pinChanged = false;
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -50,6 +54,11 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
       _emailController.text = profile['email'] ?? '';
       _addressController.text = profile['address'] ?? '';
       _landmarkController.text = profile['landmark'] ?? '';
+      final pinLat = (profile['pin_latitude'] as num?)?.toDouble();
+      final pinLng = (profile['pin_longitude'] as num?)?.toDouble();
+      if (pinLat != null && pinLng != null) {
+        _pinLocation = LatLng(pinLat, pinLng);
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -73,6 +82,9 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
         email: _emailController.text.trim(),
         address: _addressController.text.trim(),
         landmark: _landmarkController.text.trim(),
+        pinLatitude: _pinChanged ? _pinLocation?.latitude : null,
+        pinLongitude: _pinChanged ? _pinLocation?.longitude : null,
+        removePin: _pinChanged && _pinLocation == null,
       );
 
       if (!mounted) return;
@@ -89,6 +101,92 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
         setState(() => _isSaving = false);
       }
     }
+  }
+
+  /// Opens the shared map picker so the customer can move their pin.
+  /// Cancelling keeps the current pin; removing clears it (applied on Save).
+  Future<void> _pickPinLocation() async {
+    final result = await LocationPickerDialog.show(
+      context,
+      initialPosition: _pinLocation,
+      // The picker only warns when the pin is outside the delivery
+      // radius; it never blocks the customer from saving it.
+      enforceDeliveryRadius: true,
+      title: 'Pin Your Location',
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _pinLocation = result;
+        _pinChanged = true;
+      });
+    }
+  }
+
+  Widget _buildPinLocationCard() {
+    final hasPin = _pinLocation != null;
+    return InkWell(
+      onTap: _pickPinLocation,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppTheme.softGray,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: hasPin ? AppTheme.accentBlue : AppTheme.borderGray,
+            width: hasPin ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.location_on_outlined,
+              color: hasPin ? AppTheme.accentBlue : AppTheme.textLight,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Pin Location',
+                    style: AppTheme.lightTheme.textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    hasPin
+                        ? '${_pinLocation!.latitude.toStringAsFixed(6)}, '
+                            '${_pinLocation!.longitude.toStringAsFixed(6)}'
+                        : 'Not set - tap to drop a pin on the map',
+                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                      color: hasPin ? AppTheme.textDark : AppTheme.textLight,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (hasPin) ...[
+              IconButton(
+                tooltip: 'Change pin',
+                icon: const Icon(Icons.edit_location_alt_outlined,
+                    color: AppTheme.accentBlue),
+                onPressed: _pickPinLocation,
+              ),
+              IconButton(
+                tooltip: 'Remove pin',
+                icon: const Icon(Icons.highlight_off_outlined,
+                    color: AppTheme.errorRed),
+                onPressed: () => setState(() {
+                  _pinLocation = null;
+                  _pinChanged = true;
+                }),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -150,6 +248,8 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
                     prefixIcon: Icons.assistant_navigation,
                     controller: _landmarkController,
                   ),
+                  const SizedBox(height: 16),
+                  _buildPinLocationCard(),
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,

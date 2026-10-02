@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'config/supabase_config.dart';
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
+import 'services/push_notification_service.dart';
 import 'services/cache/route_cache_service.dart';
 import 'services/cache/job_cache_service.dart';
 import 'services/api/api_gate.dart';
@@ -50,6 +52,9 @@ void main() async {
     );
     print('✅ Firebase initialized successfully');
     print('✅ Firebase app name: ${Firebase.app().name}');
+
+    // Register the background handler BEFORE any other FCM call.
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   } catch (e) {
     print('❌ Firebase initialization error: $e');
     print('⚠️ App will run but notifications will not work');
@@ -67,6 +72,8 @@ class InfinityWashApp extends StatelessWidget {
       title: 'Infinity Wash',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      // Used by push notifications to show banners / deep-link from taps.
+      navigatorKey: infinityWashNavigatorKey,
       // Start with splash screen for auto-login check
       home: const SplashScreen(),
     );

@@ -135,6 +135,8 @@ class CustomerService {
     String? email,
     String? address,
     String? landmark,
+    double? pinLatitude,
+    double? pinLongitude,
     String customerType = 'mobile_app',
   }) async {
     try {
@@ -149,7 +151,9 @@ class CustomerService {
             (address != null && address.isNotEmpty && existing['address'] != address) ||
             (landmark != null && landmark.isNotEmpty && existing['landmark'] != landmark) ||
             (phone != null && phone.isNotEmpty && normalizePhone(existing['phone'] ?? '') != normalizePhone(phone)) ||
-            (email != null && email.isNotEmpty && existing['email'] != email);
+            (email != null && email.isNotEmpty && existing['email'] != email) ||
+            (pinLatitude != null && existing['pin_latitude'] != pinLatitude) ||
+            (pinLongitude != null && existing['pin_longitude'] != pinLongitude);
         
         if (needsUpdate) {
           print('ℹ️ Updating customer info for $customerId');
@@ -167,6 +171,8 @@ class CustomerService {
             if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
             if (address != null && address.trim().isNotEmpty) 'address': address.trim(),
             if (landmark != null && landmark.trim().isNotEmpty) 'landmark': landmark.trim(),
+            if (pinLatitude != null) 'pin_latitude': pinLatitude,
+            if (pinLongitude != null) 'pin_longitude': pinLongitude,
             'updated_at': DateTime.now().toIso8601String(),
           }).eq('id', customerId);
         }
@@ -204,6 +210,8 @@ class CustomerService {
             'email': email?.trim(),
             'address': address?.trim(),
             'landmark': landmark?.trim(),
+            'pin_latitude': pinLatitude,
+            'pin_longitude': pinLongitude,
             'customer_type': customerType,
             'status': 'active',
             'joined_at': now,
