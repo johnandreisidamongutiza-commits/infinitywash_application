@@ -4,7 +4,9 @@ import 'package:latlong2/latlong.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/dispatch_job.dart';
 import '../../../services/rider_service.dart';
+import '../../../config/location_constants.dart';
 import '../../../state/gps_provider.dart';
+import '../../../widgets/cached_tile_provider.dart';
 import 'rider_job_tracking_screen.dart';
 
 /// Details screen for a specific dispatch job
@@ -105,11 +107,46 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                   options: MapOptions(
                     initialCenter: jobLocation,
                     initialZoom: 14.0,
+                    minZoom: 12.0, // Restrict zoom out to keep within delivery area
+                    maxZoom: 18.0,
+                    // Restrict map bounds to 10km around shop
+                    cameraConstraint: CameraConstraint.contain(
+                      bounds: LatLngBounds(
+                        // Southwest corner (10km south and west of shop)
+                        LatLng(
+                          LocationConstants.shopLocation.latitude - 0.09, // ~10km south
+                          LocationConstants.shopLocation.longitude - 0.09, // ~10km west
+                        ),
+                        // Northeast corner (10km north and east of shop)
+                        LatLng(
+                          LocationConstants.shopLocation.latitude + 0.09, // ~10km north
+                          LocationConstants.shopLocation.longitude + 0.09, // ~10km east
+                        ),
+                      ),
+                    ),
+                    // Keep map centered on delivery area when user interacts
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.all,
+                    ),
                   ),
                   children: [
                     TileLayer(
                       urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.infinitywash.app',
+                      tileProvider: CachedTileProvider(), // Use cached tiles
+                    ),
+                    // Shop delivery radius circle
+                    CircleLayer(
+                      circles: [
+                        CircleMarker(
+                          point: LocationConstants.shopLocation,
+                          radius: LocationConstants.deliveryRadiusMeters,
+                          useRadiusInMeter: true,
+                          color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                          borderColor: AppTheme.accentBlue.withValues(alpha: 0.3),
+                          borderStrokeWidth: 2,
+                        ),
+                      ],
                     ),
                     MarkerLayer(
                       markers: [

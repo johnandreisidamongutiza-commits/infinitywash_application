@@ -6,8 +6,11 @@ import '../../../theme/app_theme.dart';
 import '../../../models/dispatch_job.dart';
 import '../../../services/rider_service.dart';
 import '../../../services/supabase_service.dart';
+import '../../../config/location_constants.dart';
 import '../../../state/gps_provider.dart';
 import '../../../state/rider_location_provider.dart';
+import '../../../widgets/map_loading_overlay.dart';
+import '../../../widgets/cached_tile_provider.dart';
 
 /// Active job tracking screen with real-time location updates
 class RiderJobTrackingScreen extends StatefulWidget {
@@ -29,11 +32,19 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
   StreamSubscription? _locationSubscription;
   bool _isCompleting = false;
   int _updateCount = 0;
+  bool _isMapLoading = true; // Track map loading state
   
   @override
   void initState() {
     super.initState();
     _initializeLocation();
+    
+    // Hide loading after 2 seconds
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() => _isMapLoading = false);
+      }
+    });
   }
 
   Future<void> _initializeLocation() async {
@@ -137,13 +148,48 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: jobLocation ?? const LatLng(14.2499596, 121.4027956),
+              initialCenter: jobLocation ?? LocationConstants.shopLocation,
               initialZoom: 15.0,
+              minZoom: 12.0, // Restrict zoom out to keep within delivery area
+              maxZoom: 18.0,
+              // Restrict map bounds to 10km around shop
+              cameraConstraint: CameraConstraint.contain(
+                bounds: LatLngBounds(
+                  // Southwest corner (10km south and west of shop)
+                  LatLng(
+                    LocationConstants.shopLocation.latitude - 0.09, // ~10km south
+                    LocationConstants.shopLocation.longitude - 0.09, // ~10km west
+                  ),
+                  // Northeast corner (10km north and east of shop)
+                  LatLng(
+                    LocationConstants.shopLocation.latitude + 0.09, // ~10km north
+                    LocationConstants.shopLocation.longitude + 0.09, // ~10km east
+                  ),
+                ),
+              ),
+              // Keep map centered on delivery area when user interacts
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+              ),
             ),
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.infinitywash.app',
+                tileProvider: CachedTileProvider(), // Use cached tiles
+              ),
+              // Shop delivery radius circle
+              CircleLayer(
+                circles: [
+                  CircleMarker(
+                    point: LocationConstants.shopLocation,
+                    radius: LocationConstants.deliveryRadiusMeters,
+                    useRadiusInMeter: true,
+                    color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                    borderColor: AppTheme.accentBlue.withValues(alpha: 0.3),
+                    borderStrokeWidth: 2,
+                  ),
+                ],
               ),
               if (_riderLocation != null && jobLocation != null)
                 PolylineLayer(
@@ -291,6 +337,12 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
                     )
                   : Text('Complete ${widget.job.jobType == 'pickup' ? 'Pickup' : 'Delivery'}'),
             ),
+          ),
+
+          // Map loading overlay
+          MapLoadingOverlay(
+            isLoading: _isMapLoading,
+            message: 'Loading tracking map...',
           ),
         ],
       ),
