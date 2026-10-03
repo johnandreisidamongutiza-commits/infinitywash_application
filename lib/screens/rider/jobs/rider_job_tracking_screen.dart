@@ -41,9 +41,22 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
   bool _isRouteFallback = false;
   bool _isLoadingRoute = false;
   
+  // Performance optimization - throttling & debouncing
+  DateTime? _lastMapUpdate;
+  Timer? _routeCalculationTimer;
+  static const _mapUpdateInterval = Duration(seconds: 2);
+  static const _routeDebounceDelay = Duration(seconds: 5);
+  
+  // Cache job location to avoid repeated calculations
+  LatLng? _cachedJobLocation;
+  
   @override
   void initState() {
     super.initState();
+    // Cache job location once
+    if (widget.job.latitude != null && widget.job.longitude != null) {
+      _cachedJobLocation = LatLng(widget.job.latitude!, widget.job.longitude!);
+    }
     _initializeLocation();
     
     // Hide loading after 2 seconds
@@ -78,16 +91,26 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
       _locationSubscription = _gpsProvider.locationStream.listen((locationData) {
         if (mounted && locationData.latitude != null && locationData.longitude != null) {
           final isFirstLocation = _riderLocation == null;
+          final newLocation = LatLng(locationData.latitude!, locationData.longitude!);
           
+          // Update state immediately for marker position
           setState(() {
-            _riderLocation = LatLng(locationData.latitude!, locationData.longitude!);
+            _riderLocation = newLocation;
             _updateCount++;
           });
-          _mapController.move(_riderLocation!, 15.0);
           
-          // Calculate route on first location or periodically
+          // Throttle map center updates to reduce render pressure
+          if (_shouldUpdateMapCenter()) {
+            _mapController.move(_riderLocation!, 15.0);
+            _lastMapUpdate = DateTime.now();
+          }
+          
+          // Calculate route immediately on first location
           if (isFirstLocation) {
             _calculateRoute();
+          } else {
+            // Debounce route recalculation for subsequent updates
+            _debounceRouteCalculation();
           }
         }
       });
@@ -96,13 +119,30 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
     }
   }
 
+  /// Check if enough time has passed to update map center (throttle)
+  bool _shouldUpdateMapCenter() {
+    if (_lastMapUpdate == null) return true;
+    final elapsed = DateTime.now().difference(_lastMapUpdate!);
+    return elapsed >= _mapUpdateInterval;
+  }
+
+  /// Debounce route calculation to avoid excessive API calls
+  void _debounceRouteCalculation() {
+    // Cancel existing timer if any
+    _routeCalculationTimer?.cancel();
+    
+    // Start new timer - only calculates if no updates for 5 seconds
+    _routeCalculationTimer = Timer(_routeDebounceDelay, () {
+      if (mounted) {
+        _calculateRoute();
+      }
+    });
+  }
+
   /// Calculate the actual road route from rider to job location
   Future<void> _calculateRoute() async {
-    final jobLocation = widget.job.latitude != null && widget.job.longitude != null
-        ? LatLng(widget.job.latitude!, widget.job.longitude!)
-        : null;
-
-    if (_riderLocation == null || jobLocation == null) {
+    // Use cached job location
+    if (_riderLocation == null || _cachedJobLocation == null) {
       setState(() => _routePoints = []);
       return;
     }
@@ -110,7 +150,7 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
     setState(() => _isLoadingRoute = true);
 
     try {
-      final waypoints = [_riderLocation!, jobLocation];
+      final waypoints = [_riderLocation!, _cachedJobLocation!];
       final route = await _routingService.getRouteResult(waypoints);
 
       if (mounted) {
@@ -193,9 +233,8 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final jobLocation = widget.job.latitude != null && widget.job.longitude != null
-        ? LatLng(widget.job.latitude!, widget.job.longitude!)
-        : null;
+    // Use cached job location to avoid repeated null checks and object creation
+    final jobLocation = _cachedJobLocation;
 
     return Scaffold(
       body: Stack(
@@ -457,6 +496,7 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
 
   @override
   void dispose() {
+    _routeCalculationTimer?.cancel();
     _locationSubscription?.cancel();
     _locationProvider.stopUploading();
     _gpsProvider.stopTracking();
