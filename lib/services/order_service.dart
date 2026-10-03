@@ -126,7 +126,7 @@ class OrderService {
         throw Exception('Delivery address is required for delivery orders');
       }
 
-      final now = DateTime.now().toIso8601String();
+      final now = DateTime.now().toUtc().toIso8601String();
 
       // Calculate totals
       final totalWeight = loads.fold(0.0, (sum, load) => sum + load.weight);
@@ -406,7 +406,7 @@ class OrderService {
         throw Exception('This order has already been checked in');
       }
 
-      final now = DateTime.now().toIso8601String();
+      final now = DateTime.now().toUtc().toIso8601String();
       final totalWeight = loads.fold(0.0, (sum, load) => sum + load.weight);
 
       final loadsData = loads.map((load) {
@@ -606,6 +606,7 @@ class OrderService {
           instructions: order.instructions,
           rfidTag: null, // Loyalty cards are permanent per-customer, not per-order
           createdAt: order.createdAt,
+          processingAt: order.processingAt, // Include processing timestamp
           paymentMethod: order.paymentMethod,
           paidAt: order.paidAt,
           laundryPhotoUrls: order.laundryPhotoUrls,
@@ -639,7 +640,7 @@ class OrderService {
     String? assignedStaffId,
   }) async {
     try {
-      final now = DateTime.now().toIso8601String();
+      final now = DateTime.now().toUtc().toIso8601String();
       final transactionNumber = await generateTransactionNumber();
 
       final paymentData = {
@@ -679,25 +680,25 @@ class OrderService {
     try {
       final updates = {
         'status': status,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
 
       // Add timestamp fields based on status
       switch (status) {
         case 'processing':
-          updates['processing_at'] = DateTime.now().toIso8601String();
+          updates['processing_at'] = DateTime.now().toUtc().toIso8601String();
           break;
         case 'ready':
           print('🔍 DEBUG: Order status changing to READY, will create delivery job...');
-          updates['ready_at'] = DateTime.now().toIso8601String();
+          updates['ready_at'] = DateTime.now().toUtc().toIso8601String();
           // Create delivery dispatch job when order is ready
           await _createDeliveryJobIfNeeded(orderId);
           break;
         case 'out_for_delivery':
-          updates['out_for_delivery_at'] = DateTime.now().toIso8601String();
+          updates['out_for_delivery_at'] = DateTime.now().toUtc().toIso8601String();
           break;
         case 'completed':
-          updates['completed_at'] = DateTime.now().toIso8601String();
+          updates['completed_at'] = DateTime.now().toUtc().toIso8601String();
           // Award loyalty points if linked to a loyalty card
           await _awardLoyaltyPointsForOrder(orderId);
           break;

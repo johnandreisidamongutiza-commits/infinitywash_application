@@ -519,9 +519,24 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   }
 
   Widget _buildProcessingCard(BuildContext context, LaundryOrder order) {
-    final elapsed = DateTime.now().difference(order.createdAt);
+    // Use processing_at timestamp if available, otherwise fall back to created_at
+    final startTime = order.processingAt ?? order.createdAt;
+    final currentTime = DateTime.now();
+    
+    // Calculate elapsed time
+    final elapsed = currentTime.difference(startTime);
+    
+    // Debug logging to see what's happening
+    print('🔍 Order ${order.displayNumber}:');
+    print('  startTime: $startTime');
+    print('  currentTime: $currentTime');
+    print('  elapsed minutes: ${elapsed.inMinutes}');
+    print('  elapsed seconds: ${elapsed.inSeconds}');
+    
     String elapsedText;
-    if (elapsed.inHours > 0) {
+    if (elapsed.inSeconds < 60) {
+      elapsedText = '< 1m ago';
+    } else if (elapsed.inHours > 0) {
       elapsedText = '${elapsed.inHours}h ${elapsed.inMinutes % 60}m ago';
     } else {
       elapsedText = '${elapsed.inMinutes}m ago';
