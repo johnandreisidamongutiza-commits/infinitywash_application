@@ -151,6 +151,10 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
         await _riderService.completeDelivery(jobId, orderId);
       }
 
+      print('🔄 Refreshing jobs after completion...');
+      // Clear cache to force fresh data
+      _riderService.clearAdapterCache();
+
       // Show success notification
       showTopNotification(
         context,
