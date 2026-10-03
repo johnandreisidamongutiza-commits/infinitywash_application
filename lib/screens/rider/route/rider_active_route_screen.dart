@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/dispatch_job.dart';
 import '../../../services/routing_service.dart';
+import '../../../config/location_constants.dart';
 import '../../../state/gps_provider.dart';
 import '../../../widgets/map_loading_overlay.dart';
 import '../../../widgets/cached_tile_provider.dart';
@@ -239,6 +240,21 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
               initialCenter: _currentLocation ?? const LatLng(14.2499596, 121.4027956),
               initialZoom: 17.0,
               minZoom: 12.0,
+              // Restrict map bounds to 10km around shop
+              cameraConstraint: CameraConstraint.contain(
+                bounds: LatLngBounds(
+                  // Southwest corner (10km south and west of shop)
+                  LatLng(
+                    LocationConstants.shopLocation.latitude - 0.09, // ~10km south
+                    LocationConstants.shopLocation.longitude - 0.09, // ~10km west
+                  ),
+                  // Northeast corner (10km north and east of shop)
+                  LatLng(
+                    LocationConstants.shopLocation.latitude + 0.09, // ~10km north
+                    LocationConstants.shopLocation.longitude + 0.09, // ~10km east
+                  ),
+                ),
+              ),
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
               ),
@@ -248,6 +264,19 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.infinitywash.app',
                 tileProvider: CachedTileProvider(), // Use cached tiles
+              ),
+              // Shop delivery radius circle
+              CircleLayer(
+                circles: [
+                  CircleMarker(
+                    point: LocationConstants.shopLocation,
+                    radius: LocationConstants.deliveryRadiusMeters,
+                    useRadiusInMeter: true,
+                    color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                    borderColor: AppTheme.accentBlue.withValues(alpha: 0.3),
+                    borderStrokeWidth: 2,
+                  ),
+                ],
               ),
               // Route line
               if (_isLoadingRoute)

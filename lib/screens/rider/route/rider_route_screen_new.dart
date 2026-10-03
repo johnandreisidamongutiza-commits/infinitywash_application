@@ -363,8 +363,27 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                 options: MapOptions(
                   initialCenter: LocationConstants.shopLocation,
                   initialZoom: 13.0,
-                  minZoom: 5.0,
+                  minZoom: 12.0, // Restrict zoom out to keep within delivery area
                   maxZoom: 18.0,
+                  // Restrict map bounds to 10km around shop
+                  cameraConstraint: CameraConstraint.contain(
+                    bounds: LatLngBounds(
+                      // Southwest corner (10km south and west of shop)
+                      LatLng(
+                        LocationConstants.shopLocation.latitude - 0.09, // ~10km south
+                        LocationConstants.shopLocation.longitude - 0.09, // ~10km west
+                      ),
+                      // Northeast corner (10km north and east of shop)
+                      LatLng(
+                        LocationConstants.shopLocation.latitude + 0.09, // ~10km north
+                        LocationConstants.shopLocation.longitude + 0.09, // ~10km east
+                      ),
+                    ),
+                  ),
+                  // Keep map centered on delivery area when user interacts
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.all,
+                  ),
                 ),
                 children: [
                   TileLayer(
@@ -378,6 +397,19 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                   // Markers
                   if (_buildMarkers().isNotEmpty)
                     MarkerLayer(markers: _buildMarkers()),
+                  // Shop delivery radius circle
+                  CircleLayer(
+                    circles: [
+                      CircleMarker(
+                        point: LocationConstants.shopLocation,
+                        radius: LocationConstants.deliveryRadiusMeters,
+                        useRadiusInMeter: true,
+                        color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                        borderColor: AppTheme.accentBlue.withValues(alpha: 0.3),
+                        borderStrokeWidth: 2,
+                      ),
+                    ],
+                  ),
                 ],
               ),
               // Stats overlay
