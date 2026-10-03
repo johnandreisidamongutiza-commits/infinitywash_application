@@ -8,7 +8,7 @@ class LocationConstants {
   /// Main Infinity Wash Shop/Hub Location
   /// Bubukal, Sta Cruz, Laguna, Philippines
   static const LatLng infinityWashShop = LatLng(14.2499596, 121.4027956);
-  
+   
   /// Alias for consistency with other parts of the codebase
   static LatLng get shopLocation => infinityWashShop;
   
