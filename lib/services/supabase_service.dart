@@ -274,9 +274,11 @@ class SupabaseService {
   /// Sync order status based on dispatch job status
   /// pickup_done → orders.status = 'processing'
   /// delivery_done → orders.status = 'completed'
+  /// in_progress (delivery job) → orders.status = 'out_for_delivery'
   Future<void> syncOrderStatus({
     required String orderId,
     required String dispatchJobStatus,
+    String? jobType, // Optional: needed for 'in_progress' status to distinguish pickup vs delivery
   }) async {
     try {
       String? orderStatus;
@@ -289,6 +291,15 @@ class SupabaseService {
         case 'delivery_done':
           orderStatus = 'completed';
           break;
+        case 'in_progress':
+          // Only update order status if this is a delivery job
+          if (jobType == 'delivery') {
+            orderStatus = 'out_for_delivery';
+          } else {
+            // Pickup jobs going in_progress don't change order status
+            return;
+          }
+          break;
         // Other statuses don't trigger order status changes
         default:
           return;
@@ -299,7 +310,7 @@ class SupabaseService {
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('id', orderId);
       
-      print('✅ Synced order $orderId status to $orderStatus');
+      print('✅ Synced order $orderId status to $orderStatus (dispatch job: $dispatchJobStatus, type: $jobType)');
     } catch (e) {
       print('❌ Error syncing order status: $e');
       rethrow;

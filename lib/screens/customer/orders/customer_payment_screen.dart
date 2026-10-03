@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
+import '../../../services/order_service.dart';
 
 class CustomerPaymentScreen extends StatefulWidget {
   final String orderId;
@@ -25,17 +28,151 @@ class CustomerPaymentScreen extends StatefulWidget {
 }
 
 class _CustomerPaymentScreenState extends State<CustomerPaymentScreen> {
+  final OrderService _orderService = OrderService();
   String _selectedMethod = 'G-Cash';
   bool _isSuccess = false;
   final TextEditingController _refController = TextEditingController(text: '902834195723');
+  
+  // Order data management
+  LaundryOrder? _latestOrder;
+  bool _isLoading = true;
+  bool _isRefreshing = false;
+  bool _wasUpdated = false;
+  StreamSubscription? _orderSubscription;
 
-  double get _finalTotal => widget.totalAmount ?? (widget.servicePrice + widget.deliveryFee);
+  double get _finalTotal {
+    if (_latestOrder != null && _latestOrder!.totalAmount != null) {
+      return _latestOrder!.totalAmount!;
+    }
+    return widget.totalAmount ?? (widget.servicePrice + widget.deliveryFee);
+  }
+
+  double get _weight {
+    return _latestOrder?.totalWeight ?? widget.weight;
+  }
+
+  double get _servicePrice {
+    if (_latestOrder != null && _latestOrder!.totalAmount != null) {
+      return _latestOrder!.totalAmount!;
+    }
+    return widget.servicePrice;
+  }
+
   String get _orderDisplay => LaundryOrder.formatDisplayNumber(id: widget.orderId);
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLatestOrderData();
+    _subscribeToOrderUpdates();
+  }
 
   @override
   void dispose() {
     _refController.dispose();
+    _orderSubscription?.cancel();
     super.dispose();
+  }
+
+  Future<void> _fetchLatestOrderData() async {
+    try {
+      if (!_isLoading) {
+        setState(() => _isRefreshing = true);
+      }
+
+      final orders = await _orderService.fetchOrders(
+        statuses: null,
+        limit: 100,
+      );
+
+      final order = orders.cast<LaundryOrder?>().firstWhere(
+        (o) => o?.id == widget.orderId,
+        orElse: () => null,
+      );
+
+      if (mounted) {
+        setState(() {
+          if (order != null) {
+            // Check if order was updated (total changed)
+            if (_latestOrder != null && 
+                order.totalAmount != null && 
+                _latestOrder!.totalAmount != order.totalAmount) {
+              _wasUpdated = true;
+              // Reset the flag after 3 seconds
+              Future.delayed(const Duration(seconds: 3), () {
+                if (mounted) {
+                  setState(() => _wasUpdated = false);
+                }
+              });
+            }
+            _latestOrder = order;
+          }
+          _isLoading = false;
+          _isRefreshing = false;
+        });
+      }
+    } catch (e) {
+      print('Error fetching order: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isRefreshing = false;
+        });
+      }
+    }
+  }
+
+  void _subscribeToOrderUpdates() {
+    try {
+      _orderSubscription = Supabase.instance.client
+          .from('orders')
+          .stream(primaryKey: ['id'])
+          .eq('id', widget.orderId)
+          .listen((data) {
+            if (data.isNotEmpty && mounted) {
+              try {
+                final updatedOrder = LaundryOrder.fromJson(data.first);
+                
+                // Check if total amount changed
+                final oldTotal = _latestOrder?.totalAmount;
+                final newTotal = updatedOrder.totalAmount;
+                
+                setState(() {
+                  _latestOrder = updatedOrder;
+                });
+
+                // Show notification if amount changed
+                if (oldTotal != null && 
+                    newTotal != null && 
+                    oldTotal != newTotal &&
+                    !_isSuccess) {
+                  _wasUpdated = true;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Order updated by staff! New total: ₱${newTotal.toStringAsFixed(2)}',
+                      ),
+                      backgroundColor: AppTheme.accentBlue,
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 4),
+                    ),
+                  );
+                  
+                  // Reset update flag after 3 seconds
+                  Future.delayed(const Duration(seconds: 3), () {
+                    if (mounted) {
+                      setState(() => _wasUpdated = false);
+                    }
+                  });
+                }
+              } catch (e) {
+                print('Error parsing real-time order update: $e');
+              }
+            }
+          });
+    } catch (e) {
+      print('Error setting up real-time subscription: $e');
+    }
   }
 
   void _completePayment() {
@@ -47,6 +184,32 @@ class _CustomerPaymentScreenState extends State<CustomerPaymentScreen> {
   Widget build(BuildContext context) {
     if (_isSuccess) return _buildSuccessView();
 
+    // Show loading state on initial load
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('Complete Payment'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Loading order details...',
+                style: TextStyle(color: AppTheme.textLight, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -55,91 +218,130 @@ class _CustomerPaymentScreenState extends State<CustomerPaymentScreen> {
         elevation: 0,
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildAmountCard(),
-            const SizedBox(height: 24),
-
-            // Per-kilo bill breakdown
-            _buildBreakdownCard(),
-            const SizedBox(height: 24),
-
-            Text('Payment Method', style: AppTheme.lightTheme.textTheme.titleMedium),
-            const SizedBox(height: 12),
-            _buildMethodCard(
-              'G-Cash',
-              Icons.account_balance_wallet_outlined,
-              'Instant confirmation via GCash QR or number',
-            ),
-            const SizedBox(height: 10),
-            _buildMethodCard(
-              'Cash on Delivery',
-              Icons.payments_outlined,
-              'Pay rider in cash upon doorstep delivery',
-            ),
-            const SizedBox(height: 20),
-
-            if (_selectedMethod == 'G-Cash') ...[
-              _buildGcashInstructions(),
-              const SizedBox(height: 20),
-              Text('GCash Reference Number', style: AppTheme.lightTheme.textTheme.titleSmall),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _refController,
-                decoration: InputDecoration(
-                  hintText: 'Enter 12-digit GCash reference #',
-                  filled: true,
-                  fillColor: AppTheme.softGray,
-                  prefixIcon: const Icon(Icons.receipt_long, color: AppTheme.accentBlue),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
+      body: RefreshIndicator(
+        onRefresh: _fetchLatestOrderData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Show update notification badge
+              if (_wasUpdated)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentBlue,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.refresh, color: Colors.white, size: 16),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Order updated by staff',
+                          style: TextStyle(
+                            color: AppTheme.accentBlue,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              
+              _buildAmountCard(),
+              const SizedBox(height: 24),
+
+              // Per-kilo bill breakdown
+              _buildBreakdownCard(),
+              const SizedBox(height: 24),
+
+              Text('Payment Method', style: AppTheme.lightTheme.textTheme.titleMedium),
+              const SizedBox(height: 12),
+              _buildMethodCard(
+                'G-Cash',
+                Icons.account_balance_wallet_outlined,
+                'Instant confirmation via GCash QR or number',
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Enter reference from your GCash SMS or receipt.',
-                style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+              const SizedBox(height: 10),
+              _buildMethodCard(
+                'Cash on Delivery',
+                Icons.payments_outlined,
+                'Pay rider in cash upon doorstep delivery',
               ),
-            ] else ...[
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline, color: Colors.green, size: 22),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'You chose Cash on Delivery. Please prepare ₱${_finalTotal.toStringAsFixed(2)} when the rider arrives with your clean clothes.',
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textDark, height: 1.4),
-                      ),
+              const SizedBox(height: 20),
+
+              if (_selectedMethod == 'G-Cash') ...[
+                _buildGcashInstructions(),
+                const SizedBox(height: 20),
+                Text('GCash Reference Number', style: AppTheme.lightTheme.textTheme.titleSmall),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _refController,
+                  decoration: InputDecoration(
+                    hintText: 'Enter 12-digit GCash reference #',
+                    filled: true,
+                    fillColor: AppTheme.softGray,
+                    prefixIcon: const Icon(Icons.receipt_long, color: AppTheme.accentBlue),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
                     ),
-                  ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Enter reference from your GCash SMS or receipt.',
+                  style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                ),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Colors.green, size: 22),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'You chose Cash on Delivery. Please prepare ₱${_finalTotal.toStringAsFixed(2)} when the rider arrives with your clean clothes.',
+                          style: const TextStyle(fontSize: 12, color: AppTheme.textDark, height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 32),
+
+              ElevatedButton(
+                onPressed: _completePayment,
+                child: Text(
+                  _selectedMethod == 'G-Cash'
+                      ? 'Confirm GCash Payment (₱${_finalTotal.toStringAsFixed(2)})'
+                      : 'Confirm Cash on Delivery',
                 ),
               ),
+              const SizedBox(height: 16),
             ],
-
-            const SizedBox(height: 32),
-
-            ElevatedButton(
-              onPressed: _completePayment,
-              child: Text(
-                _selectedMethod == 'G-Cash'
-                    ? 'Confirm GCash Payment (₱${_finalTotal.toStringAsFixed(2)})'
-                    : 'Confirm Cash on Delivery',
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
+          ),
         ),
       ),
     );
@@ -184,21 +386,58 @@ class _CustomerPaymentScreenState extends State<CustomerPaymentScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          Text(
-            '₱${_finalTotal.toStringAsFixed(2)}',
-            style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              Text(
+                '₱${_finalTotal.toStringAsFixed(2)}',
+                style: TextStyle(
+                  color: _wasUpdated ? Colors.lightBlueAccent : Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (_wasUpdated) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.lightBlueAccent.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.lightBlueAccent),
+                  ),
+                  child: const Text(
+                    'UPDATED',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: 6),
           Text(
-            'Based on store verified weight: ${widget.weight.toStringAsFixed(1)} kg',
+            'Based on store verified weight: ${_weight.toStringAsFixed(1)} kg',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
+          if (_latestOrder != null && _latestOrder!.loads.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              '${_latestOrder!.loads.length} load${_latestOrder!.loads.length > 1 ? 's' : ''}',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildBreakdownCard() {
+    final loads = _latestOrder?.loads ?? [];
+    
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -214,19 +453,40 @@ class _CustomerPaymentScreenState extends State<CustomerPaymentScreen> {
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textDark),
           ),
           const Divider(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Full Service Wash, Dry & Fold (${widget.weight.toStringAsFixed(1)} kg)',
-                style: const TextStyle(fontSize: 13, color: AppTheme.textDark),
+          if (loads.isNotEmpty) ...[
+            ...loads.map((load) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Load ${load.loadNumber}: ${load.category} (${load.weight} ${load.unit})',
+                      style: const TextStyle(fontSize: 13, color: AppTheme.textDark),
+                    ),
+                  ),
+                  Text(
+                    '₱170.00',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textDark),
+                  ),
+                ],
               ),
-              Text(
-                '₱${widget.servicePrice.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textDark),
-              ),
-            ],
-          ),
+            )),
+          ] else ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Full Service Wash, Dry & Fold (${_weight.toStringAsFixed(1)} kg)',
+                  style: const TextStyle(fontSize: 13, color: AppTheme.textDark),
+                ),
+                Text(
+                  '₱${_servicePrice.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textDark),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 8),
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -265,7 +525,11 @@ class _CustomerPaymentScreenState extends State<CustomerPaymentScreen> {
               ),
               Text(
                 '₱${_finalTotal.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: _wasUpdated ? Colors.lightBlueAccent : AppTheme.accentBlue,
+                ),
               ),
             ],
           ),

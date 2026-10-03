@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
 import '../../../services/feedback_service.dart';
 import '../../../services/customer_service.dart';
+import '../../../services/order_service.dart';
 import '../../../widgets/star_rating.dart';
 import 'request_service_flow.dart';
 import '../chats/customer_chat_detail_screen.dart';
@@ -19,6 +22,7 @@ class CustomerOrderDetailsScreen extends StatefulWidget {
 class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen> {
   final FeedbackService _feedbackService = FeedbackService();
   final CustomerService _customerService = CustomerService();
+  final OrderService _orderService = OrderService();
   final TextEditingController _commentController = TextEditingController();
 
   Map<String, dynamic>? _existingFeedback;
@@ -26,17 +30,105 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
   bool _isSubmitting = false;
   int _selectedRating = 0;
   String? _error;
+  
+  // Order refresh management
+  LaundryOrder? _latestOrder;
+  bool _isRefreshing = false;
+  bool _wasUpdated = false;
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    _latestOrder = widget.order;
     _loadFeedback();
+    _refreshOrder();
+    _startAutoRefresh();
   }
 
   @override
   void dispose() {
     _commentController.dispose();
+    _autoRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  /// Start auto-refresh timer (30 seconds for order detail view)
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (timer) {
+        if (mounted && !_isRefreshing) {
+          _refreshOrder();
+        }
+      },
+    );
+    print('✅ Started customer order detail auto-refresh timer (30s interval)');
+  }
+
+  Future<void> _refreshOrder() async {
+    try {
+      setState(() => _isRefreshing = true);
+
+      final orders = await _orderService.fetchOrders(
+        statuses: null,
+        limit: 100,
+      );
+
+      final updated = orders.cast<LaundryOrder?>().firstWhere(
+        (o) => o?.id == widget.order.id,
+        orElse: () => _latestOrder,
+      );
+
+      if (mounted && updated != null) {
+        // Check if total amount or status changed
+        final oldTotal = _latestOrder?.totalAmount;
+        final newTotal = updated.totalAmount;
+        final oldStatus = _latestOrder?.status;
+        final newStatus = updated.status;
+
+        setState(() {
+          _latestOrder = updated;
+          _isRefreshing = false;
+        });
+
+        // Show notification if amount or status changed
+        if ((oldTotal != null && newTotal != null && oldTotal != newTotal) ||
+            (oldStatus != null && oldStatus != newStatus)) {
+          _wasUpdated = true;
+          
+          String message = '';
+          if (oldTotal != newTotal && newTotal != null) {
+            message = 'Order updated! New total: ₱${newTotal.toStringAsFixed(2)}';
+          } else if (oldStatus != newStatus) {
+            message = 'Order status updated to: ${updated.statusText}';
+          }
+          
+          if (message.isNotEmpty && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: AppTheme.accentBlue,
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          
+          // Reset update flag after 3 seconds
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              setState(() => _wasUpdated = false);
+            }
+          });
+        }
+      }
+    } catch (e) {
+      print('Error refreshing order: $e');
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
   }
 
   Future<void> _loadFeedback() async {
@@ -123,7 +215,8 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isCompleted = widget.order.status == OrderStatus.completed;
+    final order = _latestOrder ?? widget.order;
+    final isCompleted = order.status == OrderStatus.completed;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -132,33 +225,83 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        actions: [
+          if (_isRefreshing)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 24),
-            _buildTimeline(),
-            const SizedBox(height: 24),
-            _buildServiceDetails(),
-            const SizedBox(height: 24),
-            _buildPaymentInfo(),
-            if (isCompleted) ...[
+      body: RefreshIndicator(
+        onRefresh: _refreshOrder,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Show update notification badge
+              if (_wasUpdated)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentBlue,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.refresh, color: Colors.white, size: 16),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Order updated by staff',
+                          style: TextStyle(
+                            color: AppTheme.accentBlue,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              
+              _buildHeader(order),
               const SizedBox(height: 24),
-              _buildFeedbackSection(),
+              _buildTimeline(order),
+              const SizedBox(height: 24),
+              _buildServiceDetails(order),
+              const SizedBox(height: 24),
+              _buildPaymentInfo(order),
+              if (isCompleted) ...[
+                const SizedBox(height: 24),
+                _buildFeedbackSection(),
+              ],
+              const SizedBox(height: 24),
+              _buildActionButtons(order),
+              const SizedBox(height: 24),
             ],
-            const SizedBox(height: 24),
-            _buildActionButtons(),
-            const SizedBox(height: 24),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(LaundryOrder order) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration,
@@ -170,12 +313,12 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _getStatusColor().withValues(alpha: 0.1),
+                  color: _getStatusColor(order).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  _getStatusIcon(),
-                  color: _getStatusColor(),
+                  _getStatusIcon(order),
+                  color: _getStatusColor(order),
                   size: 24,
                 ),
               ),
@@ -185,7 +328,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Order #${widget.order.displayNumber}',
+                      'Order #${order.displayNumber}',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -194,7 +337,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${_getStatusText()} • ${_formatDateTime(widget.order.createdAt)}',
+                      '${_getStatusText(order)} • ${_formatDateTime(order.createdAt)}',
                       style: const TextStyle(
                         fontSize: 13,
                         color: AppTheme.textLight,
@@ -210,7 +353,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     );
   }
 
-  Widget _buildTimeline() {
+  Widget _buildTimeline(LaundryOrder order) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration,
@@ -228,33 +371,33 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
           const SizedBox(height: 16),
           _buildTimelineItem(
             'Requested',
-            widget.order.createdAt,
+            order.createdAt,
             Icons.schedule,
             isCompleted: true,
           ),
-          if (widget.order.status == OrderStatus.processing ||
-              widget.order.status == OrderStatus.ready ||
-              widget.order.status == OrderStatus.out_for_delivery ||
-              widget.order.status == OrderStatus.completed)
+          if (order.status == OrderStatus.processing ||
+              order.status == OrderStatus.ready ||
+              order.status == OrderStatus.out_for_delivery ||
+              order.status == OrderStatus.completed)
             _buildTimelineItem(
               'Processing',
-              widget.order.createdAt,
+              order.createdAt,
               Icons.local_laundry_service,
               isCompleted: true,
             ),
-          if (widget.order.status == OrderStatus.ready ||
-              widget.order.status == OrderStatus.out_for_delivery ||
-              widget.order.status == OrderStatus.completed)
+          if (order.status == OrderStatus.ready ||
+              order.status == OrderStatus.out_for_delivery ||
+              order.status == OrderStatus.completed)
             _buildTimelineItem(
               'Ready',
-              widget.order.createdAt,
+              order.createdAt,
               Icons.check_circle,
               isCompleted: true,
             ),
-          if (widget.order.status == OrderStatus.completed)
+          if (order.status == OrderStatus.completed)
             _buildTimelineItem(
               'Completed',
-              widget.order.createdAt,
+              order.createdAt,
               Icons.done_all,
               isCompleted: true,
               isLast: true,
@@ -323,7 +466,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     );
   }
 
-  Widget _buildServiceDetails() {
+  Widget _buildServiceDetails(LaundryOrder order) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration,
@@ -339,8 +482,8 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
             ),
           ),
           const SizedBox(height: 16),
-          if (widget.order.loads.isNotEmpty) ...[
-            ...widget.order.loads.map((load) => Padding(
+          if (order.loads.isNotEmpty) ...[
+            ...order.loads.map((load) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
@@ -377,7 +520,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                 style: TextStyle(fontSize: 13, color: AppTheme.textLight),
               ),
               Text(
-                '${widget.order.totalWeight.toStringAsFixed(1)} kg',
+                '${order.totalWeight.toStringAsFixed(1)} kg',
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -395,7 +538,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                 style: TextStyle(fontSize: 13, color: AppTheme.textLight),
               ),
               Text(
-                '${widget.order.loads.length}',
+                '${order.loads.length}',
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -409,7 +552,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     );
   }
 
-  Widget _buildPaymentInfo() {
+  Widget _buildPaymentInfo(LaundryOrder order) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration,
@@ -432,13 +575,37 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                 'Total Amount',
                 style: TextStyle(fontSize: 14, color: AppTheme.textLight),
               ),
-              Text(
-                '₱${(widget.order.totalAmount ?? 0.0).toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.accentBlue,
-                ),
+              Row(
+                children: [
+                  Text(
+                    '₱${(order.totalAmount ?? 0.0).toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _wasUpdated ? Colors.lightBlueAccent : AppTheme.accentBlue,
+                    ),
+                  ),
+                  if (_wasUpdated) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.lightBlueAccent.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.lightBlueAccent),
+                      ),
+                      child: const Text(
+                        'NEW',
+                        style: TextStyle(
+                          color: Colors.lightBlueAccent,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),
@@ -446,7 +613,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: widget.order.paymentStatus == PaymentStatus.paid
+              color: order.paymentStatus == PaymentStatus.paid
                   ? Colors.green.withValues(alpha: 0.08)
                   : Colors.orange.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
@@ -454,23 +621,23 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
             child: Row(
               children: [
                 Icon(
-                  widget.order.paymentStatus == PaymentStatus.paid
+                  order.paymentStatus == PaymentStatus.paid
                       ? Icons.check_circle
                       : Icons.schedule,
                   size: 16,
-                  color: widget.order.paymentStatus == PaymentStatus.paid
+                  color: order.paymentStatus == PaymentStatus.paid
                       ? Colors.green
                       : Colors.orange,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  widget.order.paymentStatus == PaymentStatus.paid
-                      ? 'Paid via ${widget.order.paymentMethod ?? "N/A"}'
+                  order.paymentStatus == PaymentStatus.paid
+                      ? 'Paid via ${order.paymentMethod ?? "N/A"}'
                       : 'Payment Pending',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: widget.order.paymentStatus == PaymentStatus.paid
+                    color: order.paymentStatus == PaymentStatus.paid
                         ? Colors.green
                         : Colors.orange,
                   ),
@@ -656,7 +823,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     );
   }
 
-  Widget _buildActionButtons() {
+  Widget _buildActionButtons(LaundryOrder order) {
     return Column(
       children: [
         SizedBox(
@@ -693,7 +860,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                     recipientName: 'InfinityWash Support',
                     recipientRole: 'Customer Support',
                     recipientType: ChatRecipientType.support,
-                    orderId: widget.order.displayNumber,
+                    orderId: order.displayNumber,
                     phoneNumber: '0912-345-6789',
                   ),
                 ),
@@ -716,8 +883,8 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     );
   }
 
-  Color _getStatusColor() {
-    switch (widget.order.status) {
+  Color _getStatusColor(LaundryOrder order) {
+    switch (order.status) {
       case OrderStatus.completed:
         return Colors.green;
       case OrderStatus.rejected:
@@ -728,8 +895,8 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     }
   }
 
-  IconData _getStatusIcon() {
-    switch (widget.order.status) {
+  IconData _getStatusIcon(LaundryOrder order) {
+    switch (order.status) {
       case OrderStatus.completed:
         return Icons.check_circle;
       case OrderStatus.rejected:
@@ -741,8 +908,8 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     }
   }
 
-  String _getStatusText() {
-    switch (widget.order.status) {
+  String _getStatusText(LaundryOrder order) {
+    switch (order.status) {
       case OrderStatus.pending_approval:
         return 'Pending Approval';
       case OrderStatus.pending_pickup:

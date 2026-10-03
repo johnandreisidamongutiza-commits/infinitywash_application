@@ -463,12 +463,31 @@ class RiderService {
   /// Start a job
   Future<void> startJob(String jobId) async {
     try {
+      // Fetch job details to get order ID and job type
+      final jobResponse = await _supabaseClient
+          .from('dispatch_jobs')
+          .select('order_id, job_type')
+          .eq('id', jobId)
+          .single();
+
+      final orderId = jobResponse['order_id'] as String;
+      final jobType = jobResponse['job_type'] as String;
+
+      // Update dispatch job status to in_progress
       await _supabaseService.updateDispatchJobStatus(
         jobId,
         'in_progress',
         startedAt: DateTime.now(),
       );
-      print('✅ Job started: $jobId');
+
+      // Sync order status (if delivery job, order becomes 'out_for_delivery')
+      await _supabaseService.syncOrderStatus(
+        orderId: orderId,
+        dispatchJobStatus: 'in_progress',
+        jobType: jobType,
+      );
+
+      print('✅ Job started: $jobId (type: $jobType, order: $orderId)');
     } catch (e) {
       print('❌ Error starting job: $e');
       rethrow;
