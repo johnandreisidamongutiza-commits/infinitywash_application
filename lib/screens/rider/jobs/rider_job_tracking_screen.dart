@@ -6,6 +6,7 @@ import '../../../theme/app_theme.dart';
 import '../../../models/dispatch_job.dart';
 import '../../../services/rider_service.dart';
 import '../../../services/supabase_service.dart';
+import '../../../services/routing_service.dart';
 import '../../../config/location_constants.dart';
 import '../../../state/gps_provider.dart';
 import '../../../state/rider_location_provider.dart';
@@ -27,12 +28,18 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
   final RiderService _riderService = RiderService();
   final GpsProvider _gpsProvider = GpsProvider();
   final RiderLocationProvider _locationProvider = RiderLocationProvider();
+  final RoutingService _routingService = RoutingService();
   
   LatLng? _riderLocation;
   StreamSubscription? _locationSubscription;
   bool _isCompleting = false;
   int _updateCount = 0;
   bool _isMapLoading = true; // Track map loading state
+  
+  // Route calculation
+  List<LatLng> _routePoints = [];
+  bool _isRouteFallback = false;
+  bool _isLoadingRoute = false;
   
   @override
   void initState() {
@@ -70,15 +77,63 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
 
       _locationSubscription = _gpsProvider.locationStream.listen((locationData) {
         if (mounted && locationData.latitude != null && locationData.longitude != null) {
+          final isFirstLocation = _riderLocation == null;
+          
           setState(() {
             _riderLocation = LatLng(locationData.latitude!, locationData.longitude!);
             _updateCount++;
           });
           _mapController.move(_riderLocation!, 15.0);
+          
+          // Calculate route on first location or periodically
+          if (isFirstLocation) {
+            _calculateRoute();
+          }
         }
       });
     } catch (e) {
       print('❌ Error starting tracking: $e');
+    }
+  }
+
+  /// Calculate the actual road route from rider to job location
+  Future<void> _calculateRoute() async {
+    final jobLocation = widget.job.latitude != null && widget.job.longitude != null
+        ? LatLng(widget.job.latitude!, widget.job.longitude!)
+        : null;
+
+    if (_riderLocation == null || jobLocation == null) {
+      setState(() => _routePoints = []);
+      return;
+    }
+
+    setState(() => _isLoadingRoute = true);
+
+    try {
+      final waypoints = [_riderLocation!, jobLocation];
+      final route = await _routingService.getRouteResult(waypoints);
+
+      if (mounted) {
+        setState(() {
+          _routePoints = route.points;
+          _isRouteFallback = route.isFallback;
+          _isLoadingRoute = false;
+        });
+        
+        if (route.isFallback) {
+          print('⚠️ Using fallback straight-line route');
+        } else {
+          print('✅ Road route calculated with ${route.points.length} points');
+        }
+      }
+    } catch (e) {
+      print('❌ Error calculating route: $e');
+      if (mounted) {
+        setState(() {
+          _routePoints = [];
+          _isLoadingRoute = false;
+        });
+      }
     }
   }
 
@@ -191,13 +246,17 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
                   ),
                 ],
               ),
-              if (_riderLocation != null && jobLocation != null)
+              // Route line following roads
+              if (_routePoints.isNotEmpty)
                 PolylineLayer(
                   polylines: [
                     Polyline(
-                      points: [_riderLocation!, jobLocation],
-                      strokeWidth: 4.0,
-                      color: AppTheme.accentBlue,
+                      points: _routePoints,
+                      strokeWidth: _isRouteFallback ? 3.0 : 4.0,
+                      color: _isRouteFallback ? AppTheme.textLight : AppTheme.accentBlue,
+                      pattern: _isRouteFallback
+                          ? StrokePattern.dashed(segments: [10, 6])
+                          : StrokePattern.solid(),
                     ),
                   ],
                 ),
@@ -311,6 +370,53 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
                         ),
                       ],
                     ),
+                    // Route status indicator
+                    if (_isLoadingRoute) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: AppTheme.accentBlue,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Calculating route...',
+                            style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                          ),
+                        ],
+                      ),
+                    ] else if (_isRouteFallback && _routePoints.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.warning_amber, size: 12, color: Colors.orange),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'Showing straight line - road route unavailable',
+                              style: TextStyle(fontSize: 10, color: Colors.orange),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else if (_routePoints.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.route, size: 12, color: Colors.green),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Route: ${_routePoints.length} points',
+                            style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
