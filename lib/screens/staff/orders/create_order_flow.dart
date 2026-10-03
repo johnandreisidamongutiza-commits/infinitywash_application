@@ -61,6 +61,13 @@ class _CustomerProfile {
   }
 }
 
+enum _SuggestionType {
+  none,        // No matches or search not triggered
+  confident,   // 1-3 matches - show all
+  uncertain,   // 4-10 matches - show with warning
+  tooMany,     // >10 matches - show helpful prompt only
+}
+
 class CreateOrderFlow extends StatefulWidget {
   const CreateOrderFlow({super.key});
 
@@ -110,9 +117,17 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   final GlobalKey _step3Key = GlobalKey();
 
   // Customer suggestion state
-  _CustomerProfile? _suggestedCustomer;
+  List<_CustomerProfile> _suggestedCustomers = []; // Changed to list for multiple matches
+  _SuggestionType _suggestionType = _SuggestionType.none;
+  String? _suggestionMessage;
   bool _dismissedSuggestion = false;
   Timer? _searchDebounce;
+  String? _acceptedCustomerId; // Track if staff accepted an existing customer
+  
+  // Match thresholds
+  static const int _showAllThreshold = 3;      // Show all if ≤3 matches
+  static const int _showWithWarningThreshold = 10;  // Show with warning if ≤10 matches
+  // If >10 matches, just show prompt
 
   // Multiple loads support
   final List<LoadDraft> _loads = [];
@@ -361,8 +376,13 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
         if (!hasValidName && !hasValidPhone) {
           // Clear suggestion if query too short
-          if (_suggestedCustomer != null) {
-            setState(() => _suggestedCustomer = null);
+          if (!mounted) return; // Add mounted check
+          if (_suggestionType != _SuggestionType.none) {
+            setState(() {
+              _suggestedCustomers = [];
+              _suggestionType = _SuggestionType.none;
+              _suggestionMessage = null;
+            });
           }
           return;
         }
@@ -375,17 +395,21 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
         if (!mounted) return;
 
-        if (results.isEmpty) {
-          // No matches found
-          if (_suggestedCustomer != null) {
-            setState(() => _suggestedCustomer = null);
-          }
+        final matchCount = results.length;
+
+        if (matchCount == 0) {
+          // No matches found - new customer
+          if (!mounted) return; // Add mounted check
+          setState(() {
+            _suggestedCustomers = [];
+            _suggestionType = _SuggestionType.none;
+            _suggestionMessage = null;
+          });
           return;
         }
 
-        // Get first match (prioritized by most recent order)
-        final matchJson = results.first;
-        final match = _CustomerProfile.fromJson(matchJson);
+        // Convert results to customer profiles
+        final matches = results.map((json) => _CustomerProfile.fromJson(json)).toList();
 
         // Normalize phone numbers for comparison
         final normalizePhone = (String? phone) {
@@ -393,22 +417,52 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           return phone.replaceAll(RegExp(r'[^\d]'), '');
         };
 
-        // Hide suggestion if fields already exactly match this customer
-        final firstNameMatches = firstName.toLowerCase() == match.firstName.toLowerCase();
-        final lastNameMatches = lastName.toLowerCase() == match.lastName.toLowerCase();
-        final phoneMatches = normalizePhone(phone) == normalizePhone(match.phone);
+        // Check if current form data already matches first result exactly
+        if (matches.isNotEmpty) {
+          final firstMatch = matches.first;
+          final firstNameMatches = firstName.toLowerCase() == firstMatch.firstName.toLowerCase();
+          final lastNameMatches = lastName.toLowerCase() == firstMatch.lastName.toLowerCase();
+          final phoneMatches = normalizePhone(phone) == normalizePhone(firstMatch.phone);
 
-        if (firstNameMatches && lastNameMatches && phoneMatches) {
-          // Already filled with this customer's data
-          if (_suggestedCustomer != null) {
-            setState(() => _suggestedCustomer = null);
+          if (firstNameMatches && lastNameMatches && phoneMatches) {
+            // Already filled with this customer's data exactly
+            if (!mounted) return; // Add mounted check
+            setState(() {
+              _suggestedCustomers = [];
+              _suggestionType = _SuggestionType.none;
+              _suggestionMessage = null;
+            });
+            return;
           }
-          return;
         }
 
-        // Show suggestion
-        if (_suggestedCustomer?.customerId != match.customerId) {
-          setState(() => _suggestedCustomer = match);
+        if (!mounted) return; // Add mounted check before all setState calls
+
+        // Apply hybrid threshold strategy
+        if (matchCount <= _showAllThreshold) {
+          // 1-3 matches: Show all with high confidence
+          setState(() {
+            _suggestedCustomers = matches;
+            _suggestionType = _SuggestionType.confident;
+            _suggestionMessage = matchCount == 1 
+                ? 'Returning customer found'
+                : '$matchCount customers found';
+          });
+        } else if (matchCount <= _showWithWarningThreshold) {
+          // 4-10 matches: Show with warning
+          setState(() {
+            _suggestedCustomers = matches;
+            _suggestionType = _SuggestionType.uncertain;
+            _suggestionMessage = '$matchCount customers named "${nameQuery.isNotEmpty ? nameQuery : firstName}"';
+          });
+        } else {
+          // >10 matches: Too many - show prompt only
+          setState(() {
+            _suggestedCustomers = [];
+            _suggestionType = _SuggestionType.tooMany;
+            _suggestionMessage = '$matchCount customers named "${nameQuery.isNotEmpty ? nameQuery : firstName}". '
+                'Add ${lastName.isEmpty ? "last name or " : ""}phone number to narrow down.';
+          });
         }
       } catch (e) {
         print('❌ Error in customer suggestion: $e');
@@ -501,6 +555,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       _firstNameController.text = customer.firstName;
       _lastNameController.text = customer.lastName;
       _phoneController.text = customer.phone;
+      
+      // IMPORTANT: Track that we're reusing this customer
+      _acceptedCustomerId = customer.customerId;
 
       if (customer.returnMethod == ReturnMethod.delivery) {
         _selectedReturn = ReturnMethod.delivery;
@@ -518,7 +575,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         _instructionsController.text = customer.instructions!;
       }
 
-      _suggestedCustomer = null;
+      // Clear suggestions after accepting
+      _suggestedCustomers = [];
+      _suggestionType = _SuggestionType.none;
+      _suggestionMessage = null;
       _dismissedSuggestion = true;
     });
 
@@ -660,30 +720,62 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     });
 
     try {
-      // Step 1: Create customer
-      print('🔄 Creating customer...');
+      // Step 1: Get or create customer
+      print('🔄 Getting/creating customer...');
 
-      // Split customer name into first and last name
-      final nameParts = _customerFullName.trim().split(' ');
-      final firstName = nameParts.first;
-      final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : null;
+      final String customerId;
+      
+      if (_acceptedCustomerId != null) {
+        // Reuse existing customer that staff accepted
+        customerId = _acceptedCustomerId!;
+        print('✅ Reusing existing customer: $customerId');
+        
+        // Optionally update customer info if changed (phone, address, etc.)
+        final needsUpdate = _phoneController.text.trim().isNotEmpty ||
+                          (_selectedReturn == ReturnMethod.delivery && _addressController.text.trim().isNotEmpty);
+        
+        if (needsUpdate) {
+          print('🔄 Updating customer info...');
+          
+          String? normalizedPhone;
+          if (_phoneController.text.trim().isNotEmpty) {
+            normalizedPhone = _customerService.normalizePhone(_phoneController.text.trim());
+          }
+          
+          await _customerService.updateCustomer(
+            customerId: customerId,
+            phone: normalizedPhone,
+            address: _selectedReturn == ReturnMethod.delivery ? _addressController.text.trim() : null,
+            landmark: _selectedReturn == ReturnMethod.delivery ? _landmarkController.text.trim() : null,
+          );
+          print('✅ Customer info updated');
+        }
+      } else {
+        // Create new customer
+        print('🔄 Creating new customer...');
+        
+        // Split customer name into first and last name
+        final nameParts = _customerFullName.trim().split(' ');
+        final firstName = nameParts.first;
+        final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : null;
 
-      // Normalize phone number before saving to database
-      String? normalizedPhone;
-      if (_phoneController.text.trim().isNotEmpty) {
-        normalizedPhone = _customerService.normalizePhone(_phoneController.text.trim());
+        // Normalize phone number before saving to database
+        String? normalizedPhone;
+        if (_phoneController.text.trim().isNotEmpty) {
+          normalizedPhone = _customerService.normalizePhone(_phoneController.text.trim());
+        }
+
+        customerId = await _customerService.createCustomer(
+          firstName: firstName,
+          lastName: lastName,
+          phone: normalizedPhone,
+          email: null, // Email not collected in walk-in flow
+          address: _selectedReturn == ReturnMethod.delivery ? _addressController.text.trim() : null,
+          landmark: _selectedReturn == ReturnMethod.delivery ? _landmarkController.text.trim() : null,
+        );
+
+        print('✅ New customer created: $customerId');
       }
-
-      final customerId = await _customerService.createCustomer(
-        firstName: firstName,
-        lastName: lastName,
-        phone: normalizedPhone,
-        email: null, // Email not collected in walk-in flow
-        address: _selectedReturn == ReturnMethod.delivery ? _addressController.text.trim() : null,
-        landmark: _selectedReturn == ReturnMethod.delivery ? _landmarkController.text.trim() : null,
-      );
-
-      print('✅ Customer created: $customerId');
 
       // Step 2: Get service and pricing information
       print('🔄 Loading service catalog...');
@@ -1277,11 +1369,11 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   _buildStep1LoyaltyCardWidget(),
                   const SizedBox(height: 12),
 
-                  // Customer suggestion banner
-                  if (_suggestedCustomer != null && !_dismissedSuggestion)
+                  // Customer suggestion banner(s)
+                  if (_suggestionType != _SuggestionType.none && !_dismissedSuggestion)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: _buildCustomerSuggestionBanner(_suggestedCustomer!),
+                      child: _buildCustomerSuggestionsUI(),
                     ),
 
                   // Form fields
@@ -1322,7 +1414,194 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     );
   }
 
-  Widget _buildCustomerSuggestionBanner(_CustomerProfile customer) {
+  /// Build customer suggestion UI based on match type
+  Widget _buildCustomerSuggestionsUI() {
+    // Add key to stabilize widget identity across rebuilds
+    return KeyedSubtree(
+      key: ValueKey('suggestions_$_suggestionType'),
+      child: _buildSuggestionContent(),
+    );
+  }
+  
+  Widget _buildSuggestionContent() {
+    switch (_suggestionType) {
+      case _SuggestionType.confident:
+        // 1-3 matches - show all
+        return _buildConfidentMatchesUI();
+      case _SuggestionType.uncertain:
+        // 4-10 matches - show with warning
+        return _buildUncertainMatchesUI();
+      case _SuggestionType.tooMany:
+        // >10 matches - show prompt only
+        return _buildTooManyMatchesPrompt();
+      case _SuggestionType.none:
+        return const SizedBox.shrink();
+    }
+  }
+
+  /// UI for 1-3 confident matches
+  Widget _buildConfidentMatchesUI() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.green.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min, // Changed from max to min
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible( // Changed Row to Flexible
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_outline, size: 15, color: Colors.green),
+                    const SizedBox(width: 6),
+                    Flexible( // Wrap Text with Flexible instead of no wrapper
+                      child: Text(
+                        _suggestionMessage ?? 'Customer found',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              InkWell(
+                onTap: () => setState(() {
+                  _suggestedCustomers = [];
+                  _suggestionType = _SuggestionType.none;
+                  _dismissedSuggestion = true;
+                }),
+                child: const Padding(
+                  padding: EdgeInsets.all(2),
+                  child: Icon(Icons.close, size: 16, color: AppTheme.textLight),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Show each match (confident UI)
+          for (var i = 0; i < _suggestedCustomers.length; i++) ...[
+            if (i > 0) const SizedBox(height: 8),
+            KeyedSubtree(
+              key: ValueKey('conf_${_suggestedCustomers[i].customerId}_$i'),
+              child: _buildCustomerMatchCard(_suggestedCustomers[i]),
+            ),
+          ],
+          if (_suggestedCustomers.length > 1) ...[
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => setState(() {
+                _suggestedCustomers = [];
+                _suggestionType = _SuggestionType.none;
+                _dismissedSuggestion = true;
+              }),
+              icon: const Icon(Icons.add_circle_outline, size: 16),
+              label: const Text('None of These - Create New Customer'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.textDark,
+                padding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// UI for 4-10 uncertain matches
+  Widget _buildUncertainMatchesUI() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min, // Changed from max to min
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded( // Wrap the inner Row with Expanded
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, size: 15, color: Colors.orange),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _suggestionMessage ?? 'Multiple customers found',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              InkWell(
+                onTap: () => setState(() {
+                  _suggestedCustomers = [];
+                  _suggestionType = _SuggestionType.none;
+                  _dismissedSuggestion = true;
+                }),
+                child: const Padding(
+                  padding: EdgeInsets.all(2),
+                  child: Icon(Icons.close, size: 16, color: AppTheme.textLight),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Please select the correct customer:',
+            style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+          ),
+          const SizedBox(height: 12),
+          // Show each match (uncertain UI)
+          for (var i = 0; i < _suggestedCustomers.length; i++) ...[
+            if (i > 0) const SizedBox(height: 8),
+            KeyedSubtree(
+              key: ValueKey('unc_${_suggestedCustomers[i].customerId}_$i'),
+              child: _buildCustomerMatchCard(_suggestedCustomers[i]),
+            ),
+          ],
+          const SizedBox(height: 8),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () => setState(() {
+              _suggestedCustomers = [];
+              _suggestionType = _SuggestionType.none;
+              _dismissedSuggestion = true;
+            }),
+            icon: const Icon(Icons.add_circle_outline, size: 16),
+            label: const Text('None of These - Create New Customer'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.textDark,
+              padding: EdgeInsets.zero,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// UI for >10 matches - prompt for more info
+  Widget _buildTooManyMatchesPrompt() {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1338,10 +1617,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.history, size: 15, color: AppTheme.accentBlue),
+                  const Icon(Icons.info_outline, size: 15, color: AppTheme.accentBlue),
                   const SizedBox(width: 6),
                   const Text(
-                    'Returning Customer Found',
+                    'Need More Information',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
@@ -1352,7 +1631,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               ),
               InkWell(
                 onTap: () => setState(() {
-                  _suggestedCustomer = null;
+                  _suggestionType = _SuggestionType.none;
                   _dismissedSuggestion = true;
                 }),
                 child: const Padding(
@@ -1362,21 +1641,119 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
-            '${customer.fullName} • ${customer.phone}',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+            _suggestionMessage ?? 'Too many matches found',
+            style: const TextStyle(fontSize: 12, color: AppTheme.textDark),
           ),
-          if (customer.returnMethod == ReturnMethod.delivery && customer.address != null) ...[
-            const SizedBox(height: 2),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.borderGray),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'To identify returning customers, please add:',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(Icons.check_circle, size: 12, color: Colors.green),
+                    const SizedBox(width: 6),
+                    Text(
+                      _lastNameController.text.trim().isEmpty ? 'Last name, OR' : 'Phone number',
+                      style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
+                    ),
+                  ],
+                ),
+                if (_lastNameController.text.trim().isEmpty) ...[
+                  const SizedBox(height: 4),
+                  const Row(
+                    children: [
+                      Icon(Icons.check_circle, size: 12, color: Colors.green),
+                      SizedBox(width: 6),
+                      Text(
+                        'Phone number',
+                        style: TextStyle(fontSize: 11, color: AppTheme.textDark),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: () => setState(() {
+              _suggestionType = _SuggestionType.none;
+              _dismissedSuggestion = true;
+            }),
+            child: const Text(
+              'Continue Without (creates new customer)',
+              style: TextStyle(fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build a single customer match card
+  Widget _buildCustomerMatchCard(_CustomerProfile customer) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.borderGray),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customer.fullName,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                    ),
+                    const SizedBox(height: 2),
+                    if (customer.phone.isNotEmpty)
+                      Row(
+                        children: [
+                          const Icon(Icons.phone_android, size: 11, color: AppTheme.textLight),
+                          const SizedBox(width: 4),
+                          Text(
+                            customer.phone,
+                            style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (customer.address != null && customer.address!.isNotEmpty) ...[
+            const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.delivery_dining_outlined, size: 13, color: AppTheme.textLight),
+                const Icon(Icons.location_on_outlined, size: 11, color: AppTheme.textLight),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
-                    '${customer.address!}${customer.landmark != null ? " (${customer.landmark!})" : ""}',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                    customer.address!,
+                    style: const TextStyle(fontSize: 10, color: AppTheme.textLight),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1384,19 +1761,15 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               ],
             ),
           ],
-          if (customer.instructions != null && customer.instructions!.isNotEmpty) ...[
-            const SizedBox(height: 2),
+          if (customer.lastOrderDate != null) ...[
+            const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.notes, size: 13, color: AppTheme.textLight),
+                const Icon(Icons.history, size: 11, color: AppTheme.textLight),
                 const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    'Notes: ${customer.instructions!}',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                Text(
+                  'Last order: ${_formatDate(customer.lastOrderDate!)}',
+                  style: const TextStyle(fontSize: 10, color: AppTheme.textLight),
                 ),
               ],
             ),
@@ -1406,13 +1779,13 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: () => _applyCustomerSuggestion(customer),
-              icon: const Icon(Icons.bolt, size: 15),
-              label: const Text('Auto-fill Previous Details'),
+              icon: const Icon(Icons.check_circle, size: 14),
+              label: const Text('Use This Customer', style: TextStyle(fontSize: 12)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.accentBlue,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                 elevation: 0,
               ),
             ),
@@ -1420,6 +1793,28 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         ],
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+    
+    if (difference.inDays == 0) {
+      return 'Today';
+    } else if (difference.inDays == 1) {
+      return 'Yesterday';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else if (difference.inDays < 30) {
+      final weeks = (difference.inDays / 7).floor();
+      return weeks == 1 ? '1 week ago' : '$weeks weeks ago';
+    } else if (difference.inDays < 365) {
+      final months = (difference.inDays / 30).floor();
+      return months == 1 ? '1 month ago' : '$months months ago';
+    } else {
+      final years = (difference.inDays / 365).floor();
+      return years == 1 ? '1 year ago' : '$years years ago';
+    }
   }
 
   Widget _buildLaundryIntakeSection() {
