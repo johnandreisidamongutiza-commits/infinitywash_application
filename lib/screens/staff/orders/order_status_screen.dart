@@ -23,8 +23,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   @override
   void initState() {
     super.initState();
+    _currentOrder = widget.order;
     _currentStatus = _currentOrder.status;
-    _currentOrder = _currentOrder;
     _startAutoRefresh();
   }
 
