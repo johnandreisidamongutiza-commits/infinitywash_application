@@ -73,6 +73,13 @@ dependencies:
   
   # State Management
   provider: ^6.1.2
+
+  # Legal consent (sha256 of the bundled document text)
+  crypto: ^3.0.7
+
+  # Legal document rendering (Terms of Service / Privacy Policy)
+  flutter_markdown: ^0.7.7+1
+  package_info_plus: ^9.0.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -96,6 +103,7 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/legal/
 
 flutter_launcher_icons:
   android: true
