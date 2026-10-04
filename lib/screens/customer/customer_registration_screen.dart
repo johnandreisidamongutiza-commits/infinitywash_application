@@ -157,6 +157,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
             address: result.address!,
             houseStreetController: _houseStreetController,
             setBarangay: (v) => _selectedBarangay = v,
+            customBarangayController: _customBarangayController,
           );
           // Prepend Blk/Lot placeholder if not already there
           if (!_houseStreetController.text.startsWith('Blk')) {

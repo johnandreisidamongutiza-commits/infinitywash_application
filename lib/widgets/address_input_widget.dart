@@ -118,6 +118,7 @@ class AddressInputWidget extends StatelessWidget {
     required String address,
     required TextEditingController houseStreetController,
     required void Function(String?) setBarangay,
+    TextEditingController? customBarangayController,
   }) {
     String? matchedBarangay;
     for (final b in santaCruzBarangays) {
@@ -148,7 +149,16 @@ class AddressInputWidget extends StatelessWidget {
         houseStreetController.text = address;
       }
     } else {
-      houseStreetController.text = address;
+      if (customBarangayController != null && address.contains(',')) {
+        final commaIdx = address.lastIndexOf(',');
+        final possibleBrgy = address.substring(commaIdx + 1).trim();
+        final streetPart = address.substring(0, commaIdx).trim();
+        setBarangay('Other / Outside Sta. Cruz');
+        customBarangayController.text = possibleBrgy;
+        houseStreetController.text = streetPart;
+      } else {
+        houseStreetController.text = address;
+      }
     }
   }
 

@@ -334,7 +334,7 @@ class OrderService {
           .from('orders')
           .select('''
             *,
-            customers!inner(first_name, last_name, pin_latitude, pin_longitude)
+            customers!inner(first_name, last_name)
           ''')
           .eq('id', orderId)
           .single();
@@ -349,9 +349,13 @@ class OrderService {
               ? firstName 
               : 'Unknown Customer';
 
-      // Use customer's pinned coordinates, fallback to shop/default coordinates if null
-      final pinLat = (customerData?['pin_latitude'] as num?)?.toDouble();
-      final pinLng = (customerData?['pin_longitude'] as num?)?.toDouble();
+      // Use order/customer pinned coordinates, fallback to shop/default coordinates if null
+      final pinLat = (orderResponse['delivery_latitude'] as num?)?.toDouble() ??
+          (orderResponse['pickup_latitude'] as num?)?.toDouble() ??
+          (customerData?['pin_latitude'] as num?)?.toDouble();
+      final pinLng = (orderResponse['delivery_longitude'] as num?)?.toDouble() ??
+          (orderResponse['pickup_longitude'] as num?)?.toDouble() ??
+          (customerData?['pin_longitude'] as num?)?.toDouble();
       final finalLat = pinLat ?? 14.2811;
       final finalLng = pinLng ?? 121.4159;
 
@@ -738,7 +742,7 @@ class OrderService {
           .from('orders')
           .select('''
             *,
-            customers!inner(first_name, last_name, address, landmark, pin_latitude, pin_longitude)
+            customers!inner(first_name, last_name, address, landmark)
           ''')
           .eq('id', orderId)
           .single();
@@ -803,9 +807,13 @@ class OrderService {
       
       print('🔍 DEBUG: customerName = "$customerName"');
 
-      // Use customer's pinned coordinates, fallback to default coordinates if null
-      final pinLat = (customerData?['pin_latitude'] as num?)?.toDouble();
-      final pinLng = (customerData?['pin_longitude'] as num?)?.toDouble();
+      // Use order/customer pinned coordinates, fallback to default coordinates if null
+      final pinLat = (orderResponse['delivery_latitude'] as num?)?.toDouble() ??
+          (orderResponse['pickup_latitude'] as num?)?.toDouble() ??
+          (customerData?['pin_latitude'] as num?)?.toDouble();
+      final pinLng = (orderResponse['delivery_longitude'] as num?)?.toDouble() ??
+          (orderResponse['pickup_longitude'] as num?)?.toDouble() ??
+          (customerData?['pin_longitude'] as num?)?.toDouble();
       final finalLat = pinLat ?? 14.2811;
       final finalLng = pinLng ?? 121.4159;
 

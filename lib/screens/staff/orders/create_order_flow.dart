@@ -126,6 +126,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       address: address,
       houseStreetController: _houseStreetController,
       setBarangay: (v) => _selectedBarangay = v,
+      customBarangayController: _customBarangayController,
     );
   }
 
