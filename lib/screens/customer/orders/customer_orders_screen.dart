@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/top_notification.dart';
 import '../../../models/order.dart';
@@ -23,28 +23,53 @@ class CustomerOrdersScreen extends StatefulWidget {
   State<CustomerOrdersScreen> createState() => _CustomerOrdersScreenState();
 }
 
-class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
+class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   final ServiceRequestService _serviceRequestService = ServiceRequestService();
   final CustomerService _customerService = CustomerService();
   final FeedbackService _feedbackService = FeedbackService();
-  int _selectedTabIndex = 0; // 0: Requests, 1: Active, 2: History
-  final Set<String> _expandedOrderIds = {};
-  
+
   // Loading and data state
   bool _isLoading = false;
   List<LaundryOrder> _customerOrders = [];
   String? _errorMessage;
-  
+
   // Feedback cache: orderId -> hasFeedback
   final Map<String, bool> _feedbackStatus = {};
-  
-  // Auto-refresh timer (replaces real-time subscription)
-  Timer? _autoRefreshTimer;
-  String? _currentCustomerId;
 
+  // Auto-refresh timer
+  Timer? _autoRefreshTimer;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Filtered getters
+  // ─────────────────────────────────────────────────────────────────────────
+  List<LaundryOrder> get _requestOrders => _customerOrders
+      .where((o) => o.status == OrderStatus.pending_approval)
+      .toList();
+
+  List<LaundryOrder> get _activeOrders => _customerOrders
+      .where((o) =>
+          o.status == OrderStatus.pending_pickup ||
+          o.status == OrderStatus.processing ||
+          o.status == OrderStatus.ready ||
+          o.status == OrderStatus.out_for_delivery)
+      .toList();
+
+  List<LaundryOrder> get _historyOrders => _customerOrders
+      .where((o) =>
+          o.status == OrderStatus.completed ||
+          o.status == OrderStatus.rejected ||
+          o.status == OrderStatus.cancelled)
+      .toList();
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Lifecycle
+  // ─────────────────────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this, initialIndex: 1);
     _loadCustomerOrders();
     _startAutoRefresh();
   }
@@ -52,8 +77,13 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   @override
   void dispose() {
     _autoRefreshTimer?.cancel();
+    _tabController.dispose();
     super.dispose();
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Business Logic
+  // ─────────────────────────────────────────────────────────────────────────
 
   /// Start auto-refresh timer (60 seconds for order list)
   void _startAutoRefresh() {
@@ -76,21 +106,20 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     });
 
     try {
-      // Get authenticated customer ID
-      final customerId = await _customerService.getCurrentAuthenticatedCustomerId();
-      
-      // Fetch orders for this customer
-      final orders = await _serviceRequestService.getOrdersByCustomerId(customerId);
-      
-      // Load feedback status for completed orders
+      final customerId =
+          await _customerService.getCurrentAuthenticatedCustomerId();
+      final orders =
+          await _serviceRequestService.getOrdersByCustomerId(customerId);
       await _loadFeedbackStatus(orders);
-      
+
+      if (!mounted) return;
       setState(() {
         _customerOrders = orders;
         _isLoading = false;
       });
       print('✅ Loaded ${orders.length} customer orders');
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = 'Failed to load orders: ${e.toString()}';
@@ -101,8 +130,8 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
 
   /// Load feedback status for orders
   Future<void> _loadFeedbackStatus(List<LaundryOrder> orders) async {
-    final completedOrders = orders.where((o) => o.status == OrderStatus.completed);
-    
+    final completedOrders =
+        orders.where((o) => o.status == OrderStatus.completed);
     for (final order in completedOrders) {
       try {
         final feedback = await _feedbackService.getFeedbackForOrder(order.id);
@@ -114,11 +143,8 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     }
   }
 
-  /// Cancel an order
   /// Opens the admin-uploaded GCash QR, lets the customer capture/upload
-  /// the payment receipt, then records the payment: the order is marked
-  /// paid immediately, while the payment is 'pending' (for review) on the
-  /// admin website until the OCR verification runs.
+  /// the payment receipt, then records the payment.
   Future<void> _payWithGcash(LaundryOrder order, double amount) async {
     final receipt = await Navigator.push<File>(
       context,
@@ -133,7 +159,6 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     );
     if (receipt == null || !mounted) return;
 
-    // Saving state — non-dismissible while uploading
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -156,26 +181,33 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
         receiptFile: receipt,
       );
       if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop(); // close saving dialog
+      Navigator.of(context, rootNavigator: true).pop();
 
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
             children: [
-              Icon(Icons.check_circle, color: Colors.green),
-              SizedBox(width: 8),
-              Expanded(child: Text('Receipt Uploaded', style: TextStyle(fontSize: 18))),
+              const Icon(Icons.check_circle, color: Colors.green),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Receipt Uploaded',
+                  style: GoogleFonts.lexend(fontSize: 18),
+                ),
+              ),
             ],
           ),
-          content: const Text(
+          content: Text(
             'Your GCash payment is marked as PAID. It is now pending verification by our admin team.',
+            style: GoogleFonts.lexend(fontSize: 14),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Done'),
+              child: Text('Done', style: GoogleFonts.lexend()),
             ),
           ],
         ),
@@ -184,7 +216,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
       await _loadCustomerOrders();
     } catch (e) {
       if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop(); // close saving dialog
+      Navigator.of(context, rootNavigator: true).pop();
       print('❌ GCash payment failed: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -201,11 +233,11 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     }
   }
 
+  /// Cancel an order
   Future<void> _cancelOrder(String orderId) async {
     try {
       await _serviceRequestService.cancelOrder(orderId);
-      
-      // Show success notification
+
       if (mounted) {
         showTopNotification(
           context,
@@ -214,13 +246,9 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
           backgroundColor: Colors.green,
         );
       }
-      
-      // Reload orders to reflect the change
       await _loadCustomerOrders();
     } catch (e) {
       print('❌ Error cancelling order: $e');
-      
-      // Show error notification
       if (mounted) {
         showTopNotification(
           context,
@@ -232,42 +260,23 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     }
   }
 
-  /// Filter orders by status for different tabs
-  List<LaundryOrder> get _requestOrders => _customerOrders.where((order) => 
-      order.status == OrderStatus.pending_approval).toList();
-  
-  List<LaundryOrder> get _activeOrders => _customerOrders.where((order) => 
-      order.status == OrderStatus.pending_pickup ||
-      order.status == OrderStatus.processing || 
-      order.status == OrderStatus.ready || 
-      order.status == OrderStatus.out_for_delivery).toList();
-  
-  List<LaundryOrder> get _historyOrders => _customerOrders.where((order) => 
-      order.status == OrderStatus.completed || 
-      order.status == OrderStatus.rejected ||
-      order.status == OrderStatus.cancelled).toList();
-
-  /// Get payment method display text based on order's payment preference
+  /// Get payment method display text
   String _getPaymentMethodDisplay(LaundryOrder order) {
-    // If already paid, show the actual payment method used
-    if (order.paymentStatus == PaymentStatus.paid && order.paymentMethod != null) {
+    if (order.paymentStatus == PaymentStatus.paid &&
+        order.paymentMethod != null) {
       return order.paymentMethod!;
     }
-    
-    // Otherwise, show the customer's preferred payment method
-    if (order.paymentPreference != null && order.paymentPreference!.isNotEmpty) {
+    if (order.paymentPreference != null &&
+        order.paymentPreference!.isNotEmpty) {
       return order.paymentPreference!;
     }
-    
-    // Default to GCash for old orders without preference
     return 'GCash';
   }
 
-  /// Get pay button text based on payment preference
+  /// Get pay button text
   String _getPayButtonText(LaundryOrder order, double amount) {
     final preference = order.paymentPreference ?? 'GCash';
     final amountStr = '₱${amount.toStringAsFixed(2)}';
-    
     if (preference == 'Cash on Delivery') {
       return 'Confirm Cash on Delivery ($amountStr)';
     } else if (preference == 'GCash') {
@@ -277,21 +286,154 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Helpers
+  // ─────────────────────────────────────────────────────────────────────────
+  String _timeAgo(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${date.month}/${date.day}/${date.year}';
+  }
+
+  Color _statusColor(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending_approval:
+        return Colors.orange;
+      case OrderStatus.pending_pickup:
+        return Colors.orange;
+      case OrderStatus.processing:
+        return AppTheme.accentBlue;
+      case OrderStatus.ready:
+        return const Color(0xFF43A047);
+      case OrderStatus.out_for_delivery:
+        return const Color(0xFF7B1FA2);
+      case OrderStatus.completed:
+        return const Color(0xFF43A047);
+      case OrderStatus.rejected:
+        return AppTheme.errorRed;
+      case OrderStatus.cancelled:
+        return AppTheme.textLight;
+    }
+  }
+
+  String _statusLabel(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending_approval:
+        return 'Pending';
+      case OrderStatus.pending_pickup:
+        return 'Pickup';
+      case OrderStatus.processing:
+        return 'Processing';
+      case OrderStatus.ready:
+        return 'Ready';
+      case OrderStatus.out_for_delivery:
+        return 'Delivering';
+      case OrderStatus.completed:
+        return 'Completed';
+      case OrderStatus.rejected:
+        return 'Rejected';
+      case OrderStatus.cancelled:
+        return 'Cancelled';
+    }
+  }
+
+  IconData _statusIcon(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending_approval:
+        return Icons.schedule;
+      case OrderStatus.pending_pickup:
+        return Icons.local_shipping_outlined;
+      case OrderStatus.processing:
+        return Icons.local_laundry_service_outlined;
+      case OrderStatus.ready:
+        return Icons.check_circle_outline;
+      case OrderStatus.out_for_delivery:
+        return Icons.delivery_dining;
+      case OrderStatus.completed:
+        return Icons.task_alt;
+      case OrderStatus.rejected:
+        return Icons.cancel_outlined;
+      case OrderStatus.cancelled:
+        return Icons.block;
+    }
+  }
+
+  Color _getLoadStatusColor(LoadStatus? status) {
+    if (status == null) return AppTheme.textLight;
+    switch (status) {
+      case LoadStatus.queued:
+        return AppTheme.textLight;
+      case LoadStatus.washing:
+        return Colors.blue;
+      case LoadStatus.drying:
+        return Colors.orange;
+      case LoadStatus.folded:
+        return Colors.green;
+    }
+  }
+
+  String _getLoadStatusText(LoadStatus? status) {
+    if (status == null) return 'Queued';
+    switch (status) {
+      case LoadStatus.queued:
+        return 'Queued';
+      case LoadStatus.washing:
+        return 'Washing';
+      case LoadStatus.drying:
+        return 'Drying';
+      case LoadStatus.folded:
+        return 'Folded';
+    }
+  }
+
+  int _progressStepIndex(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.processing:
+      case OrderStatus.ready:
+      case OrderStatus.out_for_delivery:
+        return 1;
+      case OrderStatus.completed:
+        return 2;
+      default:
+        return 0;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BUILD
+  // ─────────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.softGray,
       appBar: AppBar(
-        title: const Text('My Orders'),
+        title: Text(
+          'My Orders',
+          style: GoogleFonts.lexend(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textDark,
+          ),
+        ),
         backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         elevation: 0,
         centerTitle: true,
         actions: [
           if (_activeOrders.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: InkWell(
-                onTap: () {
+              padding: const EdgeInsets.only(right: 8),
+              child: IconButton(
+                icon: const Icon(
+                  Icons.support_agent_rounded,
+                  color: AppTheme.textDark,
+                ),
+                tooltip: 'Need help?',
+                onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -305,874 +447,1363 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                     ),
                   );
                 },
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.softGray,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.8)),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.chat_bubble_outline, size: 13, color: AppTheme.accentBlue),
-                      SizedBox(width: 4),
-                      Text(
-                        'Need help?',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
-                      ),
-                    ],
-                  ),
-                ),
               ),
             ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 4),
         ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadCustomerOrders,
-        color: AppTheme.accentBlue,
-        child: Column(
-          children: [
-            _buildTabBar(),
-            Expanded(
-              child: _buildCurrentTabView(),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Container(
+            margin: const EdgeInsets.only(left: 16, right: 16, bottom: 6),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: AppTheme.softGray,
+              borderRadius: BorderRadius.circular(16),
             ),
-          ],
+            child: TabBar(
+              controller: _tabController,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+              indicator: BoxDecoration(
+                color: AppTheme.accentBlue,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.accentBlue.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              indicatorSize: TabBarIndicatorSize.tab,
+              labelColor: Colors.white,
+              unselectedLabelColor: AppTheme.textLight,
+              labelStyle: GoogleFonts.lexend(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+              unselectedLabelStyle: GoogleFonts.lexend(fontSize: 13),
+              dividerHeight: 0,
+              tabs: [
+                Tab(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('Requests'),
+                        if (_requestOrders.isNotEmpty) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.errorRed,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${_requestOrders.length}',
+                              style: GoogleFonts.lexend(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                Tab(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('Active'),
+                        if (_activeOrders.isNotEmpty) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF43A047),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${_activeOrders.length}',
+                              style: GoogleFonts.lexend(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const Tab(text: 'History'),
+              ],
+            ),
+          ),
         ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          RefreshIndicator(
+            color: AppTheme.accentBlue,
+            onRefresh: _loadCustomerOrders,
+            child: _buildRequestsTab(),
+          ),
+          RefreshIndicator(
+            color: AppTheme.accentBlue,
+            onRefresh: _loadCustomerOrders,
+            child: _buildActiveTab(),
+          ),
+          RefreshIndicator(
+            color: AppTheme.accentBlue,
+            onRefresh: _loadCustomerOrders,
+            child: _buildHistoryTab(),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           final result = await Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
+            MaterialPageRoute(
+                builder: (context) => const RequestServiceFlow()),
           );
-          
-          // If a service request was submitted successfully, refresh the data
           if (result == true) {
+            _tabController.animateTo(0); // Switch to Requests tab
             _loadCustomerOrders();
           }
         },
         backgroundColor: AppTheme.accentBlue,
-        icon: const Icon(Icons.add),
-        label: const Text('Request Service', style: TextStyle(fontWeight: FontWeight.bold)),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_rounded),
+        label: Text(
+          'Request Service',
+          style: GoogleFonts.lexend(
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+          ),
+        ),
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
       ),
     );
   }
 
-  Widget _buildTabBar() {
+  // ─────────────────────────────────────────────────────────────────────────
+  // REQUESTS TAB
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildRequestsTab() {
+    if (_isLoading && _customerOrders.isEmpty) {
+      return Center(
+        child: CircularProgressIndicator(
+          color: AppTheme.accentBlue,
+          strokeWidth: 2.5,
+        ),
+      );
+    }
+
+    if (_errorMessage != null && _customerOrders.isEmpty) {
+      return _buildErrorState();
+    }
+
+    if (_requestOrders.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.mark_email_unread_outlined,
+        title: 'No pending requests',
+        subtitle:
+            'Your laundry requests awaiting review will appear here.\nTap "Request Service" to get started.',
+      );
+    }
+
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+      itemCount: _requestOrders.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) => _buildRequestCard(_requestOrders[index]),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ACTIVE TAB
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildActiveTab() {
+    if (_isLoading && _customerOrders.isEmpty) {
+      return Center(
+        child: CircularProgressIndicator(
+          color: AppTheme.accentBlue,
+          strokeWidth: 2.5,
+        ),
+      );
+    }
+
+    if (_errorMessage != null && _customerOrders.isEmpty) {
+      return _buildErrorState();
+    }
+
+    if (_activeOrders.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.local_laundry_service_outlined,
+        title: 'No active orders',
+        subtitle: 'Orders in progress will appear here.',
+      );
+    }
+
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+      itemCount: _activeOrders.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) => _buildActiveCard(_activeOrders[index]),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HISTORY TAB
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildHistoryTab() {
+    if (_isLoading && _customerOrders.isEmpty) {
+      return Center(
+        child: CircularProgressIndicator(
+          color: AppTheme.accentBlue,
+          strokeWidth: 2.5,
+        ),
+      );
+    }
+
+    if (_errorMessage != null && _customerOrders.isEmpty) {
+      return _buildErrorState();
+    }
+
+    if (_historyOrders.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.history_rounded,
+        title: 'No order history',
+        subtitle: 'Your completed orders will show up here.',
+      );
+    }
+
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+      itemCount: _historyOrders.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) =>
+          _buildHistoryCard(_historyOrders[index]),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // REQUEST CARD — pending_approval orders
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildRequestCard(LaundryOrder order) {
+    final hasPhotos =
+        order.laundryPhotoUrls != null && order.laundryPhotoUrls!.isNotEmpty;
+    final photoCount = order.laundryPhotoUrls?.length ?? 0;
+    final isRiderPickup =
+        order.collectionMethod == CollectionMethod.riderPickup;
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(24, 8, 24, 12),
-      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppTheme.softGray,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildTabButton(
-              title: 'Requests',
-              count: _requestOrders.length,
-              isSelected: _selectedTabIndex == 0,
-              onTap: () => setState(() => _selectedTabIndex = 0),
-            ),
-          ),
-          Expanded(
-            child: _buildTabButton(
-              title: 'Active',
-              count: _activeOrders.length,
-              isSelected: _selectedTabIndex == 1,
-              onTap: () => setState(() => _selectedTabIndex = 1),
-            ),
-          ),
-          Expanded(
-            child: _buildTabButton(
-              title: 'History',
-              count: _historyOrders.length,
-              isSelected: _selectedTabIndex == 2,
-              onTap: () => setState(() => _selectedTabIndex = 2),
-            ),
+        border: Border.all(
+          color: Colors.orange.withValues(alpha: 0.25),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildTabButton({
-    required String title,
-    required int count,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    CustomerOrderDetailsScreen(order: order),
+              ),
+            );
+            if (result == true) _loadCustomerOrders();
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Top accent bar ──
+              Container(
+                height: 4,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.orange.withValues(alpha: 0.8),
+                      Colors.amber.withValues(alpha: 0.6),
+                    ],
                   ),
-                ]
-              : [],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? AppTheme.accentBlue : AppTheme.textLight,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? AppTheme.accentBlue.withValues(alpha: 0.12)
-                    : AppTheme.borderGray.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '$count',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? AppTheme.accentBlue : AppTheme.textLight,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCurrentTabView() {
-    // Handle loading state
-    if (_isLoading) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading your orders...', style: TextStyle(color: AppTheme.textLight)),
-          ],
-        ),
-      );
-    }
-
-    // Handle error state
-    if (_errorMessage != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 16),
-            Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadCustomerOrders,
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Handle normal state
-    switch (_selectedTabIndex) {
-      case 0:
-        return _buildRequestsTab();
-      case 1:
-        return _buildActiveTab();
-      case 2:
-        return _buildHistoryTab();
-      default:
-        return const SizedBox();
-    }
-  }
-
-  // ==================== REQUESTS TAB ====================
-  Widget _buildRequestsTab() {
-    if (_requestOrders.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.pending_actions_outlined,
-        title: 'No pending requests',
-        subtitle: 'You don\'t have any laundry requests awaiting review.',
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-      itemCount: _requestOrders.length,
-      itemBuilder: (context, index) {
-        final order = _requestOrders[index];
-        return _buildRequestCard(order);
-      },
-    );
-  }
-
-  Widget _buildRequestCard(LaundryOrder order) {
-    final bool isExpanded = _expandedOrderIds.contains(order.id);
-    final bool isRejected = order.status == OrderStatus.rejected;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: AppStyles.cardDecoration,
-      child: Column(
-        children: [
-          // Collapsed header - always visible
-          InkWell(
-            onTap: () {
-              setState(() {
-                if (isExpanded) {
-                  _expandedOrderIds.remove(order.id);
-                } else {
-                  _expandedOrderIds.add(order.id);
-                }
-              });
-            },
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: isRejected
-                          ? Colors.red.withValues(alpha: 0.1)
-                          : AppTheme.teamMemberOrange.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      isRejected ? Icons.cancel_outlined : Icons.pending_outlined,
-                      color: isRejected ? Colors.red : AppTheme.teamMemberIconOrange,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Order #${order.displayNumber}',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _formatDateTime(order.createdAt),
-                          style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _buildStatusBadge(order.status),
-                  const SizedBox(width: 8),
-                  Icon(
-                    isExpanded ? Icons.expand_less : Icons.expand_more,
-                    color: AppTheme.textLight,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // Expanded details
-          if (isExpanded) ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (isRejected) ...[
-                    _buildRejectionDetails(order),
-                    const SizedBox(height: 16),
-                  ] else ...[
-                    _buildPendingApprovalDetails(order),
-                    const SizedBox(height: 16),
-                  ],
-                  if (!isRejected)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Header row: order number + badges + time ──
                     Row(
                       children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () async {
-                              // Show confirmation dialog
-                              final confirmed = await showDialog<bool>(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: const Text('Cancel Request?'),
-                                  content: const Text('Are you sure you want to cancel this service request? This action cannot be undone.'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context, false),
-                                      child: const Text('Keep Request'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context, true),
-                                      style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                      child: const Text('Cancel Request'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                              
-                              // If user confirmed, cancel the order
-                              if (confirmed == true) {
-                                await _cancelOrder(order.id);
-                              }
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              side: const BorderSide(color: Colors.red),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        Flexible(
+                          child: Text(
+                            order.displayNumber,
+                            style: GoogleFonts.lexend(
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primaryBlue,
+                              fontSize: 14,
                             ),
-                            child: const Text('Cancel Request', style: TextStyle(fontWeight: FontWeight.bold)),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildChip(
+                          label: isRiderPickup
+                              ? 'RIDER PICKUP'
+                              : 'WALK-IN',
+                          color: isRiderPickup
+                              ? AppTheme.accentBlue
+                              : const Color(0xFF26A69A),
+                          icon: isRiderPickup
+                              ? Icons.delivery_dining
+                              : Icons.storefront_outlined,
+                        ),
+                        const SizedBox(width: 5),
+                        _buildChip(
+                          label: 'PENDING',
+                          color: Colors.orange,
+                          icon: Icons.schedule,
+                        ),
+                        const Spacer(),
+                        Text(
+                          _timeAgo(order.createdAt),
+                          style: GoogleFonts.lexend(
+                            fontSize: 11,
+                            color: AppTheme.textLight,
                           ),
                         ),
                       ],
                     ),
-                ],
+
+                    const SizedBox(height: 12),
+
+                    // ── Info banner ──
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color:
+                            AppTheme.teamMemberOrange.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppTheme.teamMemberIconOrange
+                              .withValues(alpha: 0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 16,
+                              color: AppTheme.teamMemberIconOrange),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Your request is being reviewed by our staff',
+                              style: GoogleFonts.lexend(
+                                fontSize: 11,
+                                color: AppTheme.textDark,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // ── Address ──
+                    if (order.deliveryAddress != null &&
+                        order.deliveryAddress!.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: 15,
+                            color: AppTheme.textLight.withValues(alpha: 0.7),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              order.deliveryAddress!,
+                              style: GoogleFonts.lexend(
+                                fontSize: 12,
+                                color: AppTheme.textLight,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    // ── Photos indicator ──
+                    if (hasPhotos) ...[
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  _CustomerRequestPhotoViewer(
+                                photoUrls: order.laundryPhotoUrls!,
+                                initialIndex: 0,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color:
+                                AppTheme.accentBlue.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.photo_library_outlined,
+                                size: 14,
+                                color: AppTheme.accentBlue,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '$photoCount photo${photoCount > 1 ? 's' : ''} attached',
+                                style: GoogleFonts.lexend(
+                                  fontSize: 11,
+                                  color: AppTheme.accentBlue,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+
+                    // ── Customer notes preview ──
+                    if (order.customerDescription != null &&
+                        order.customerDescription!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.notes_outlined,
+                            size: 15,
+                            color: AppTheme.textLight.withValues(alpha: 0.7),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              order.customerDescription!,
+                              style: GoogleFonts.lexend(
+                                fontSize: 12,
+                                color: AppTheme.textLight,
+                                fontStyle: FontStyle.italic,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    const SizedBox(height: 14),
+
+                    // ── Cancel button ──
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20)),
+                              title: Text('Cancel Request?',
+                                  style: GoogleFonts.lexend(
+                                      fontWeight: FontWeight.w600)),
+                              content: Text(
+                                'Are you sure you want to cancel this service request? This action cannot be undone.',
+                                style: GoogleFonts.lexend(fontSize: 14),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: Text('Keep Request',
+                                      style: GoogleFonts.lexend()),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, true),
+                                  style: TextButton.styleFrom(
+                                      foregroundColor: Colors.red),
+                                  child: Text('Cancel Request',
+                                      style: GoogleFonts.lexend(
+                                          fontWeight: FontWeight.w600)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true) {
+                            await _cancelOrder(order.id);
+                          }
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.errorRed,
+                          side: BorderSide(
+                              color:
+                                  AppTheme.errorRed.withValues(alpha: 0.5)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Cancel Request',
+                              style: GoogleFonts.lexend(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.close_rounded, size: 16),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildPendingApprovalDetails(LaundryOrder order) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppTheme.teamMemberOrange.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.3)),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.info_outline, color: AppTheme.teamMemberIconOrange, size: 18),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Your request is being reviewed by our staff. You\'ll be notified once approved.',
-                  style: TextStyle(fontSize: 12, color: AppTheme.textDark),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (order.laundryPhotoUrls != null && order.laundryPhotoUrls!.isNotEmpty) ...[
-          Text(
-            'Photos (${order.laundryPhotoUrls!.length})',
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 80,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: order.laundryPhotoUrls!.length,
-              itemBuilder: (context, index) {
-                final photos = order.laundryPhotoUrls!;
-                return GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => _CustomerRequestPhotoViewer(
-                          photoUrls: photos,
-                          initialIndex: index,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    width: 80,
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.softGray,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.borderGray),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: _buildThumbnailImage(photos[index]),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (order.customerDescription != null && order.customerDescription!.isNotEmpty) ...[
-          const Text(
-            'Your Notes',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            order.customerDescription!,
-            style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-          ),
-          const SizedBox(height: 12),
-        ],
-        _buildOrderDetailRow(Icons.location_on_outlined, 'Delivery Address', order.deliveryAddress ?? 'N/A'),
-        const SizedBox(height: 8),
-        _buildOrderDetailRow(Icons.phone_outlined, 'Contact', order.customerPhone ?? 'N/A'),
-      ],
-    );
-  }
-
-  Widget _buildRejectionDetails(LaundryOrder order) {
-    String rejectionText = 'Your request was rejected';
-    if (order.rejectionReason != null) {
-      switch (order.rejectionReason) {
-        case 'out_of_service_area':
-          rejectionText = 'Out of service area';
-          break;
-        case 'capacity_full':
-          rejectionText = 'Capacity full';
-          break;
-        case 'invalid_items':
-          rejectionText = 'Invalid items';
-          break;
-        default:
-          rejectionText = order.rejectionReason!;
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.red.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.cancel_outlined, color: Colors.red, size: 18),
-                  const SizedBox(width: 8),
-                  Text(
-                    rejectionText,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.red),
-                  ),
-                ],
-              ),
-              if (order.staffMessage != null && order.staffMessage!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  order.staffMessage!,
-                  style: const TextStyle(fontSize: 12, color: AppTheme.textDark),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (order.reviewedAt != null) ...[
-          Text(
-            'Reviewed ${_formatDateTime(order.reviewedAt!)} by ${order.reviewedBy ?? "Staff"}',
-            style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
-          ),
-        ],
-      ],
-    );
-  }
-
-  // ==================== ACTIVE TAB ====================
-  Widget _buildActiveTab() {
-    if (_activeOrders.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.shopping_basket_outlined,
-        title: 'No active orders',
-        subtitle: 'You don\'t have any orders in progress right now.',
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-      itemCount: _activeOrders.length,
-      itemBuilder: (context, index) {
-        final order = _activeOrders[index];
-        return _buildActiveOrderCard(order);
-      },
-    );
-  }
-
-  Widget _buildActiveOrderCard(LaundryOrder order) {
-    final bool isExpanded = _expandedOrderIds.contains(order.id);
-    final bool needsPayment = order.paymentStatus == PaymentStatus.unpaid;
-    // Use totalAmount from database if available, otherwise estimate from weight
-    final double displayPrice = order.totalAmount != null && order.totalAmount! > 0 
-        ? order.totalAmount! 
-        : order.totalWeight * 30.0; // Fallback to ₱30/kg estimate
+  // ─────────────────────────────────────────────────────────────────────────
+  // ACTIVE CARD — pending_pickup, processing, ready, out_for_delivery
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildActiveCard(LaundryOrder order) {
+    final color = _statusColor(order.status);
+    final needsPayment = order.paymentStatus == PaymentStatus.unpaid;
+    final double displayPrice =
+        order.totalAmount != null && order.totalAmount! > 0
+            ? order.totalAmount!
+            : order.totalWeight * 30.0;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: AppStyles.cardDecoration,
-      child: Column(
-        children: [
-          // Collapsed header - More informative
-          InkWell(
-            onTap: () {
-              setState(() {
-                if (isExpanded) {
-                  _expandedOrderIds.remove(order.id);
-                } else {
-                  _expandedOrderIds.add(order.id);
-                }
-              });
-            },
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Row(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    CustomerOrderDetailsScreen(order: order),
+              ),
+            );
+            if (result == true) _loadCustomerOrders();
+          },
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                // ── Left status accent ──
+                Container(
+                  width: 5,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: const BorderRadius.horizontal(
+                      left: Radius.circular(16),
+                    ),
+                  ),
+                ),
+                // ── Card content ──
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Header: status icon + order# + badge + time ──
+                        Row(
                           children: [
+                            Icon(
+                              _statusIcon(order.status),
+                              size: 16,
+                              color: color,
+                            ),
+                            const SizedBox(width: 6),
                             Flexible(
                               child: Text(
-                                'Order #${order.displayNumber}',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
+                                order.displayNumber,
+                                style: GoogleFonts.lexend(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.primaryBlue,
+                                  fontSize: 14,
+                                ),
                                 overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
                               ),
                             ),
                             const SizedBox(width: 8),
                             _buildStatusBadge(order.status),
+                            const Spacer(),
+                            Text(
+                              _timeAgo(order.createdAt),
+                              style: GoogleFonts.lexend(
+                                fontSize: 11,
+                                color: AppTheme.textLight,
+                              ),
+                            ),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        isExpanded ? Icons.expand_less : Icons.expand_more,
-                        color: AppTheme.textLight,
-                      ),
-                    ],
-                  ),
-                  if (order.status == OrderStatus.processing || order.status == OrderStatus.ready) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.access_time, size: 12, color: Colors.green),
-                          SizedBox(width: 4),
-                          Text(
-                            'Est. Today, 4:00 PM',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green),
+
+                        // ── Action banner (pending pickup / out for delivery) ──
+                        if (order.status == OrderStatus.pending_pickup) ...[
+                          const SizedBox(height: 10),
+                          _buildActionBanner(
+                            icon: Icons.local_shipping_outlined,
+                            text: 'Waiting for rider to pick up your laundry',
+                            color: Colors.orange,
                           ),
                         ],
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-
-                  // Service title
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.lightBlue,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          _getStatusIcon(order.status),
-                          color: AppTheme.accentBlue,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Wash, Dry & Fold',
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-                            ),
-                            Text(
-                              _getStatusDescription(order.status) + (order.totalWeight > 0 ? ' • ${order.totalWeight.toStringAsFixed(1)} kg' : ''),
-                              style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Progress tracker - always visible
-                  _buildCompactProgressTracker(order.status),
-
-                  // Payment banner for GCash/online payments if unpaid
-                  if (needsPayment && 
-                      order.totalWeight > 0 &&
-                      order.paymentPreference != 'Cash on Delivery') ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppTheme.lightBlue,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.receipt_outlined, color: AppTheme.accentBlue, size: 18),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Verified Bill Ready • ${_getPaymentMethodDisplay(order)} Due',
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
-                                ),
-                                Text(
-                                  'Total Due: ₱${displayPrice.toStringAsFixed(2)} (${order.totalWeight.toStringAsFixed(1)} kg)',
-                                  style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
-                                ),
-                              ],
-                            ),
+                        if (order.status == OrderStatus.out_for_delivery) ...[
+                          const SizedBox(height: 10),
+                          _buildActionBanner(
+                            icon: Icons.delivery_dining,
+                            text: 'Your laundry is on the way!',
+                            color: const Color(0xFF7B1FA2),
                           ),
-                          if (order.status == OrderStatus.processing || order.status == OrderStatus.ready)
+                        ],
+
+                        const SizedBox(height: 12),
+
+                        // ── Service + weight row ──
+                        Row(
+                          children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              width: 32,
+                              height: 32,
                               decoration: BoxDecoration(
-                                color: Colors.orange,
+                                color: color.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Text(
-                                'DUE',
-                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                              child: Icon(
+                                Icons.local_laundry_service_outlined,
+                                size: 16,
+                                color: color,
                               ),
                             ),
-                        ],
-                      ),
-                    ),
-                  ],
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Wash, Dry & Fold',
+                                    style: GoogleFonts.lexend(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                      color: AppTheme.textDark,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    order.totalWeight > 0
+                                        ? '${order.loads.length} load${order.loads.length != 1 ? 's' : ''} • ${order.totalWeight.toStringAsFixed(1)} kg'
+                                        : order.needsCheckIn
+                                            ? 'Needs check-in'
+                                            : '${order.loads.length} load${order.loads.length != 1 ? 's' : ''}',
+                                    style: GoogleFonts.lexend(
+                                      fontSize: 12,
+                                      color: order.needsCheckIn
+                                          ? Colors.orange
+                                          : AppTheme.textLight,
+                                      fontWeight: order.needsCheckIn
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color:
+                                  AppTheme.textLight.withValues(alpha: 0.4),
+                              size: 22,
+                            ),
+                          ],
+                        ),
 
-                  // Cash on Delivery banner if COD selected  
-                  if (needsPayment &&
-                      order.totalWeight > 0 &&
-                      order.paymentPreference == 'Cash on Delivery') ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.payments, color: Colors.green, size: 18),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                        const SizedBox(height: 14),
+
+                        // ── Compact progress tracker ──
+                        _buildCompactProgressTracker(order.status),
+
+                        // ── Payment banner (GCash unpaid) ──
+                        if (needsPayment &&
+                            order.totalWeight > 0 &&
+                            order.paymentPreference != 'Cash on Delivery') ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppTheme.lightBlue,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: AppTheme.accentBlue
+                                      .withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
                               children: [
-                                const Text(
-                                  'Verified Bill Ready • Cash on Delivery',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
+                                Icon(Icons.receipt_outlined,
+                                    color: AppTheme.accentBlue, size: 18),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${_getPaymentMethodDisplay(order)} Due',
+                                        style: GoogleFonts.lexend(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.accentBlue,
+                                        ),
+                                      ),
+                                      Text(
+                                        '₱${displayPrice.toStringAsFixed(2)}',
+                                        style: GoogleFonts.lexend(
+                                          fontSize: 11,
+                                          color: AppTheme.textDark,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                Text(
-                                  'Amount: ₱${displayPrice.toStringAsFixed(2)} (${order.totalWeight.toStringAsFixed(1)} kg)',
-                                  style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
+                                SizedBox(
+                                  height: 32,
+                                  child: ElevatedButton(
+                                    onPressed: () =>
+                                        _payWithGcash(order, displayPrice),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.accentBlue,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 14),
+                                      elevation: 0,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'Pay Now',
+                                      style: GoogleFonts.lexend(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'COD',
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
-                            ),
-                          ),
                         ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: () => _payWithGcash(order, displayPrice),
-                      icon: const Icon(Icons.qr_code_2, size: 16),
-                      label: const Text(
-                        'Pay via GCash instead',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF007DFE),
-                        side: const BorderSide(color: Color(0xFF007DFE)),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ],
 
-                  // Rider info for delivery status
-                  if (order.status == OrderStatus.out_for_delivery) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppTheme.softGray,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: const BoxDecoration(
-                                  color: AppTheme.lightBlue,
-                                  shape: BoxShape.circle,
+                        // ── COD banner ──
+                        if (needsPayment &&
+                            order.totalWeight > 0 &&
+                            order.paymentPreference ==
+                                'Cash on Delivery') ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color:
+                                      Colors.green.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.payments,
+                                    color: Colors.green, size: 18),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Cash on Delivery',
+                                        style: GoogleFonts.lexend(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.green,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Prepare ₱${displayPrice.toStringAsFixed(2)}',
+                                        style: GoogleFonts.lexend(
+                                          fontSize: 11,
+                                          color: AppTheme.textDark,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                child: const Icon(Icons.person, color: AppTheme.accentBlue, size: 20),
-                              ),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Michael Rider',
-                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    'COD',
+                                    style: GoogleFonts.lexend(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
                                     ),
-                                    Text(
-                                      'Honda Click • ABC-1234',
-                                      style: TextStyle(fontSize: 11, color: AppTheme.textLight),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  icon: const Icon(Icons.phone, size: 16),
-                                  label: const Text('Call', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  onPressed: () {},
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  icon: const Icon(Icons.chat_bubble_outline, size: 16),
-                                  label: const Text('Chat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  onPressed: () {},
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: () {
-                                    showTopNotification(
-                                      context,
-                                      message: 'Opening live tracking...',
-                                      icon: Icons.location_on,
-                                      backgroundColor: AppTheme.accentBlue,
-                                    );
-                                  },
-                                  icon: const Icon(Icons.map, size: 16),
-                                  label: const Text('Track', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.accentBlue,
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ],
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HISTORY CARD — completed, rejected, cancelled
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildHistoryCard(LaundryOrder order) {
+    final color = _statusColor(order.status);
+    final hasFeedback = _feedbackStatus[order.id] ?? false;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    CustomerOrderDetailsScreen(order: order),
+              ),
+            );
+            if (result == true) _loadCustomerOrders();
+          },
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                // ── Left status accent ──
+                Container(
+                  width: 5,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: const BorderRadius.horizontal(
+                      left: Radius.circular(16),
+                    ),
+                  ),
+                ),
+                // ── Card content ──
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Header: status icon + order# + badge + time ──
+                        Row(
+                          children: [
+                            Icon(
+                              _statusIcon(order.status),
+                              size: 16,
+                              color: color,
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                order.displayNumber,
+                                style: GoogleFonts.lexend(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.primaryBlue,
+                                  fontSize: 14,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            _buildStatusBadge(order.status),
+                            const Spacer(),
+                            Text(
+                              _timeAgo(order.createdAt),
+                              style: GoogleFonts.lexend(
+                                fontSize: 11,
+                                color: AppTheme.textLight,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // ── Rejection reason ──
+                        if (order.status == OrderStatus.rejected) ...[
+                          const SizedBox(height: 10),
+                          _buildActionBanner(
+                            icon: Icons.cancel_outlined,
+                            text: order.rejectionReason != null
+                                ? _rejectionReasonText(
+                                    order.rejectionReason!)
+                                : 'Your request was rejected',
+                            color: AppTheme.errorRed,
+                          ),
+                        ],
+
+                        const SizedBox(height: 12),
+
+                        // ── Service + weight row ──
+                        Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.local_laundry_service_outlined,
+                                size: 16,
+                                color: color,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Wash, Dry & Fold',
+                                    style: GoogleFonts.lexend(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                      color: AppTheme.textDark,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    order.totalWeight > 0
+                                        ? '${order.totalWeight.toStringAsFixed(1)} kg • ₱${(order.totalAmount ?? order.totalWeight * 30.0).toStringAsFixed(2)}'
+                                        : _statusLabel(order.status),
+                                    style: GoogleFonts.lexend(
+                                      fontSize: 12,
+                                      color: AppTheme.textLight,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // ── Feedback badge ──
+                            if (order.status == OrderStatus.completed)
+                              hasFeedback
+                                  ? Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFFD700)
+                                            .withValues(alpha: 0.15),
+                                        borderRadius:
+                                            BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.star,
+                                              size: 12,
+                                              color: Color(0xFFFFD700)),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Rated',
+                                            style: GoogleFonts.lexend(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color:
+                                                  const Color(0xFFB8860B),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.accentBlue
+                                            .withValues(alpha: 0.08),
+                                        borderRadius:
+                                            BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.rate_review_outlined,
+                                              size: 12,
+                                              color: AppTheme.accentBlue),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Rate',
+                                            style: GoogleFonts.lexend(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppTheme.accentBlue,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color:
+                                  AppTheme.textLight.withValues(alpha: 0.4),
+                              size: 22,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _rejectionReasonText(String reason) {
+    switch (reason) {
+      case 'out_of_service_area':
+        return 'Out of service area';
+      case 'capacity_full':
+        return 'Capacity full';
+      case 'invalid_items':
+        return 'Invalid items';
+      default:
+        return reason;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SHARED WIDGETS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildEmptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(40),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentBlue.withValues(alpha: 0.08),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 48,
+                      color: AppTheme.accentBlue.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    title,
+                    style: GoogleFonts.lexend(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    subtitle,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.lexend(
+                      fontSize: 13,
+                      color: AppTheme.textLight,
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-          // Expanded details
-          if (isExpanded) ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: _buildActiveOrderExpandedDetails(order),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(40),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorRed.withValues(alpha: 0.08),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: AppTheme.errorRed.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Something went wrong',
+                    style: GoogleFonts.lexend(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _errorMessage ?? 'Please try again.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.lexend(
+                      fontSize: 13,
+                      color: AppTheme.textLight,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: _loadCustomerOrders,
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: Text('Retry',
+                        style: GoogleFonts.lexend(
+                            fontWeight: FontWeight.w600)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accentBlue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(OrderStatus status) {
+    final color = _statusColor(status);
+    final label = _statusLabel(status);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: GoogleFonts.lexend(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChip({
+    required String label,
+    required Color color,
+    IconData? icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 10, color: color),
+            const SizedBox(width: 3),
           ],
+          Text(
+            label,
+            style: GoogleFonts.lexend(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  int _customerProgressStepIndex(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.processing:
-      case OrderStatus.ready:
-      case OrderStatus.out_for_delivery:
-        return 1;
-      case OrderStatus.completed:
-        return 2;
-      default:
-        return 0;
-    }
+  Widget _buildActionBanner({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: color.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.lexend(
+                fontSize: 11,
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildCompactProgressTracker(OrderStatus status) {
@@ -1182,7 +1813,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
       {'label': 'Done', 'icon': Icons.check_circle},
     ];
 
-    final currentStepIndex = _customerProgressStepIndex(status);
+    final currentStepIndex = _progressStepIndex(status);
 
     return SizedBox(
       height: 50,
@@ -1190,19 +1821,22 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          for (int stepIndex = 0; stepIndex < steps.length; stepIndex++) ...[
+          for (int i = 0; i < steps.length; i++) ...[
             _buildCompactProgressStep(
-              label: steps[stepIndex]['label'] as String,
-              icon: steps[stepIndex]['icon'] as IconData,
-              isActive: stepIndex <= currentStepIndex,
-              isCurrent: stepIndex == currentStepIndex,
+              label: steps[i]['label'] as String,
+              icon: steps[i]['icon'] as IconData,
+              isActive: i <= currentStepIndex,
+              isCurrent: i == currentStepIndex,
             ),
-            if (stepIndex < steps.length - 1)
+            if (i < steps.length - 1)
               Container(
                 width: 40,
                 height: 2,
-                margin: const EdgeInsets.only(bottom: 14, left: 8, right: 8),
-                color: stepIndex < currentStepIndex ? AppTheme.accentBlue : AppTheme.borderGray,
+                margin:
+                    const EdgeInsets.only(bottom: 14, left: 8, right: 8),
+                color: i < currentStepIndex
+                    ? AppTheme.accentBlue
+                    : AppTheme.borderGray,
               ),
           ],
         ],
@@ -1239,7 +1873,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
         const SizedBox(height: 4),
         Text(
           label,
-          style: TextStyle(
+          style: GoogleFonts.lexend(
             fontSize: 9,
             fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
             color: isActive ? AppTheme.accentBlue : AppTheme.textLight,
@@ -1249,739 +1883,9 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
     );
   }
 
-  Widget _buildActiveOrderExpandedDetails(LaundryOrder order) {
-    // Use totalAmount from database if available, otherwise estimate from weight
-    final double displayPrice = order.totalAmount != null && order.totalAmount! > 0 
-        ? order.totalAmount! 
-        : order.totalWeight * 30.0; // Fallback to ₱30/kg estimate
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Delivery address section
-        if (order.deliveryAddress != null) ...[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.location_on, size: 18, color: AppTheme.textLight),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      order.deliveryAddress!,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textDark),
-                    ),
-                    if (order.deliveryLandmark != null)
-                      Text(
-                        '(${order.deliveryLandmark})',
-                        style: const TextStyle(fontSize: 11, color: AppTheme.textLight, fontStyle: FontStyle.italic),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 24),
-        ],
-
-        // Order specs
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppTheme.softGray,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.local_laundry_service, size: 18, color: AppTheme.accentBlue),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Wash, Dry & Fold',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-                  ),
-                  const Spacer(),
-                  if (order.paymentStatus == PaymentStatus.unpaid)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text(
-                        'DUE',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              if (order.loads.isNotEmpty)
-                ...order.loads.map((load) => Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Row(
-                        children: [
-                          Text(
-                            '  • ${load.weight.toStringAsFixed(1)} kg',
-                            style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '• ${load.category}',
-                            style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                          ),
-                          if (load.loadStatus != null) ...[
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: _getLoadStatusColor(load.loadStatus!).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                _getLoadStatusText(load.loadStatus!),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: _getLoadStatusColor(load.loadStatus!),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    )),
-              if (order.customerDescription != null && order.customerDescription!.trim().isNotEmpty) ...[
-                const SizedBox(height: 8),
-                const Text(
-                  'Your Notes',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  order.customerDescription!,
-                  style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
-                ),
-              ],
-              if (order.instructions != null && order.instructions!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  order.instructions!,
-                  style: const TextStyle(fontSize: 11, color: AppTheme.textLight, fontStyle: FontStyle.italic),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Pricing section
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppTheme.softGray,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Total Amount',
-                    style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                  ),
-                  SizedBox(height: 2),
-                ],
-              ),
-              // Dynamic payment method display
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Total Amount',
-                    style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _getPaymentMethodDisplay(order),
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
-                  ),
-                ],
-              ),
-              Text(
-                '₱${displayPrice.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-              ),
-            ],
-          ),
-        ),
-
-        // Pay button for GCash/online payments if unpaid
-        if (order.paymentStatus == PaymentStatus.unpaid && 
-            order.totalWeight > 0 &&
-            order.paymentPreference != 'Cash on Delivery') ...[
-          const SizedBox(height: 14),
-          ElevatedButton(
-            onPressed: () => _payWithGcash(order, displayPrice),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.accentBlue,
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: Text(
-              _getPayButtonText(order, displayPrice),
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-
-        // Cash on Delivery notice if COD selected
-        if (order.paymentStatus == PaymentStatus.unpaid &&
-            order.totalWeight > 0 &&
-            order.paymentPreference == 'Cash on Delivery') ...[
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.green.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.payments, color: Colors.green, size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Cash on Delivery',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Please prepare ₱${displayPrice.toStringAsFixed(2)} when the rider arrives',
-                        style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () => _payWithGcash(order, displayPrice),
-            icon: const Icon(Icons.qr_code_2, size: 16),
-            label: const Text(
-              'Pay via GCash instead',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF007DFE),
-              side: const BorderSide(color: Color(0xFF007DFE)),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-          ),
-        ],
-
-        const SizedBox(height: 14),
-
-        // Action buttons
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => CustomerChatDetailScreen(
-                        recipientName: 'Support',
-                        recipientRole: 'Customer Support',
-                        recipientType: ChatRecipientType.support,
-                        orderId: order.displayNumber,
-                        phoneNumber: '0912-345-6789',
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.chat_bubble_outline, size: 16),
-                label: const Text('Chat', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-            if (order.status != OrderStatus.pending_pickup) ...[
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    showTopNotification(
-                      context,
-                      message: 'Feature coming soon',
-                      icon: Icons.help_outline,
-                      backgroundColor: AppTheme.textLight,
-                    );
-                  },
-                  icon: const Icon(Icons.help_outline, size: 16),
-                  label: const Text('Help', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildProgressTracker(OrderStatus status) {
-    final steps = [
-      {'label': 'Booked', 'icon': Icons.check_circle_outline},
-      {'label': 'Processing', 'icon': Icons.sync},
-      {'label': 'Done', 'icon': Icons.check_circle_outline},
-    ];
-
-    final currentStepIndex = _customerProgressStepIndex(status);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Progress',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: List.generate(steps.length, (index) {
-            final step = steps[index];
-            final isActive = index <= currentStepIndex;
-            final isCurrent = index == currentStepIndex;
-
-            return Expanded(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: isActive ? AppTheme.accentBlue : AppTheme.softGray,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            step['icon'] as IconData,
-                            size: 18,
-                            color: isActive ? Colors.white : AppTheme.textLight,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          step['label'] as String,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                            color: isActive ? AppTheme.accentBlue : AppTheme.textLight,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (index < steps.length - 1)
-                    Container(
-                      width: 20,
-                      height: 2,
-                      color: isActive ? AppTheme.accentBlue : AppTheme.borderGray,
-                    ),
-                ],
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
-
-  // ==================== HISTORY TAB ====================
-  Widget _buildHistoryTab() {
-    if (_historyOrders.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.history,
-        title: 'No order history',
-        subtitle: 'Your completed orders will appear here.',
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-      itemCount: _historyOrders.length,
-      itemBuilder: (context, index) {
-        final order = _historyOrders[index];
-        return _buildHistoryCard(order);
-      },
-    );
-  }
-
-  Widget _buildHistoryCard(LaundryOrder order) {
-    final bool hasFeedback = _feedbackStatus[order.id] ?? false;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: AppStyles.cardDecoration,
-      child: InkWell(
-        onTap: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => CustomerOrderDetailsScreen(order: order),
-            ),
-          );
-          // Refresh if feedback was submitted
-          if (result == true) {
-            _loadCustomerOrders();
-          }
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.check_circle_outline, color: Colors.green, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Order #${order.displayNumber}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Completed • ${_formatDateTime(order.createdAt)}',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
-                    ),
-                    const SizedBox(height: 6),
-                    // Feedback badge
-                    Row(
-                      children: [
-                        if (hasFeedback)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFD700).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.star, size: 12, color: Color(0xFFFFD700)),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Rated',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFFB8860B),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppTheme.accentBlue.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '💬',
-                                  style: TextStyle(fontSize: 10),
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Rate this order',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.accentBlue,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (order.totalWeight > 0)
-                Text(
-                  '${order.totalWeight.toStringAsFixed(1)} kg',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textLight),
-                ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.arrow_forward_ios,
-                size: 16,
-                color: AppTheme.textLight,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ==================== HELPER WIDGETS ====================
-  Widget _buildEmptyState({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(40),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 80, color: AppTheme.textLight.withValues(alpha: 0.3)),
-                  const SizedBox(height: 20),
-                  Text(
-                    title,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    subtitle,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 13, color: AppTheme.textLight),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusBadge(OrderStatus status) {
-    Color bgColor;
-    Color textColor;
-    String text;
-    IconData icon;
-
-    switch (status) {
-      case OrderStatus.pending_approval:
-        bgColor = AppTheme.teamMemberOrange.withValues(alpha: 0.12);
-        textColor = AppTheme.teamMemberIconOrange;
-        text = 'Pending';
-        icon = Icons.pending;
-        break;
-      case OrderStatus.rejected:
-        bgColor = Colors.red.withValues(alpha: 0.12);
-        textColor = Colors.red;
-        text = 'Rejected';
-        icon = Icons.cancel;
-        break;
-      case OrderStatus.cancelled:
-        bgColor = Colors.grey.withValues(alpha: 0.12);
-        textColor = Colors.grey;
-        text = 'Cancelled';
-        icon = Icons.block;
-        break;
-      case OrderStatus.pending_pickup:
-        bgColor = Colors.blue.withValues(alpha: 0.12);
-        textColor = Colors.blue;
-        text = 'Pickup';
-        icon = Icons.home;
-        break;
-      case OrderStatus.processing:
-        const processingTeal = Color(0xFF0F766E);
-        bgColor = processingTeal.withValues(alpha: 0.12);
-        textColor = processingTeal;
-        text = 'Processing';
-        icon = Icons.sync;
-        break;
-      case OrderStatus.ready:
-        const processingTeal = Color(0xFF0F766E);
-        bgColor = processingTeal.withValues(alpha: 0.12);
-        textColor = processingTeal;
-        text = 'Processing';
-        icon = Icons.sync;
-        break;
-      case OrderStatus.out_for_delivery:
-        bgColor = AppTheme.accentBlue.withValues(alpha: 0.12);
-        textColor = AppTheme.accentBlue;
-        text = 'Delivering';
-        icon = Icons.delivery_dining;
-        break;
-      case OrderStatus.completed:
-        bgColor = Colors.green.withValues(alpha: 0.12);
-        textColor = Colors.green;
-        text = 'Completed';
-        icon = Icons.check_circle;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: textColor),
-          const SizedBox(width: 4),
-          Text(
-            text,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textColor),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOrderDetailRow(IconData icon, String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: AppTheme.textLight),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
-              ),
-              Text(
-                value,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textDark),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  IconData _getStatusIcon(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.pending_pickup:
-        return Icons.home_outlined;
-      case OrderStatus.processing:
-        return Icons.sync;
-      case OrderStatus.ready:
-        return Icons.sync;
-      case OrderStatus.out_for_delivery:
-        return Icons.delivery_dining;
-      default:
-        return Icons.shopping_bag_outlined;
-    }
-  }
-
-  String _getStatusDescription(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.pending_pickup:
-        return 'Waiting for rider pickup';
-      case OrderStatus.processing:
-        return 'Your laundry is being processed';
-      case OrderStatus.ready:
-        return 'Your laundry is being processed';
-      case OrderStatus.out_for_delivery:
-        return 'On the way to you';
-      default:
-        return '';
-    }
-  }
-
-  Color _getLoadStatusColor(LoadStatus? status) {
-    if (status == null) return AppTheme.textLight;
-    switch (status) {
-      case LoadStatus.queued:
-        return AppTheme.textLight;
-      case LoadStatus.washing:
-        return Colors.blue;
-      case LoadStatus.drying:
-        return Colors.orange;
-      case LoadStatus.folded:
-        return Colors.green;
-    }
-  }
-
-  String _getLoadStatusText(LoadStatus? status) {
-    if (status == null) return 'Queued';
-    switch (status) {
-      case LoadStatus.queued:
-        return 'Queued';
-      case LoadStatus.washing:
-        return 'Washing';
-      case LoadStatus.drying:
-        return 'Drying';
-      case LoadStatus.folded:
-        return 'Folded';
-    }
-  }
-
-  String _formatDateTime(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-
-    if (diff.inMinutes < 1) {
-      return 'Just now';
-    } else if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}m ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours}h ago';
-    } else if (diff.inDays < 7) {
-      return '${diff.inDays}d ago';
-    } else {
-      return '${dt.day}/${dt.month}/${dt.year}';
-    }
-  }
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // Image helpers (preserved)
+  // ─────────────────────────────────────────────────────────────────────────
   Widget _buildThumbnailImage(String path) {
     if (path.startsWith('http://') || path.startsWith('https://')) {
       return Image.network(
@@ -1991,9 +1895,12 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
             const Icon(Icons.photo, color: AppTheme.textLight, size: 32),
       );
     } else if (path.startsWith('data:image') ||
-        (path.length > 100 && !path.startsWith('/') && !path.contains('\\'))) {
+        (path.length > 100 &&
+            !path.startsWith('/') &&
+            !path.contains('\\'))) {
       try {
-        final base64String = path.contains(',') ? path.split(',').last : path;
+        final base64String =
+            path.contains(',') ? path.split(',').last : path;
         final bytes = base64Decode(base64String.trim());
         return Image.memory(
           bytes,
@@ -2020,6 +1927,9 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Photo Viewer (preserved from original)
+// ─────────────────────────────────────────────────────────────────────────────
 class _CustomerRequestPhotoViewer extends StatefulWidget {
   final List<String> photoUrls;
   final int initialIndex;
@@ -2030,10 +1940,12 @@ class _CustomerRequestPhotoViewer extends StatefulWidget {
   });
 
   @override
-  State<_CustomerRequestPhotoViewer> createState() => _CustomerRequestPhotoViewerState();
+  State<_CustomerRequestPhotoViewer> createState() =>
+      _CustomerRequestPhotoViewerState();
 }
 
-class _CustomerRequestPhotoViewerState extends State<_CustomerRequestPhotoViewer> {
+class _CustomerRequestPhotoViewerState
+    extends State<_CustomerRequestPhotoViewer> {
   late PageController _pageController;
   late int _currentIndex;
 
@@ -2060,7 +1972,7 @@ class _CustomerRequestPhotoViewerState extends State<_CustomerRequestPhotoViewer
         elevation: 0,
         title: Text(
           'Photo ${_currentIndex + 1} of ${widget.photoUrls.length}',
-          style: const TextStyle(color: Colors.white, fontSize: 16),
+          style: GoogleFonts.lexend(color: Colors.white, fontSize: 16),
         ),
         centerTitle: true,
       ),
@@ -2089,7 +2001,8 @@ class _CustomerRequestPhotoViewerState extends State<_CustomerRequestPhotoViewer
         fit: BoxFit.contain,
         loadingBuilder: (context, child, progress) {
           if (progress == null) return child;
-          return const Center(child: CircularProgressIndicator(color: Colors.white));
+          return const Center(
+              child: CircularProgressIndicator(color: Colors.white));
         },
         errorBuilder: (context, error, stackTrace) => const Center(
           child: Column(
@@ -2097,21 +2010,26 @@ class _CustomerRequestPhotoViewerState extends State<_CustomerRequestPhotoViewer
             children: [
               Icon(Icons.broken_image, color: Colors.white54, size: 48),
               SizedBox(height: 8),
-              Text('Unable to load photo', style: TextStyle(color: Colors.white54)),
+              Text('Unable to load photo',
+                  style: TextStyle(color: Colors.white54)),
             ],
           ),
         ),
       );
     } else if (path.startsWith('data:image') ||
-        (path.length > 100 && !path.startsWith('/') && !path.contains('\\'))) {
+        (path.length > 100 &&
+            !path.startsWith('/') &&
+            !path.contains('\\'))) {
       try {
-        final base64String = path.contains(',') ? path.split(',').last : path;
+        final base64String =
+            path.contains(',') ? path.split(',').last : path;
         final bytes = base64Decode(base64String.trim());
         return Image.memory(
           bytes,
           fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) => const Center(
-            child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+            child:
+                Icon(Icons.broken_image, color: Colors.white54, size: 48),
           ),
         );
       } catch (e) {
@@ -2126,7 +2044,8 @@ class _CustomerRequestPhotoViewerState extends State<_CustomerRequestPhotoViewer
           file,
           fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) => const Center(
-            child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+            child:
+                Icon(Icons.broken_image, color: Colors.white54, size: 48),
           ),
         );
       } else {
