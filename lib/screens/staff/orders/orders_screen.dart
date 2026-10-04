@@ -80,6 +80,10 @@ class OrdersScreenState extends State<OrdersScreen>
     // Load the initial tab eagerly + rejected badge
     _loadTabForIndex(widget.initialTab);
     _loadRejectedCount();
+    // Also check for pending requests in background to keep badge accurate
+    if (widget.initialTab != 0) {
+      _initRequests();
+    }
   }
 
   @override
@@ -194,7 +198,9 @@ class OrdersScreenState extends State<OrdersScreen>
         _requestsLoading = false;
         _requestsLoadingMore = false;
       });
-      _showError(e);
+      if (_tabController.index == 0) {
+        _showError(e);
+      }
     }
   }
 
@@ -514,9 +520,9 @@ class OrdersScreenState extends State<OrdersScreen>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
+          preferredSize: const Size.fromHeight(60),
           child: Container(
-            margin: const EdgeInsets.only(left: 20, right: 20, bottom: 8),
+            margin: const EdgeInsets.only(left: 16, right: 16, bottom: 6),
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: AppTheme.softGray,
@@ -524,6 +530,7 @@ class OrdersScreenState extends State<OrdersScreen>
             ),
             child: TabBar(
               controller: _tabController,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
               indicator: BoxDecoration(
                 color: AppTheme.accentBlue,
                 borderRadius: BorderRadius.circular(12),
@@ -546,32 +553,36 @@ class OrdersScreenState extends State<OrdersScreen>
               dividerHeight: 0,
               tabs: [
                 Tab(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text('Requests'),
-                      if (_requests.isNotEmpty || _requestsHasMore) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppTheme.errorRed,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            _requestsHasMore
-                                ? '${_requests.length}+'
-                                : '${_requests.length}',
-                            style: GoogleFonts.lexend(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('Requests'),
+                        if (_requests.isNotEmpty) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.errorRed,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              _requestsHasMore
+                                  ? '${_requests.length}+'
+                                  : '${_requests.length}',
+                              style: GoogleFonts.lexend(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
                 const Tab(text: 'Active'),
