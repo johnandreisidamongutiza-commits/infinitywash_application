@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import '../../../../config/location_constants.dart';
 import '../../../../services/profile_service.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../widgets/address_input_widget.dart';
@@ -10,10 +12,13 @@ class CustomerAccountDetailsScreen extends StatefulWidget {
   const CustomerAccountDetailsScreen({super.key});
 
   @override
-  State<CustomerAccountDetailsScreen> createState() => _CustomerAccountDetailsScreenState();
+  State<CustomerAccountDetailsScreen> createState() =>
+      _CustomerAccountDetailsScreenState();
 }
 
-class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScreen> {
+class _CustomerAccountDetailsScreenState
+    extends State<CustomerAccountDetailsScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _profileService = ProfileService();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -23,6 +28,7 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
   String? _selectedBarangay;
   final _customBarangayController = TextEditingController();
   final _landmarkController = TextEditingController();
+
   LatLng? _pinLocation;
   bool _pinChanged = false;
   bool _isLoading = true;
@@ -76,7 +82,13 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not load account details: $error')),
+        SnackBar(
+          content: Text(
+            'Could not load account details: $error',
+            style: GoogleFonts.lexend(color: Colors.white),
+          ),
+          backgroundColor: AppTheme.errorRed,
+        ),
       );
     } finally {
       if (mounted) {
@@ -86,6 +98,23 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
   }
 
   Future<void> _saveProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+    if (firstName.isEmpty || lastName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please enter both your first and last name',
+            style: GoogleFonts.lexend(color: Colors.white),
+          ),
+          backgroundColor: AppTheme.errorRed,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
@@ -96,8 +125,8 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
       );
 
       await _profileService.updateProfile(
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
+        firstName: firstName,
+        lastName: lastName,
         phone: _phoneController.text.trim(),
         email: _emailController.text.trim(),
         address: fullAddress,
@@ -109,12 +138,37 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Account details updated successfully!')),
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_outline, color: Colors.white),
+              const SizedBox(width: 10),
+              Text(
+                'Account details updated successfully!',
+                style: GoogleFonts.lexend(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green.shade600,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       );
+
+      Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update account details: $error')),
+        SnackBar(
+          content: Text(
+            'Could not update account details: $error',
+            style: GoogleFonts.lexend(color: Colors.white),
+          ),
+          backgroundColor: AppTheme.errorRed,
+        ),
       );
     } finally {
       if (mounted) {
@@ -124,13 +178,10 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
   }
 
   /// Opens the shared map picker so the customer can move their pin.
-  /// Cancelling keeps the current pin; removing clears it (applied on Save).
   Future<void> _pickPinLocation() async {
     final result = await LocationPickerDialog.show(
       context,
       initialPosition: _pinLocation,
-      // The picker only warns when the pin is outside the delivery
-      // radius; it never blocks the customer from saving it.
       enforceDeliveryRadius: true,
       title: 'Pin Your Location',
     );
@@ -158,161 +209,506 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
     }
   }
 
-  Widget _buildPinLocationCard() {
-    final hasPin = _pinLocation != null;
-    return InkWell(
-      onTap: _pickPinLocation,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppTheme.softGray,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: hasPin ? AppTheme.accentBlue : AppTheme.borderGray,
-            width: hasPin ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.location_on_outlined,
-              color: hasPin ? AppTheme.accentBlue : AppTheme.textLight,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Pin Location (20m Meetup Zone)',
-                    style: AppTheme.lightTheme.textTheme.bodyLarge,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    hasPin
-                        ? '20m Meetup Zone • ${_pinLocation!.latitude.toStringAsFixed(6)}, '
-                            '${_pinLocation!.longitude.toStringAsFixed(6)}'
-                        : 'Not set - tap to drop a pin on the map',
-                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                      color: hasPin ? AppTheme.textDark : AppTheme.textLight,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (hasPin) ...[
-              IconButton(
-                tooltip: 'Change pin',
-                icon: const Icon(Icons.edit_location_alt_outlined,
-                    color: AppTheme.accentBlue),
-                onPressed: _pickPinLocation,
-              ),
-              IconButton(
-                tooltip: 'Remove pin',
-                icon: const Icon(Icons.highlight_off_outlined,
-                    color: AppTheme.errorRed),
-                onPressed: () => setState(() {
-                  _pinLocation = null;
-                  _pinChanged = true;
-                }),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
+  String _getInitials() {
+    final first = _firstNameController.text.trim();
+    final last = _lastNameController.text.trim();
+    if (first.isEmpty && last.isEmpty) return 'U';
+    final f = first.isNotEmpty ? first[0].toUpperCase() : '';
+    final l = last.isNotEmpty ? last[0].toUpperCase() : '';
+    return '$f$l';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Account Details'),
+        title: Text(
+          'Account Details',
+          style: GoogleFonts.lexend(
+            fontWeight: FontWeight.w700,
+            fontSize: 18,
+            color: AppTheme.textDark,
+          ),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: AppTheme.textDark, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: AppTheme.accentBlue,
+                strokeWidth: 2.5,
+              ),
+            )
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  CustomTextField(
-                    label: 'First Name',
-                    hint: 'First name',
-                    prefixIcon: Icons.person_outline,
-                    controller: _firstNameController,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeaderCard(),
+                    const SizedBox(height: 20),
+                    _buildSectionHeader(
+                      icon: Icons.person_outline_rounded,
+                      title: 'Personal Information',
+                    ),
+                    const SizedBox(height: 8),
+                    _buildPersonalInfoCard(),
+                    const SizedBox(height: 24),
+                    _buildSectionHeader(
+                      icon: Icons.home_outlined,
+                      title: 'Default Delivery & Pickup Address',
+                    ),
+                    const SizedBox(height: 8),
+                    _buildAddressCard(),
+                    const SizedBox(height: 24),
+                    _buildSectionHeader(
+                      icon: Icons.pin_drop_outlined,
+                      title: 'Pinned Meetup Zone (20m Radius)',
+                    ),
+                    const SizedBox(height: 8),
+                    _buildPinLocationCard(),
+                    const SizedBox(height: 32),
+                    _buildSaveButton(),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SECTION COMPONENTS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildHeaderCard() {
+    final fullName =
+        '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
+            .trim();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.primaryBlue,
+                  AppTheme.accentBlue,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.accentBlue.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              _getInitials(),
+              style: GoogleFonts.lexend(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 22,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  fullName.isEmpty ? 'Customer Account' : fullName,
+                  style: GoogleFonts.lexend(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textDark,
                   ),
-                  const SizedBox(height: 16),
-                  CustomTextField(
-                    label: 'Last Name',
-                    hint: 'Last name',
-                    prefixIcon: Icons.person_outline,
-                    controller: _lastNameController,
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  const SizedBox(height: 16),
-                  CustomTextField(
-                    label: 'Phone Number',
-                    hint: 'Phone number',
-                    prefixIcon: Icons.phone,
-                    controller: _phoneController,
-                    keyboardType: TextInputType.phone,
-                  ),
-                  const SizedBox(height: 16),
-                  CustomTextField(
-                    label: 'Email Address',
-                    hint: 'Email address',
-                    prefixIcon: Icons.email_outlined,
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                  ),
-                  const SizedBox(height: 16),
-                  AddressInputWidget(
-                    houseStreetController: _houseStreetController,
-                    customBarangayController: _customBarangayController,
-                    landmarkController: _landmarkController,
-                    selectedBarangay: _selectedBarangay,
-                    onBarangayChanged: (v) =>
-                        setState(() => _selectedBarangay = v),
-                    fillColor: Colors.white,
-                    borderRadius: 16,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildPinLocationCard(),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isSaving ? null : _saveProfile,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.accentBlue,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.verified_user_rounded,
+                          size: 13, color: AppTheme.accentBlue),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Verified Customer',
+                        style: GoogleFonts.lexend(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.accentBlue,
                         ),
                       ),
-                      child: _isSaving
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Text(
-                              'Save Information',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader({
+    required IconData icon,
+    required String title,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppTheme.accentBlue),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: GoogleFonts.lexend(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textDark,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPersonalInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: CustomTextField(
+                  label: 'First Name',
+                  hint: 'First name',
+                  prefixIcon: Icons.badge_outlined,
+                  controller: _firstNameController,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Required'
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: CustomTextField(
+                  label: 'Last Name',
+                  hint: 'Last name',
+                  prefixIcon: Icons.badge_outlined,
+                  controller: _lastNameController,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Required'
+                      : null,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          CustomTextField(
+            label: 'Mobile Number',
+            hint: '09XX-XXX-XXXX',
+            prefixIcon: Icons.phone_android_outlined,
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return 'Phone number required';
+              final cleaned = v.replaceAll(RegExp(r'[^0-9]'), '');
+              if (cleaned.length < 10) return 'Invalid phone number';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          CustomTextField(
+            label: 'Email Address',
+            hint: 'Email address',
+            prefixIcon: Icons.email_outlined,
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddressCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: AddressInputWidget(
+        houseStreetController: _houseStreetController,
+        customBarangayController: _customBarangayController,
+        landmarkController: _landmarkController,
+        selectedBarangay: _selectedBarangay,
+        onBarangayChanged: (v) => setState(() => _selectedBarangay = v),
+        fillColor: const Color(0xFFF8FAFC),
+        borderRadius: 14,
+      ),
+    );
+  }
+
+  Widget _buildPinLocationCard() {
+    final hasPin = _pinLocation != null;
+    final distanceText =
+        hasPin ? LocationHelper.getFormattedDistance(_pinLocation!) : null;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: hasPin
+              ? AppTheme.accentBlue.withValues(alpha: 0.6)
+              : AppTheme.borderGray.withValues(alpha: 0.6),
+          width: hasPin ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: hasPin
+                ? AppTheme.accentBlue.withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: hasPin
+                      ? AppTheme.accentBlue.withValues(alpha: 0.1)
+                      : AppTheme.softGray,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  hasPin
+                      ? Icons.location_on_rounded
+                      : Icons.location_off_outlined,
+                  color: hasPin ? AppTheme.accentBlue : AppTheme.textLight,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          hasPin ? 'Location Pinned' : 'No Pin Set',
+                          style: GoogleFonts.lexend(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: hasPin
+                                ? AppTheme.textDark
+                                : AppTheme.textLight,
+                          ),
+                        ),
+                        if (hasPin) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                  color: Colors.green.shade200, width: 0.5),
+                            ),
+                            child: Text(
+                              'Active',
+                              style: GoogleFonts.lexend(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green.shade700,
                               ),
                             ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hasPin
+                          ? '${_pinLocation!.latitude.toStringAsFixed(5)}, ${_pinLocation!.longitude.toStringAsFixed(5)} • $distanceText from shop'
+                          : 'Riders use this to find your exact 20m meetup zone',
+                      style: GoogleFonts.lexend(
+                        fontSize: 12,
+                        color: hasPin ? AppTheme.textDark : AppTheme.textLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _pickPinLocation,
+                  icon: Icon(
+                    hasPin
+                        ? Icons.edit_location_alt_rounded
+                        : Icons.add_location_alt_rounded,
+                    size: 16,
+                    color: AppTheme.accentBlue,
+                  ),
+                  label: Text(
+                    hasPin ? 'Change Map Pin' : 'Set Map Pin Location',
+                    style: GoogleFonts.lexend(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.accentBlue,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppTheme.accentBlue, width: 1.2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              if (hasPin) ...[
+                const SizedBox(width: 10),
+                IconButton(
+                  tooltip: 'Remove Pin',
+                  onPressed: () {
+                    setState(() {
+                      _pinLocation = null;
+                      _pinChanged = true;
+                    });
+                  },
+                  icon: const Icon(Icons.delete_outline_rounded,
+                      color: AppTheme.errorRed),
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppTheme.errorRed.withValues(alpha: 0.08),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.all(12),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSaveButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: _isSaving ? null : _saveProfile,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.accentBlue,
+          foregroundColor: Colors.white,
+          elevation: 4,
+          shadowColor: AppTheme.accentBlue.withValues(alpha: 0.4),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        child: _isSaving
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.check_rounded, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Save Information',
+                    style: GoogleFonts.lexend(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
               ),
-            ),
+      ),
     );
   }
 }

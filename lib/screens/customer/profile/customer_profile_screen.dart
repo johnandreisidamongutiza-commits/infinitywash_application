@@ -176,11 +176,14 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
 
   Widget _buildProfileOption(BuildContext context, IconData icon, String label, Widget destination) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        final result = await Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => destination),
         );
+        if (result == true) {
+          _loadProfile();
+        }
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),

@@ -47,20 +47,37 @@ class ProfileService {
       if (removePin) ...{'pin_latitude': null, 'pin_longitude': null},
     };
 
-    // Update profiles table
-    await _client
-        .from('profiles')
-        .update({
-          'first_name': firstName,
-          'last_name': lastName,
-          'phone': phone,
-          'email': email,
-          'address': address,
-          'landmark': landmark,
-          ...pinColumns,
-          'updated_at': DateTime.now().toIso8601String(),
-        })
-        .eq('supabase_user_id', user.id);
+    // Base payload for core fields
+    final basePayload = <String, dynamic>{
+      'first_name': firstName,
+      'last_name': lastName,
+      'phone': phone,
+      'email': email,
+      'address': address,
+      'landmark': landmark,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    // Update profiles table (with fallback if pin columns are not yet in the DB)
+    try {
+      await _client
+          .from('profiles')
+          .update({
+            ...basePayload,
+            ...pinColumns,
+          })
+          .eq('supabase_user_id', user.id);
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST204' && pinColumns.isNotEmpty) {
+        print('⚠️ profiles table missing pin columns, falling back to base fields: $e');
+        await _client
+            .from('profiles')
+            .update(basePayload)
+            .eq('supabase_user_id', user.id);
+      } else {
+        rethrow;
+      }
+    }
 
     // Also update customers table if customer record exists
     try {
@@ -82,20 +99,27 @@ class ProfileService {
 
       if (customerExists != null) {
         // Update customer record
-        await _client
-            .from('customers')
-            .update({
-              'first_name': firstName,
-              'last_name': lastName,
-              'phone': phone,
-              'email': email,
-              'address': address,
-              'landmark': landmark,
-              ...pinColumns,
-              'updated_at': DateTime.now().toIso8601String(),
-            })
-            .eq('profile_id', profileId);
-        print('✅ Updated customer record with new address');
+        try {
+          await _client
+              .from('customers')
+              .update({
+                ...basePayload,
+                ...pinColumns,
+              })
+              .eq('profile_id', profileId);
+          print('✅ Updated customer record with new address');
+        } on PostgrestException catch (e) {
+          if (e.code == 'PGRST204' && pinColumns.isNotEmpty) {
+            print('⚠️ customers table missing pin columns, falling back: $e');
+            await _client
+                .from('customers')
+                .update(basePayload)
+                .eq('profile_id', profileId);
+            print('✅ Updated customer record without pin columns');
+          } else {
+            rethrow;
+          }
+        }
       }
     } catch (e) {
       print('⚠️ Could not update customer record: $e');
