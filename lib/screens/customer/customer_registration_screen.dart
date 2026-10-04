@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/location_picker_widget.dart';
+import '../../widgets/address_input_widget.dart';
 import '../../config/location_constants.dart';
 import '../../services/auth_service.dart';
 import '../../services/legal_service.dart';
@@ -21,7 +23,10 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
-  final _addressController = TextEditingController();
+  // 3-part address
+  final _houseStreetController = TextEditingController();
+  String? _selectedBarangay;
+  final _customBarangayController = TextEditingController();
   final _landmarkController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -41,7 +46,8 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     _lastNameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
-    _addressController.dispose();
+    _houseStreetController.dispose();
+    _customBarangayController.dispose();
     _landmarkController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -55,7 +61,8 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         _lastNameController.text.trim().isEmpty ||
         _phoneController.text.trim().isEmpty ||
         _emailController.text.trim().isEmpty ||
-        _addressController.text.trim().isEmpty ||
+        _houseStreetController.text.trim().isEmpty ||
+        _selectedBarangay == null ||
         _passwordController.text.isEmpty ||
         _confirmPasswordController.text.isEmpty) {
       _showMessage('Complete all required fields.');
@@ -93,13 +100,20 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
       final legalAcceptances = await _legalService.registrationAcceptances();
       final appVersion = await _legalService.appVersion();
 
+      // Compose the 3-part address into a single string for storage
+      final composedAddress = AddressInputWidget.buildFullAddress(
+        houseStreet: _houseStreetController.text.trim(),
+        selectedBarangay: _selectedBarangay,
+        customBarangay: _customBarangayController.text.trim(),
+      );
+
       final response = await _authService.registerCustomer(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
         phone: _phoneController.text.trim(),
-        address: _addressController.text.trim(),
+        address: composedAddress,
         landmark: _landmarkController.text.trim(),
         latitude: _selectedLocation?.latitude,
         longitude: _selectedLocation?.longitude,
@@ -135,13 +149,28 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
       setState(() {
         _selectedLocation = result.coordinates;
         _selectedAddress = result.address;
-        if (_addressController.text.trim().isEmpty && result.address != null && result.address!.isNotEmpty) {
-          _addressController.text = 'Blk _ Lot _, ${result.address!}';
-          _addressController.selection = const TextSelection(baseOffset: 4, extentOffset: 5);
+        // Auto-fill house/street from the pin address if still empty
+        if (_houseStreetController.text.trim().isEmpty &&
+            result.address != null &&
+            result.address!.isNotEmpty) {
+          AddressInputWidget.parseAndPopulate(
+            address: result.address!,
+            houseStreetController: _houseStreetController,
+            setBarangay: (v) => _selectedBarangay = v,
+          );
+          // Prepend Blk/Lot placeholder if not already there
+          if (!_houseStreetController.text.startsWith('Blk')) {
+            _houseStreetController.text =
+                'Blk _ Lot _, ${_houseStreetController.text}';
+            _houseStreetController.selection =
+                const TextSelection(baseOffset: 4, extentOffset: 5);
+          }
         }
       });
       if (result.address != null && result.address!.isNotEmpty) {
-        _showMessage('Location pinned! Please specify your House / Block & Lot number above.', isError: false);
+        _showMessage(
+            'Location pinned! Please verify your House / Block & Lot number.',
+            isError: false);
       }
     }
   }
@@ -150,13 +179,13 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     final hasPin = _selectedLocation != null;
     return InkWell(
       onTap: _pickPinLocation,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-          color: AppTheme.softGray,
-          borderRadius: BorderRadius.circular(12),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: hasPin ? AppTheme.accentBlue : AppTheme.borderGray,
             width: hasPin ? 1.5 : 1,
@@ -166,16 +195,21 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
           children: [
             Icon(
               Icons.location_on_outlined,
-              color: hasPin ? AppTheme.accentBlue : AppTheme.textLight,
+              color: hasPin
+                  ? AppTheme.accentBlue
+                  : AppTheme.textDark.withValues(alpha: 0.5),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Pin Location (20m Meetup Zone)',
-                    style: AppTheme.lightTheme.textTheme.bodyLarge,
+                    style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -184,8 +218,11 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                             '20m Meetup Zone • ${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)} '
                             '(${LocationHelper.getFormattedDistance(_selectedLocation!)})'
                         : 'Tap to drop a pin on the map (defines pickup/delivery meeting area)',
-                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                      color: hasPin ? AppTheme.textDark : AppTheme.textLight,
+                    style: GoogleFonts.lexend(
+                      fontSize: 12,
+                      color: hasPin
+                          ? AppTheme.textDark
+                          : AppTheme.textLight.withValues(alpha: 0.6),
                     ),
                   ),
                 ],
@@ -313,18 +350,16 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                   keyboardType: TextInputType.emailAddress,
                 ),
                 const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Address',
-                  hint: 'e.g. Blk 5 Lot 12, Sunflower St., Bubukal',
-                  prefixIcon: Icons.location_on_outlined,
-                  controller: _addressController,
-                ),
-                const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Landmark (Optional)',
-                  hint: 'Near Parkmall / Blue Building',
-                  prefixIcon: Icons.assistant_navigation,
-                  controller: _landmarkController,
+                // ── 3-Part Address ──────────────────────────────────
+                AddressInputWidget(
+                  houseStreetController: _houseStreetController,
+                  customBarangayController: _customBarangayController,
+                  landmarkController: _landmarkController,
+                  selectedBarangay: _selectedBarangay,
+                  onBarangayChanged: (v) =>
+                      setState(() => _selectedBarangay = v),
+                  helperText: 'Santa Cruz, Laguna only. Select "Other" if outside.',
+                  landmarkHint: 'e.g. Near church, blue gate',
                 ),
                 const SizedBox(height: 20),
                 _buildPinLocationCard(),

@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../config/location_constants.dart';
 import '../../../widgets/location_picker_widget.dart';
+import '../../../widgets/address_input_widget.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_text_field.dart';
 import '../../../models/order.dart';
@@ -108,88 +110,23 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   final TextEditingController _customBarangayController = TextEditingController();
   final TextEditingController _landmarkController = TextEditingController();
   LatLng? _deliveryPinLocation;
-  String? _deliveryPinAddress;
+
 
   final TextEditingController _instructionsController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
 
-  static const List<String> santaCruzBarangays = [
-    'Alipit',
-    'Bagumbayan',
-    'Bubukal',
-    'Calios',
-    'Duhat',
-    'Gatid',
-    'Jasaan',
-    'Labuin',
-    'Malinao',
-    'Oogong',
-    'Pagsawitan',
-    'Palasan',
-    'Patimbao',
-    'Poblacion I',
-    'Poblacion II',
-    'Poblacion III',
-    'Poblacion IV',
-    'Poblacion V',
-    'San Angel',
-    'San Jose',
-    'San Juan',
-    'Santa Cruz',
-    'Santisimo Rosario',
-    'Santo Angel Central',
-    'Santo Angel Norte',
-    'Santo Angel Sur',
-    'Other / Outside Sta. Cruz',
-  ];
-
-  String get _fullDeliveryAddress {
-    final houseStreet = _houseStreetController.text.trim();
-    final brgy = _selectedBarangay == 'Other / Outside Sta. Cruz'
-        ? _customBarangayController.text.trim()
-        : (_selectedBarangay ?? _customBarangayController.text.trim());
-
-    final parts = <String>[];
-    if (houseStreet.isNotEmpty) parts.add(houseStreet);
-    if (brgy.isNotEmpty) {
-      if (!brgy.toLowerCase().contains('brgy') && !brgy.toLowerCase().contains('barangay')) {
-        parts.add('Brgy. $brgy');
-      } else {
-        parts.add(brgy);
-      }
-    }
-    if (_selectedBarangay != 'Other / Outside Sta. Cruz' && parts.isNotEmpty) {
-      parts.add('Santa Cruz, Laguna');
-    }
-    return parts.join(', ');
-  }
+  String get _fullDeliveryAddress => AddressInputWidget.buildFullAddress(
+    houseStreet: _houseStreetController.text.trim(),
+    selectedBarangay: _selectedBarangay,
+    customBarangay: _customBarangayController.text.trim(),
+  );
 
   void _parseAndSetCustomerAddress(String address) {
-    String? matchedBarangay;
-    for (final b in santaCruzBarangays) {
-      if (b == 'Other / Outside Sta. Cruz') continue;
-      final regex = RegExp('\\b${RegExp.escape(b)}\\b', caseSensitive: false);
-      if (regex.hasMatch(address)) {
-        matchedBarangay = b;
-        break;
-      }
-    }
-
-    if (matchedBarangay != null) {
-      _selectedBarangay = matchedBarangay;
-      final lower = address.toLowerCase();
-      final idx = lower.indexOf(matchedBarangay.toLowerCase());
-      if (idx > 0) {
-        var prefix = address.substring(0, idx).trim();
-        prefix = prefix.replaceAll(RegExp(r',?\s*(brgy\.?|barangay)\s*$', caseSensitive: false), '').trim();
-        if (prefix.endsWith(',')) prefix = prefix.substring(0, prefix.length - 1).trim();
-        _houseStreetController.text = prefix.isNotEmpty ? prefix : address;
-      } else {
-        _houseStreetController.text = address;
-      }
-    } else {
-      _houseStreetController.text = address;
-    }
+    AddressInputWidget.parseAndPopulate(
+      address: address,
+      houseStreetController: _houseStreetController,
+      setBarangay: (v) => _selectedBarangay = v,
+    );
   }
 
   Future<void> _openPinLocationPicker() async {
@@ -203,7 +140,6 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     if (result != null && mounted) {
       setState(() {
         _deliveryPinLocation = result.coordinates;
-        _deliveryPinAddress = result.address;
 
         if (_houseStreetController.text.trim().isEmpty && result.address != null) {
           _parseAndSetCustomerAddress(result.address!);
@@ -2684,9 +2620,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               const SizedBox(width: 8),
               Text(
                 title,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
+                style: GoogleFonts.lexend(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                 ),
               ),
@@ -2722,9 +2658,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                       children: [
                         Text(
                           hasPin ? '20m Meetup Zone Pinned' : 'Pin 20m Meetup Zone on Map',
-                          style: TextStyle(
+                          style: GoogleFonts.lexend(
                             fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w600,
                             color: hasPin ? Colors.green.shade900 : AppTheme.textDark,
                           ),
                         ),
@@ -2733,7 +2669,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                           hasPin
                               ? '${LocationHelper.getFormattedDistance(_deliveryPinLocation!)} from shop • (${_deliveryPinLocation!.latitude.toStringAsFixed(5)}, ${_deliveryPinLocation!.longitude.toStringAsFixed(5)})'
                               : 'Optional: Tap to set exact gate or meetup location for rider',
-                          style: TextStyle(
+                          style: GoogleFonts.lexend(
                             fontSize: 11,
                             color: hasPin ? Colors.green.shade800 : AppTheme.textLight,
                           ),
@@ -2759,74 +2695,14 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           ),
           const SizedBox(height: 12),
 
-          // Field 1: House / Unit / Blk & Lot, Street, Subdivision
-          CustomTextField(
-            label: 'House / Blk & Lot, Street, Subdivision',
-            hint: 'e.g. Blk 5 Lot 12, Phase 2, Villa San Jose',
-            prefixIcon: Icons.home_outlined,
-            controller: _houseStreetController,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 10),
-
-          // Field 2: Barangay (Santa Cruz, Laguna)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.borderGray),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                  icon: Icon(Icons.location_city_outlined, size: 20, color: AppTheme.textLight),
-                  labelText: 'Barangay (Santa Cruz, Laguna)',
-                  labelStyle: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 4),
-                ),
-                value: _selectedBarangay,
-                hint: const Text('Select Barangay', style: TextStyle(fontSize: 13, color: AppTheme.textLight)),
-                isExpanded: true,
-                items: santaCruzBarangays.map((String b) {
-                  return DropdownMenuItem<String>(
-                    value: b,
-                    child: Text(
-                      b == 'Other / Outside Sta. Cruz' ? b : 'Brgy. $b',
-                      style: const TextStyle(fontSize: 13, color: AppTheme.textDark),
-                    ),
-                  );
-                }).toList(),
-                onChanged: (val) {
-                  setState(() {
-                    _selectedBarangay = val;
-                  });
-                },
-              ),
-            ),
-          ),
-
-          // Optional extra field if outside Santa Cruz
-          if (_selectedBarangay == 'Other / Outside Sta. Cruz') ...[
-            const SizedBox(height: 10),
-            CustomTextField(
-              label: 'Barangay & Municipality',
-              hint: 'e.g. Sampaloc, Pagsanjan',
-              prefixIcon: Icons.edit_location_outlined,
-              controller: _customBarangayController,
-              onChanged: (_) => setState(() {}),
-            ),
-          ],
-
-          const SizedBox(height: 10),
-
-          // Field 3: Landmark / Meetup Note
-          CustomTextField(
-            label: 'Landmark / Meetup Note (Crucial for Rider)',
-            hint: 'e.g. Beside yellow gate, across sari-sari store',
-            prefixIcon: Icons.flag_outlined,
-            controller: _landmarkController,
+          // 3-part address — uses shared widget
+          AddressInputWidget(
+            houseStreetController: _houseStreetController,
+            customBarangayController: _customBarangayController,
+            landmarkController: _landmarkController,
+            selectedBarangay: _selectedBarangay,
+            onBarangayChanged: (v) => setState(() => _selectedBarangay = v),
+            landmarkHint: 'e.g. Near church, blue gate',
           ),
         ],
       ),
