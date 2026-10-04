@@ -221,6 +221,18 @@ class LegalService {
         ignoreDuplicates: true,
       );
       print('✅ LegalService: recorded ${doc.key} v${doc.version}');
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST205') {
+        print(
+          '❌ LegalService: table public.legal_acceptances not found in Supabase (PGRST205). '
+          'Please run supabase/migrations/20261005_legal_acceptances.sql in your Supabase SQL Editor.',
+        );
+        throw Exception(
+          'Database setup required: Please run migration 20261005_legal_acceptances.sql in your Supabase SQL Editor.',
+        );
+      }
+      print('❌ LegalService: failed to record acceptance: $e');
+      rethrow;
     } catch (e) {
       print('❌ LegalService: failed to record acceptance: $e');
       rethrow;

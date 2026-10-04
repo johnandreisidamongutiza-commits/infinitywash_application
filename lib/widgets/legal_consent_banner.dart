@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/legal_documents.dart';
 import '../screens/shared/legal_document_screen.dart';
@@ -79,6 +80,22 @@ class _LegalConsentBannerState extends State<LegalConsentBanner> {
       setState(() {
         _pending = pending;
         _applies = pending.isNotEmpty;
+      });
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST205') {
+        print(
+          '⚠️ LegalConsentBanner: table public.legal_acceptances not found in Supabase (PGRST205). '
+          'Please apply supabase/migrations/20261005_legal_acceptances.sql.',
+        );
+        if (!mounted) return;
+        setState(() => _applies = false);
+        return;
+      }
+      print('⚠️ LegalConsentBanner: could not verify acceptance: $e');
+      if (!mounted) return;
+      setState(() {
+        _pending = requiredLegalDocuments();
+        _applies = true;
       });
     } catch (e) {
       // Fail safe: if we cannot verify, keep prompting. The banner is
@@ -180,26 +197,40 @@ class _LegalConsentBannerState extends State<LegalConsentBanner> {
             children: [
               TextButton(
                 onPressed: _dismiss,
+                style: TextButton.styleFrom(
+                  minimumSize: Size.zero,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 child: const Text(
                   'Later',
                   style: TextStyle(color: AppTheme.textLight),
                 ),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 8),
               ElevatedButton(
                 onPressed: _working ? null : _reviewAndAccept,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.accentBlue,
                   foregroundColor: Colors.white,
+                  minimumSize: Size.zero,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
                 child: _working
                     ? const SizedBox(
                         height: 16,
                         width: 16,
-                        child:
-                            CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
                       )
                     : const Text('Review & Accept'),
               ),
