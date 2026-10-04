@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../services/profile_service.dart';
 import '../../../../theme/app_theme.dart';
+import '../../../../widgets/address_input_widget.dart';
 import '../../../../widgets/custom_text_field.dart';
 import '../../../../widgets/location_picker_widget.dart';
 
@@ -18,7 +19,9 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
-  final _addressController = TextEditingController();
+  final _houseStreetController = TextEditingController();
+  String? _selectedBarangay;
+  final _customBarangayController = TextEditingController();
   final _landmarkController = TextEditingController();
   LatLng? _pinLocation;
   bool _pinChanged = false;
@@ -37,7 +40,8 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
     _lastNameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
-    _addressController.dispose();
+    _houseStreetController.dispose();
+    _customBarangayController.dispose();
     _landmarkController.dispose();
     super.dispose();
   }
@@ -52,8 +56,18 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
       _lastNameController.text = profile['last_name'] ?? '';
       _phoneController.text = profile['phone'] ?? '';
       _emailController.text = profile['email'] ?? '';
-      _addressController.text = profile['address'] ?? '';
       _landmarkController.text = profile['landmark'] ?? '';
+
+      final savedAddress = (profile['address'] as String?) ?? '';
+      if (savedAddress.isNotEmpty) {
+        AddressInputWidget.parseAndPopulate(
+          address: savedAddress,
+          houseStreetController: _houseStreetController,
+          setBarangay: (b) => _selectedBarangay = b,
+          customBarangayController: _customBarangayController,
+        );
+      }
+
       final pinLat = (profile['pin_latitude'] as num?)?.toDouble();
       final pinLng = (profile['pin_longitude'] as num?)?.toDouble();
       if (pinLat != null && pinLng != null) {
@@ -75,12 +89,18 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
     setState(() => _isSaving = true);
 
     try {
+      final fullAddress = AddressInputWidget.buildFullAddress(
+        houseStreet: _houseStreetController.text.trim(),
+        selectedBarangay: _selectedBarangay,
+        customBarangay: _customBarangayController.text.trim(),
+      );
+
       await _profileService.updateProfile(
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
         phone: _phoneController.text.trim(),
         email: _emailController.text.trim(),
-        address: _addressController.text.trim(),
+        address: fullAddress,
         landmark: _landmarkController.text.trim(),
         pinLatitude: _pinChanged ? _pinLocation?.latitude : null,
         pinLongitude: _pinChanged ? _pinLocation?.longitude : null,
@@ -118,9 +138,21 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
       setState(() {
         _pinLocation = result.coordinates;
         _pinChanged = true;
-        if (_addressController.text.trim().isEmpty && result.address != null && result.address!.isNotEmpty) {
-          _addressController.text = 'Blk _ Lot _, ${result.address!}';
-          _addressController.selection = const TextSelection(baseOffset: 4, extentOffset: 5);
+        if (_houseStreetController.text.trim().isEmpty &&
+            result.address != null &&
+            result.address!.isNotEmpty) {
+          AddressInputWidget.parseAndPopulate(
+            address: result.address!,
+            houseStreetController: _houseStreetController,
+            setBarangay: (v) => _selectedBarangay = v,
+            customBarangayController: _customBarangayController,
+          );
+          if (!_houseStreetController.text.startsWith('Blk')) {
+            _houseStreetController.text =
+                'Blk _ Lot _, ${_houseStreetController.text}';
+            _houseStreetController.selection =
+                const TextSelection(baseOffset: 4, extentOffset: 5);
+          }
         }
       });
     }
@@ -239,18 +271,15 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
                     keyboardType: TextInputType.emailAddress,
                   ),
                   const SizedBox(height: 16),
-                  CustomTextField(
-                    label: 'Default Address',
-                    hint: 'Address',
-                    prefixIcon: Icons.location_on_outlined,
-                    controller: _addressController,
-                  ),
-                  const SizedBox(height: 16),
-                  CustomTextField(
-                    label: 'Landmark (Optional)',
-                    hint: 'Landmark',
-                    prefixIcon: Icons.assistant_navigation,
-                    controller: _landmarkController,
+                  AddressInputWidget(
+                    houseStreetController: _houseStreetController,
+                    customBarangayController: _customBarangayController,
+                    landmarkController: _landmarkController,
+                    selectedBarangay: _selectedBarangay,
+                    onBarangayChanged: (v) =>
+                        setState(() => _selectedBarangay = v),
+                    fillColor: Colors.white,
+                    borderRadius: 16,
                   ),
                   const SizedBox(height: 16),
                   _buildPinLocationCard(),

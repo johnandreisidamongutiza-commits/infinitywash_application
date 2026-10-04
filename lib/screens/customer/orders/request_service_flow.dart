@@ -3,7 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import '../../../theme/app_theme.dart';
-import '../../../widgets/custom_text_field.dart';
+import '../../../widgets/address_input_widget.dart';
 import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
 import '../../../services/customer_service.dart';
@@ -37,6 +37,12 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   bool _isLoadingAddress = true;
   String? _loadError;
 
+  // 3-part address controllers for inline address form
+  final TextEditingController _formHouseStreetCtrl = TextEditingController();
+  final TextEditingController _formCustomBarangayCtrl = TextEditingController();
+  final TextEditingController _formLandmarkCtrl = TextEditingController();
+  String? _formSelectedBarangay;
+
   final TextEditingController _instructionsController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
 
@@ -62,11 +68,22 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
     try {
       final customer = await CustomerService().getCurrentAuthenticatedCustomer();
       if (customer != null) {
+        final addr = customer['address'] as String? ?? '';
+        final lmark = customer['landmark'] as String? ?? '';
         setState(() {
           _currentCustomer = customer;
-          _pickupAddress = customer['address'] as String? ?? '';
-          _landmark = customer['landmark'] as String? ?? '';
+          _pickupAddress = addr;
+          _landmark = lmark;
           _isLoadingAddress = false;
+          if (addr.isNotEmpty) {
+            AddressInputWidget.parseAndPopulate(
+              address: addr,
+              houseStreetController: _formHouseStreetCtrl,
+              setBarangay: (b) => _formSelectedBarangay = b,
+              customBarangayController: _formCustomBarangayCtrl,
+            );
+          }
+          _formLandmarkCtrl.text = lmark;
         });
       } else {
         setState(() {
@@ -84,6 +101,9 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
   @override
   void dispose() {
+    _formHouseStreetCtrl.dispose();
+    _formCustomBarangayCtrl.dispose();
+    _formLandmarkCtrl.dispose();
     _instructionsController.dispose();
     _descriptionController.dispose();
     super.dispose();
@@ -196,9 +216,24 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
   void _resetToProfileAddress() {
     if (_currentCustomer != null) {
+      final addr = _currentCustomer!['address'] as String? ?? '';
+      final lmark = _currentCustomer!['landmark'] as String? ?? '';
       setState(() {
-        _pickupAddress = _currentCustomer!['address'] as String? ?? '';
-        _landmark = _currentCustomer!['landmark'] as String? ?? '';
+        _pickupAddress = addr;
+        _landmark = lmark;
+        if (addr.isNotEmpty) {
+          AddressInputWidget.parseAndPopulate(
+            address: addr,
+            houseStreetController: _formHouseStreetCtrl,
+            setBarangay: (b) => _formSelectedBarangay = b,
+            customBarangayController: _formCustomBarangayCtrl,
+          );
+        } else {
+          _formHouseStreetCtrl.clear();
+          _formSelectedBarangay = null;
+          _formCustomBarangayCtrl.clear();
+        }
+        _formLandmarkCtrl.text = lmark;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Reset to saved profile address.')),
@@ -207,98 +242,128 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   }
 
   void _showEditAddressModal() {
-    final addressCtrl = TextEditingController(text: _pickupAddress);
+    final houseStreetCtrl = TextEditingController();
+    final customBarangayCtrl = TextEditingController();
     final landmarkCtrl = TextEditingController(text: _landmark);
+    String? selectedBarangay;
+
+    if (_pickupAddress.isNotEmpty) {
+      AddressInputWidget.parseAndPopulate(
+        address: _pickupAddress,
+        houseStreetController: houseStreetCtrl,
+        setBarangay: (b) => selectedBarangay = b,
+        customBarangayController: customBarangayCtrl,
+      );
+    }
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppTheme.borderGray,
-                      borderRadius: BorderRadius.circular(2),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppTheme.borderGray,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Change Pick-up Details',
-                      style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 18),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 20),
-                      onPressed: () => Navigator.pop(ctx),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Update your pickup address for this request only.',
-                  style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                ),
-                const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Pick-up Address',
-                  hint: 'Enter pickup address',
-                  prefixIcon: Icons.location_on_outlined,
-                  controller: addressCtrl,
-                ),
-                const SizedBox(height: 16),
-                CustomTextField(
-                  label: 'Landmark / Note (Optional)',
-                  hint: 'e.g. Near blue gate, 2nd floor apt',
-                  prefixIcon: Icons.assistant_navigation,
-                  controller: landmarkCtrl,
-                ),
-                const SizedBox(height: 28),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _pickupAddress = addressCtrl.text.trim().isEmpty 
-                          ? (_currentCustomer?['address'] as String? ?? '') 
-                          : addressCtrl.text.trim();
-                      _landmark = landmarkCtrl.text.trim();
-                    });
-                    Navigator.pop(ctx);
-                  },
-                  child: const Text('Save for This Order'),
-                ),
-                const SizedBox(height: 10),
-                Center(
-                  child: TextButton(
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Change Pick-up Details',
+                        style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 18),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 20),
+                        onPressed: () => Navigator.pop(ctx),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Update your pickup address for this request only.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                  ),
+                  const SizedBox(height: 16),
+                  AddressInputWidget(
+                    houseStreetController: houseStreetCtrl,
+                    customBarangayController: customBarangayCtrl,
+                    landmarkController: landmarkCtrl,
+                    selectedBarangay: selectedBarangay,
+                    onBarangayChanged: (v) =>
+                        setModalState(() => selectedBarangay = v),
+                    fillColor: AppTheme.softGray,
+                    borderRadius: 16,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
                     onPressed: () {
+                      final street = houseStreetCtrl.text.trim();
+                      if (street.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Please enter your house/unit/street number')),
+                        );
+                        return;
+                      }
+                      if (selectedBarangay == null || selectedBarangay!.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Please select your barangay')),
+                        );
+                        return;
+                      }
+                      final full = AddressInputWidget.buildFullAddress(
+                        houseStreet: street,
+                        selectedBarangay: selectedBarangay,
+                        customBarangay: customBarangayCtrl.text.trim(),
+                      );
+                      setState(() {
+                        _pickupAddress = full;
+                        _landmark = landmarkCtrl.text.trim();
+                        _formHouseStreetCtrl.text = street;
+                        _formSelectedBarangay = selectedBarangay;
+                        _formCustomBarangayCtrl.text = customBarangayCtrl.text;
+                        _formLandmarkCtrl.text = _landmark;
+                      });
                       Navigator.pop(ctx);
-                      _resetToProfileAddress();
                     },
-                    child: const Text(
-                      'Use Saved Profile Address',
-                      style: TextStyle(color: AppTheme.textLight, fontSize: 13),
+                    child: const Text('Save for This Order'),
+                  ),
+                  const SizedBox(height: 10),
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _resetToProfileAddress();
+                      },
+                      child: const Text(
+                        'Use Saved Profile Address',
+                        style: TextStyle(color: AppTheme.textLight, fontSize: 13),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1421,9 +1486,6 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   }
 
   Widget _buildAddressForm() {
-    final addressCtrl = TextEditingController(text: _pickupAddress);
-    final landmarkCtrl = TextEditingController(text: _landmark);
-
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1456,32 +1518,40 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
           ),
           const SizedBox(height: 16),
-          CustomTextField(
-            label: 'Pick-up Address *',
-            hint: 'Enter your complete address',
-            prefixIcon: Icons.location_on_outlined,
-            controller: addressCtrl,
+          AddressInputWidget(
+            houseStreetController: _formHouseStreetCtrl,
+            customBarangayController: _formCustomBarangayCtrl,
+            landmarkController: _formLandmarkCtrl,
+            selectedBarangay: _formSelectedBarangay,
+            onBarangayChanged: (v) =>
+                setState(() => _formSelectedBarangay = v),
+            fillColor: Colors.white,
+            borderRadius: 16,
           ),
-          const SizedBox(height: 12),
-          CustomTextField(
-            label: 'Landmark (Optional)',
-            hint: 'e.g. Near blue gate, 2nd floor apt',
-            prefixIcon: Icons.assistant_navigation,
-            controller: landmarkCtrl,
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           ElevatedButton(
             onPressed: () {
-              final address = addressCtrl.text.trim();
-              if (address.isEmpty) {
+              final street = _formHouseStreetCtrl.text.trim();
+              if (street.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter your pickup address')),
+                  const SnackBar(content: Text('Please enter your house/unit/street number')),
                 );
                 return;
               }
+              if (_formSelectedBarangay == null || _formSelectedBarangay!.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please select your barangay')),
+                );
+                return;
+              }
+              final full = AddressInputWidget.buildFullAddress(
+                houseStreet: street,
+                selectedBarangay: _formSelectedBarangay,
+                customBarangay: _formCustomBarangayCtrl.text.trim(),
+              );
               setState(() {
-                _pickupAddress = address;
-                _landmark = landmarkCtrl.text.trim();
+                _pickupAddress = full;
+                _landmark = _formLandmarkCtrl.text.trim();
               });
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Address set! This will be saved when you submit your request.')),
