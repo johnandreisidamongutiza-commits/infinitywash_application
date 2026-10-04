@@ -28,6 +28,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   bool _isLoading = true;
   List<DispatchJob> _pickupJobs = [];
   List<DispatchJob> _deliveryJobs = [];
+  List<DispatchJob> _completedPickupJobs = [];
+  List<DispatchJob> _completedDeliveryJobs = [];
 
   @override
   void initState() {
@@ -51,12 +53,24 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
       final pickupJobs = await _riderService.fetchActivePickupJobs();
       final deliveryJobs = await _riderService.fetchActiveDeliveryJobs();
       
+      // Fetch COMPLETED jobs (today only) for statistics
+      final completedPickupJobs = await _riderService.fetchCompletedPickupJobs();
+      final completedDeliveryJobs = await _riderService.fetchCompletedDeliveryJobs();
+      
       if (mounted) {
         setState(() {
           _pickupJobs = pickupJobs;
           _deliveryJobs = deliveryJobs;
+          _completedPickupJobs = completedPickupJobs;
+          _completedDeliveryJobs = completedDeliveryJobs;
           _isLoading = false;
         });
+        
+        print('✅ Rider home loaded:');
+        print('   Active Pickups: ${_pickupJobs.length}');
+        print('   Active Deliveries: ${_deliveryJobs.length}');
+        print('   Completed Pickups: ${_completedPickupJobs.length}');
+        print('   Completed Deliveries: ${_completedDeliveryJobs.length}');
       }
     } catch (e) {
       print('❌ Error loading rider jobs: $e');
@@ -234,7 +248,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   Widget _buildDeliveriesSummary() {
     int deliveriesLeft = _deliveryJobs.length;
     int pickupsLeft = _pickupJobs.length;
-    int completed = 0; // TODO: Track completed orders (could query orders with status='completed' for today)
+    int completed = _completedPickupJobs.length + _completedDeliveryJobs.length;
 
     return Container(
       padding: const EdgeInsets.all(24),
