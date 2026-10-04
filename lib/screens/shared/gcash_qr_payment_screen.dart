@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -37,8 +39,27 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
   final PaymentService _paymentService = PaymentService();
   final ImagePicker _imagePicker = ImagePicker();
 
+  /// Height reserved for the QR image. Tall enough for a full GCash
+  /// screenshot; the viewer below lets the user zoom in and out.
+  static const double _qrImageHeight = 340;
+
+  /// Minimum/maximum zoom applied to the QR image.
+  static const double _minQrZoom = 1.0;
+  static const double _maxQrZoom = 4.0;
+
+  final TransformationController _qrTransformController =
+      TransformationController();
+  double _qrZoom = 1.0;
+
   bool _isLoadingQr = true;
   GcashSettings _settings = GcashSettings.empty;
+
+  /// The QR is either a remote URL or, when the admin stored it inline,
+  /// a base64 data URI. Image.network cannot load a data URI, so those
+  /// are decoded once here and rendered with Image.memory.
+  String? _qrImageUrl;
+  Uint8List? _qrImageBytes;
+
   File? _receiptFile;
   bool _isPickingImage = false;
   int _step = 1; // 1 = show QR, 2 = capture/upload receipt
@@ -49,13 +70,70 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
     _loadSettings();
   }
 
+  @override
+  void dispose() {
+    _qrTransformController.dispose();
+    super.dispose();
+  }
+
+  /// Zoom the QR image in or out. Clamped between [_minQrZoom] and [_maxQrZoom].
+  void _zoomQr(double factor) {
+    final next = (_qrZoom * factor).clamp(_minQrZoom, _maxQrZoom);
+    _qrTransformController.value =
+        Matrix4.identity()..scaleByDouble(next, next, next, 1);
+    setState(() => _qrZoom = next);
+  }
+
+  /// Back to the "fit to screen" view.
+  void _resetQrZoom() {
+    _qrTransformController.value = Matrix4.identity();
+    setState(() => _qrZoom = 1.0);
+  }
+
   Future<void> _loadSettings() async {
     final settings = await _paymentService.fetchGcashSettings();
     if (!mounted) return;
+
+    String? url;
+    Uint8List? bytes;
+    final raw = settings.qrImageUrl;
+    if (raw != null) {
+      final source = _resolveQrSource(raw);
+      url = source.url;
+      bytes = source.bytes;
+    }
+
     setState(() {
       _settings = settings;
+      _qrImageUrl = url;
+      _qrImageBytes = bytes;
       _isLoadingQr = false;
     });
+  }
+
+  /// Splits a stored QR value into a network URL or decoded image bytes.
+  static ({String? url, Uint8List? bytes}) _resolveQrSource(String raw) {
+    if (!raw.startsWith('data:')) {
+      return (url: raw, bytes: null);
+    }
+
+    final separator = raw.indexOf(',');
+    if (separator == -1) {
+      print('⚠️ Malformed GCash QR data URI (no comma separator)');
+      return (url: null, bytes: null);
+    }
+
+    final meta = raw.substring(0, separator);
+    final payload = raw.substring(separator + 1);
+    try {
+      if (meta.contains(';base64')) {
+        return (url: null, bytes: base64Decode(payload));
+      }
+      return (url: Uri.dataFromString(raw).toString(), bytes: null);
+    } catch (e) {
+      print('❌ Could not decode the GCash QR data URI: $e');
+      return (url: null, bytes: null);
+    }
   }
 
   Future<void> _pickImage({required ImageSource source}) async {
@@ -259,29 +337,15 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
       ),
       child: _isLoadingQr
           ? const SizedBox(
-              height: 240,
+              height: _qrImageHeight,
               child: Center(child: CircularProgressIndicator()),
             )
-          : _settings.qrImageUrl != null
+          : (_qrImageUrl != null || _qrImageBytes != null)
               ? Column(
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        _settings.qrImageUrl!,
-                        height: 240,
-                        fit: BoxFit.contain,
-                        loadingBuilder: (context, child, progress) {
-                          if (progress == null) return child;
-                          return const SizedBox(
-                            height: 240,
-                            child: Center(child: CircularProgressIndicator()),
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) =>
-                            _buildQrUnavailable(
-                                'QR image could not be loaded.'),
-                      ),
+                      child: _buildQrImage(),
                     ),
                     const SizedBox(height: 10),
                     const Text(
@@ -292,6 +356,124 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
                 )
               : _buildQrUnavailable(
                   'GCash QR is not configured yet. Pay using the account details below.'),
+    );
+  }
+
+  /// Renders the QR from decoded bytes (data URI) or from a remote URL.
+  /// The admin may store a full GCash screenshot instead of a cropped QR,
+  /// so the image is given room and can be pinched to zoom.
+  Widget _buildQrImage() {
+    final Widget image;
+    final bytes = _qrImageBytes;
+
+    if (bytes != null) {
+      image = Image.memory(
+        bytes,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) => _buildQrUnavailable(
+            'The stored GCash QR image could not be decoded.'),
+      );
+    } else {
+      image = Image.network(
+        _qrImageUrl!,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return const SizedBox(
+            height: _qrImageHeight,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) => _buildQrUnavailable(
+            'QR image could not be loaded. Please contact the admin to re-upload it.'),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InteractiveViewer(
+          transformationController: _qrTransformController,
+          minScale: _minQrZoom,
+          maxScale: _maxQrZoom,
+          // Panning only makes sense once zoomed in; below that the
+          // page keeps its normal scroll behaviour.
+          panEnabled: _qrZoom > 1,
+          child: SizedBox(
+            height: _qrImageHeight,
+            width: double.infinity,
+            child: image,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _buildZoomControls(),
+      ],
+    );
+  }
+
+  /// Zoom out / reset / zoom in buttons plus a percentage readout.
+  Widget _buildZoomControls() {
+    final percent = (_qrZoom * 100).round();
+
+    Widget button({
+      required IconData icon,
+      required String tooltip,
+      required VoidCallback? onPressed,
+    }) {
+      return IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        tooltip: tooltip,
+        color: AppTheme.accentBlue,
+        disabledColor: AppTheme.textLight.withValues(alpha: 0.4),
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(
+          backgroundColor: AppTheme.softGray,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        button(
+          icon: Icons.zoom_out,
+          tooltip: 'Zoom out',
+          onPressed: _qrZoom > _minQrZoom ? () => _zoomQr(1 / 1.4) : null,
+        ),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppTheme.softGray,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            '$percent%',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textDark,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        button(
+          icon: Icons.zoom_in,
+          tooltip: 'Zoom in',
+          onPressed: _qrZoom < _maxQrZoom ? () => _zoomQr(1.4) : null,
+        ),
+        const SizedBox(width: 8),
+        button(
+          icon: Icons.fit_screen_outlined,
+          tooltip: 'Reset zoom',
+          onPressed: _qrZoom == _minQrZoom ? null : _resetQrZoom,
+        ),
+      ],
     );
   }
 
