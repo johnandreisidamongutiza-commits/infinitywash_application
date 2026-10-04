@@ -1,20 +1,22 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../config/location_constants.dart';
+import '../services/geocoding_service.dart';
 import '../services/location_service.dart';
 import '../theme/app_theme.dart';
 
 /// Interactive location picker widget
 ///
-/// Allows users to drop a pin on the map to select a location.
-/// Used during registration, customer profile, and dispatch jobs.
+/// Allows users to search for an address, drop a pin on the map,
+/// or use GPS to select their location.
 ///
 /// Features:
-/// - Tap anywhere to place or move pin
+/// - Search bar with live address/landmark autocompletion (OpenStreetMap Nominatim)
+/// - Tap anywhere on the map to place or adjust the pin
 /// - "My Location" GPS button to automatically zoom to current device position
 /// - Shows distance from shop and delivery radius status
-/// - Returns LatLng coordinates
 /// - Validates delivery range
 class LocationPickerWidget extends StatefulWidget {
   /// Initial position for the pin (defaults to shop location or null)
@@ -51,12 +53,28 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
   bool _isOutOfRange = false;
   bool _isLocating = false;
 
+  // Address search state
+  final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
+  Timer? _debounceTimer;
+  List<GeocodingResult> _searchResults = [];
+  bool _isSearching = false;
+  bool _showSuggestions = false;
+
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
     _selectedLocation = widget.initialPosition;
     _checkDeliveryRange();
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
   }
 
   void _checkDeliveryRange() {
@@ -68,6 +86,10 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
   }
 
   void _onMapTap(LatLng latLng) {
+    if (_showSuggestions) {
+      setState(() => _showSuggestions = false);
+      _searchFocusNode.unfocus();
+    }
     setState(() {
       _selectedLocation = latLng;
       _checkDeliveryRange();
@@ -75,9 +97,54 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
     widget.onLocationChanged?.call(latLng);
   }
 
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    final trimmed = query.trim();
+
+    if (trimmed.length < 3) {
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+        _showSuggestions = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _showSuggestions = true;
+    });
+
+    _debounceTimer = Timer(const Duration(milliseconds: 450), () async {
+      final results = await GeocodingService().search(trimmed);
+      if (!mounted) return;
+      setState(() {
+        _searchResults = results;
+        _isSearching = false;
+      });
+    });
+  }
+
+  void _selectSearchResult(GeocodingResult result) {
+    final latLng = LatLng(result.latitude, result.longitude);
+    _searchFocusNode.unfocus();
+    _searchController.text = result.title;
+    setState(() {
+      _showSuggestions = false;
+      _selectedLocation = latLng;
+      _checkDeliveryRange();
+    });
+    _mapController.move(latLng, 16.5);
+    widget.onLocationChanged?.call(latLng);
+  }
+
   Future<void> _locateUser() async {
     if (_isLocating) return;
-    setState(() => _isLocating = true);
+    setState(() {
+      _isLocating = true;
+      _showSuggestions = false;
+    });
+    _searchFocusNode.unfocus();
 
     try {
       final locationData = await LocationService().getCurrentLocation();
@@ -113,9 +180,12 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
   }
 
   void _clearLocation() {
+    _searchController.clear();
     setState(() {
       _selectedLocation = null;
       _isOutOfRange = false;
+      _showSuggestions = false;
+      _searchResults = [];
     });
     widget.onLocationChanged?.call(null);
   }
@@ -129,10 +199,10 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Instructions banner
+        // Instructions & Delivery range banner
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             color: _isOutOfRange ? Colors.red.shade50 : Colors.blue.shade50,
             border: Border(
@@ -145,42 +215,31 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
             children: [
               Icon(
                 _isOutOfRange ? Icons.warning_amber_rounded : Icons.info_outline,
-                size: 20,
+                size: 18,
                 color: _isOutOfRange ? AppTheme.errorRed : AppTheme.accentBlue,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _selectedLocation == null
-                          ? 'Tap anywhere on map or tap GPS button to pin'
-                          : _isOutOfRange
-                              ? 'Location is outside delivery range'
-                              : 'Pin placed successfully',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: _isOutOfRange ? Colors.red.shade900 : Colors.blue.shade900,
-                      ),
-                    ),
-                    if (_selectedLocation != null)
-                      Text(
-                        'Distance from shop: ${_getDistanceText()}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: _isOutOfRange ? Colors.red.shade700 : Colors.grey.shade700,
-                        ),
-                      ),
-                  ],
+                child: Text(
+                  _selectedLocation == null
+                      ? 'Search your address, tap the map, or use GPS to pin'
+                      : _isOutOfRange
+                          ? 'Outside delivery range (${_getDistanceText()} from shop)'
+                          : 'Within delivery range (${_getDistanceText()} from shop)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _isOutOfRange ? Colors.red.shade900 : Colors.blue.shade900,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
         ),
 
-        // Map
+        // Map with overlays
         Expanded(
           child: Stack(
             children: [
@@ -189,8 +248,20 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                 options: MapOptions(
                   initialCenter: _selectedLocation ?? LocationConstants.infinityWashShop,
                   initialZoom: 15.0,
-                  minZoom: 10.0,
+                  minZoom: 12.0,
                   maxZoom: 18.0,
+                  cameraConstraint: CameraConstraint.contain(
+                    bounds: LatLngBounds(
+                      LatLng(
+                        LocationConstants.shopLocation.latitude - 0.15,
+                        LocationConstants.shopLocation.longitude - 0.15,
+                      ),
+                      LatLng(
+                        LocationConstants.shopLocation.latitude + 0.15,
+                        LocationConstants.shopLocation.longitude + 0.15,
+                      ),
+                    ),
+                  ),
                   onTap: (tapPosition, latLng) => _onMapTap(latLng),
                 ),
                 children: [
@@ -281,18 +352,18 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                     child: Icon(
                       Icons.add,
                       size: 36,
-                      color: Colors.black.withValues(alpha: 0.4),
+                      color: Colors.black.withValues(alpha: 0.35),
                     ),
                   ),
                 ),
 
-              // Floating map action controls (Locate GPS & Shop)
+              // Floating map action controls (Locate GPS & Shop at bottom-right)
               Positioned(
-                top: 12,
+                bottom: 16,
                 right: 12,
                 child: Column(
                   children: [
-                    // Locate Me GPS
+                    // Locate Me GPS button
                     Material(
                       elevation: 3,
                       shape: const CircleBorder(),
@@ -317,7 +388,7 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Recenter Shop
+                    // Recenter Shop button
                     Material(
                       elevation: 3,
                       shape: const CircleBorder(),
@@ -325,6 +396,8 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                       child: InkWell(
                         customBorder: const CircleBorder(),
                         onTap: () {
+                          _searchFocusNode.unfocus();
+                          setState(() => _showSuggestions = false);
                           _mapController.move(
                             LocationConstants.infinityWashShop,
                             LocationConstants.defaultZoom,
@@ -340,6 +413,130 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                         ),
                       ),
                     ),
+                  ],
+                ),
+              ),
+
+              // Floating Search Bar & Auto-complete suggestions at top of the map
+              Positioned(
+                top: 12,
+                left: 12,
+                right: 12,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Material(
+                      elevation: 3,
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.white,
+                      child: TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        onChanged: _onSearchChanged,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (_) {
+                          if (_searchResults.isNotEmpty) {
+                            _selectSearchResult(_searchResults.first);
+                          }
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Search street, barangay, or landmark in Laguna...',
+                          hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textLight),
+                          prefixIcon: const Icon(Icons.search, color: AppTheme.accentBlue, size: 20),
+                          suffixIcon: _isSearching
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                )
+                              : _searchController.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.close, size: 18, color: AppTheme.textLight),
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        setState(() {
+                                          _searchResults = [];
+                                          _showSuggestions = false;
+                                        });
+                                      },
+                                    )
+                                  : null,
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        ),
+                      ),
+                    ),
+
+                    // Suggestion dropdown
+                    if (_showSuggestions) ...[
+                      const SizedBox(height: 6),
+                      Material(
+                        elevation: 4,
+                        borderRadius: BorderRadius.circular(12),
+                        color: Colors.white,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 220),
+                          child: _searchResults.isEmpty && !_isSearching
+                              ? const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.location_off_outlined, size: 18, color: AppTheme.textLight),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'No matching places found. Try a different keyword or tap the map directly.',
+                                          style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.separated(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  shrinkWrap: true,
+                                  itemCount: _searchResults.length,
+                                  separatorBuilder: (c, i) => const Divider(height: 1),
+                                  itemBuilder: (context, index) {
+                                    final item = _searchResults[index];
+                                    return ListTile(
+                                      dense: true,
+                                      leading: const Icon(
+                                        Icons.location_on_outlined,
+                                        color: AppTheme.accentBlue,
+                                        size: 20,
+                                      ),
+                                      title: Text(
+                                        item.title,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.textDark,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      subtitle: item.subtitle.isNotEmpty
+                                          ? Text(
+                                              item.subtitle,
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: AppTheme.textLight,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            )
+                                          : null,
+                                      onTap: () => _selectSearchResult(item),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -381,7 +578,7 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                       Text(
                         _selectedLocation != null
                             ? '${_selectedLocation!.latitude.toStringAsFixed(6)}, ${_selectedLocation!.longitude.toStringAsFixed(6)}'
-                            : 'Tap on the map to drop a pin',
+                            : 'Tap on the map or search to drop a pin',
                         style: TextStyle(
                           fontSize: 12,
                           fontFamily: _selectedLocation != null ? 'monospace' : null,
@@ -391,35 +588,6 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: _isLocating ? null : _locateUser,
-                  icon: const Icon(Icons.my_location, size: 16),
-                  label: const Text('Locate', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppTheme.accentBlue,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    minimumSize: const Size(0, 0),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                TextButton.icon(
-                  onPressed: () {
-                    _mapController.move(
-                      LocationConstants.infinityWashShop,
-                      LocationConstants.defaultZoom,
-                    );
-                  },
-                  icon: const Icon(Icons.storefront, size: 16),
-                  label: const Text('Shop', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppTheme.textDark,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    minimumSize: const Size(0, 0),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),
                 if (_selectedLocation != null) ...[
@@ -584,9 +752,9 @@ class _LocationPickerScreenState extends State<_LocationPickerScreen> {
                       children: [
                         Text(
                           _selectedLocation == null
-                              ? 'Tap map or GPS to set your location'
+                              ? 'Search or tap on the map to pin'
                               : isOutOfRange
-                                  ? 'Outside delivery range'
+                                  ? 'Outside delivery zone (maximum ${LocationConstants.deliveryRadiusKm.toInt()} km from shop)'
                                   : 'Within delivery range',
                           style: TextStyle(
                             fontSize: 13,
@@ -626,12 +794,14 @@ class _LocationPickerScreenState extends State<_LocationPickerScreen> {
                     ),
                     elevation: 0,
                   ),
-                  onPressed: _selectedLocation != null
+                  onPressed: (_selectedLocation != null && (!widget.enforceDeliveryRadius || !isOutOfRange))
                       ? () => Navigator.of(context).pop(_selectedLocation)
                       : null,
-                  child: const Text(
-                    'Confirm Location',
-                    style: TextStyle(
+                  child: Text(
+                    isOutOfRange && widget.enforceDeliveryRadius
+                        ? 'Outside Delivery Zone'
+                        : 'Confirm Location',
+                    style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
                     ),
