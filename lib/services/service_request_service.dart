@@ -572,7 +572,7 @@ class ServiceRequestService {
           .from('orders')
           .select('''
             *,
-            customers(first_name, last_name, phone, address, landmark)
+            customers(first_name, last_name, phone, address, landmark, pin_latitude, pin_longitude)
           ''')
           .eq('id', orderId)
           .single();
@@ -628,11 +628,17 @@ class ServiceRequestService {
         return;
       }
 
-      // Use default coordinates for now (Santa Cruz, Laguna area)
-      // TODO: Implement actual geocoding service
-      final defaultLat = 14.2811;
-      final defaultLng = 121.4159;
-      print('⚠️ Using default coordinates for address: $finalAddress');
+      // Use customer's pinned coordinates, fallback to default coordinates if null
+      final pinLat = (customerData?['pin_latitude'] as num?)?.toDouble();
+      final pinLng = (customerData?['pin_longitude'] as num?)?.toDouble();
+      final finalLat = pinLat ?? 14.2811;
+      final finalLng = pinLng ?? 121.4159;
+
+      if (pinLat != null && pinLng != null) {
+        print('✅ Using customer pinned coordinates: ($finalLat, $finalLng)');
+      } else {
+        print('⚠️ Using fallback coordinates for address: $finalAddress');
+      }
 
       // Create dispatch jobs using SupabaseService
       final supabaseService = SupabaseService();
@@ -644,8 +650,8 @@ class ServiceRequestService {
           orderId: orderId,
           riderId: null, // NULL for unassigned
           jobType: 'pickup',
-          latitude: defaultLat,
-          longitude: defaultLng,
+          latitude: finalLat,
+          longitude: finalLng,
           address: finalAddress,
           landmark: landmark,
           customerName: customerName, // Pass customer name

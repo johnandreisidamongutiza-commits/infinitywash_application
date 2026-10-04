@@ -69,6 +69,8 @@ class CustomerService {
     String? email,
     String? address,
     String? landmark,
+    double? pinLatitude,
+    double? pinLongitude,
     String customerType = 'walk_in', // Default to walk-in, can be 'mobile_app'
   }) async {
     try {
@@ -99,6 +101,8 @@ class CustomerService {
             'email': email?.trim(),
             'address': address?.trim(),
             'landmark': landmark?.trim(),
+            if (pinLatitude != null) 'pin_latitude': pinLatitude,
+            if (pinLongitude != null) 'pin_longitude': pinLongitude,
             'customer_type': customerType,
             'profile_id': null, // Walk-in customers don't have app profiles
             'status': 'active',
@@ -306,6 +310,8 @@ class CustomerService {
     String? email,
     String? address,
     String? landmark,
+    double? pinLatitude,
+    double? pinLongitude,
   }) async {
     try {
       final updates = <String, dynamic>{
@@ -317,6 +323,8 @@ class CustomerService {
       if (email != null) updates['email'] = email;
       if (address != null) updates['address'] = address;
       if (landmark != null) updates['landmark'] = landmark;
+      if (pinLatitude != null) updates['pin_latitude'] = pinLatitude;
+      if (pinLongitude != null) updates['pin_longitude'] = pinLongitude;
 
       await _client
           .from('customers')
@@ -386,6 +394,8 @@ class CustomerService {
             email,
             address,
             landmark,
+            pin_latitude,
+            pin_longitude,
             customer_type,
             joined_at,
             orders!customer_id (

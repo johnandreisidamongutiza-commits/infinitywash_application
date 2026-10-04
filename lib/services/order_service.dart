@@ -329,12 +329,12 @@ class OrderService {
 
       print('🔄 Creating dispatch jobs for walk-in order: $orderId');
 
-      // Fetch order with customer info to get customer name
+      // Fetch order with customer info to get customer name & coordinates
       final orderResponse = await _client
           .from('orders')
           .select('''
             *,
-            customers!inner(first_name, last_name)
+            customers!inner(first_name, last_name, pin_latitude, pin_longitude)
           ''')
           .eq('id', orderId)
           .single();
@@ -349,11 +349,17 @@ class OrderService {
               ? firstName 
               : 'Unknown Customer';
 
-      // Use default coordinates (Santa Cruz, Laguna area)
-      // TODO: Implement actual geocoding service
-      final defaultLat = 14.2811;
-      final defaultLng = 121.4159;
-      print('⚠️ Using default coordinates for address: $address');
+      // Use customer's pinned coordinates, fallback to shop/default coordinates if null
+      final pinLat = (customerData?['pin_latitude'] as num?)?.toDouble();
+      final pinLng = (customerData?['pin_longitude'] as num?)?.toDouble();
+      final finalLat = pinLat ?? 14.2811;
+      final finalLng = pinLng ?? 121.4159;
+
+      if (pinLat != null && pinLng != null) {
+        print('✅ Using customer pinned coordinates: ($finalLat, $finalLng)');
+      } else {
+        print('⚠️ Using fallback coordinates for address: $address');
+      }
 
       // Create unassigned dispatch jobs
       final supabaseService = SupabaseService();
@@ -363,8 +369,8 @@ class OrderService {
           orderId: orderId,
           riderId: null, // NULL for unassigned
           jobType: 'pickup',
-          latitude: defaultLat,
-          longitude: defaultLng,
+          latitude: finalLat,
+          longitude: finalLng,
           address: address,
           landmark: landmark,
           customerName: customerName, // Pass customer name
@@ -732,7 +738,7 @@ class OrderService {
           .from('orders')
           .select('''
             *,
-            customers!inner(first_name, last_name, address, landmark)
+            customers!inner(first_name, last_name, address, landmark, pin_latitude, pin_longitude)
           ''')
           .eq('id', orderId)
           .single();
@@ -797,11 +803,17 @@ class OrderService {
       
       print('🔍 DEBUG: customerName = "$customerName"');
 
-      // Use default coordinates (Santa Cruz, Laguna area)
-      // TODO: Implement actual geocoding service
-      final defaultLat = 14.2811;
-      final defaultLng = 121.4159;
-      print('⚠️ Using default coordinates for delivery address: $finalAddress');
+      // Use customer's pinned coordinates, fallback to default coordinates if null
+      final pinLat = (customerData?['pin_latitude'] as num?)?.toDouble();
+      final pinLng = (customerData?['pin_longitude'] as num?)?.toDouble();
+      final finalLat = pinLat ?? 14.2811;
+      final finalLng = pinLng ?? 121.4159;
+
+      if (pinLat != null && pinLng != null) {
+        print('✅ Using customer pinned coordinates: ($finalLat, $finalLng)');
+      } else {
+        print('⚠️ Using fallback coordinates for delivery address: $finalAddress');
+      }
 
       print('🔍 DEBUG: About to call createDispatchJob...');
       // Create delivery dispatch job
@@ -810,8 +822,8 @@ class OrderService {
         orderId: orderId,
         riderId: null, // NULL for unassigned
         jobType: 'delivery',
-        latitude: defaultLat,
-        longitude: defaultLng,
+        latitude: finalLat,
+        longitude: finalLng,
         address: finalAddress,
         landmark: landmark,
         customerName: customerName,

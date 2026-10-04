@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
+import '../../../config/location_constants.dart';
+import '../../../widgets/location_picker_widget.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_text_field.dart';
 import '../../../models/order.dart';
@@ -23,6 +26,8 @@ class _CustomerProfile {
   final String? landmark;
   final String? instructions;
   final DateTime? lastOrderDate;
+  final double? pinLatitude;
+  final double? pinLongitude;
 
   const _CustomerProfile({
     this.customerId,
@@ -34,6 +39,8 @@ class _CustomerProfile {
     this.landmark,
     this.instructions,
     this.lastOrderDate,
+    this.pinLatitude,
+    this.pinLongitude,
   });
 
   String get fullName => '$firstName $lastName'.trim();
@@ -60,6 +67,8 @@ class _CustomerProfile {
       lastOrderDate: json['last_order_date'] != null 
           ? DateTime.tryParse(json['last_order_date'] as String)
           : null,
+      pinLatitude: (json['pin_latitude'] as num?)?.toDouble(),
+      pinLongitude: (json['pin_longitude'] as num?)?.toDouble(),
     );
   }
 }
@@ -92,10 +101,120 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _addressController = TextEditingController();
+  
+  // Separated Address Controllers & 20m Meetup Zone
+  final TextEditingController _houseStreetController = TextEditingController();
+  String? _selectedBarangay;
+  final TextEditingController _customBarangayController = TextEditingController();
   final TextEditingController _landmarkController = TextEditingController();
+  LatLng? _deliveryPinLocation;
+  String? _deliveryPinAddress;
+
   final TextEditingController _instructionsController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
+
+  static const List<String> santaCruzBarangays = [
+    'Alipit',
+    'Bagumbayan',
+    'Bubukal',
+    'Calios',
+    'Duhat',
+    'Gatid',
+    'Jasaan',
+    'Labuin',
+    'Malinao',
+    'Oogong',
+    'Pagsawitan',
+    'Palasan',
+    'Patimbao',
+    'Poblacion I',
+    'Poblacion II',
+    'Poblacion III',
+    'Poblacion IV',
+    'Poblacion V',
+    'San Angel',
+    'San Jose',
+    'San Juan',
+    'Santa Cruz',
+    'Santisimo Rosario',
+    'Santo Angel Central',
+    'Santo Angel Norte',
+    'Santo Angel Sur',
+    'Other / Outside Sta. Cruz',
+  ];
+
+  String get _fullDeliveryAddress {
+    final houseStreet = _houseStreetController.text.trim();
+    final brgy = _selectedBarangay == 'Other / Outside Sta. Cruz'
+        ? _customBarangayController.text.trim()
+        : (_selectedBarangay ?? _customBarangayController.text.trim());
+
+    final parts = <String>[];
+    if (houseStreet.isNotEmpty) parts.add(houseStreet);
+    if (brgy.isNotEmpty) {
+      if (!brgy.toLowerCase().contains('brgy') && !brgy.toLowerCase().contains('barangay')) {
+        parts.add('Brgy. $brgy');
+      } else {
+        parts.add(brgy);
+      }
+    }
+    if (_selectedBarangay != 'Other / Outside Sta. Cruz' && parts.isNotEmpty) {
+      parts.add('Santa Cruz, Laguna');
+    }
+    return parts.join(', ');
+  }
+
+  void _parseAndSetCustomerAddress(String address) {
+    String? matchedBarangay;
+    for (final b in santaCruzBarangays) {
+      if (b == 'Other / Outside Sta. Cruz') continue;
+      final regex = RegExp('\\b${RegExp.escape(b)}\\b', caseSensitive: false);
+      if (regex.hasMatch(address)) {
+        matchedBarangay = b;
+        break;
+      }
+    }
+
+    if (matchedBarangay != null) {
+      _selectedBarangay = matchedBarangay;
+      final lower = address.toLowerCase();
+      final idx = lower.indexOf(matchedBarangay.toLowerCase());
+      if (idx > 0) {
+        var prefix = address.substring(0, idx).trim();
+        prefix = prefix.replaceAll(RegExp(r',?\s*(brgy\.?|barangay)\s*$', caseSensitive: false), '').trim();
+        if (prefix.endsWith(',')) prefix = prefix.substring(0, prefix.length - 1).trim();
+        _houseStreetController.text = prefix.isNotEmpty ? prefix : address;
+      } else {
+        _houseStreetController.text = address;
+      }
+    } else {
+      _houseStreetController.text = address;
+    }
+  }
+
+  Future<void> _openPinLocationPicker() async {
+    final result = await LocationPickerDialog.show(
+      context,
+      initialPosition: _deliveryPinLocation,
+      enforceDeliveryRadius: true,
+      title: 'Pin 20m Meetup Zone',
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _deliveryPinLocation = result.coordinates;
+        _deliveryPinAddress = result.address;
+
+        if (_houseStreetController.text.trim().isEmpty && result.address != null) {
+          _parseAndSetCustomerAddress(result.address!);
+          if (!_houseStreetController.text.startsWith('Blk')) {
+            _houseStreetController.text = 'Blk _ Lot _, ${_houseStreetController.text}';
+            _houseStreetController.selection = const TextSelection(baseOffset: 4, extentOffset: 5);
+          }
+        }
+      });
+    }
+  }
 
   // State variables
   CollectionMethod _selectedCollection = CollectionMethod.dropOff; // Pickup or drop-off
@@ -249,14 +368,20 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   bool get _isStep2Complete {
     // For rider pickup orders, step 2 is complete if address is provided
     if (_selectedCollection == CollectionMethod.riderPickup) {
-      return _addressController.text.trim().isNotEmpty;
+      final brgyValid = _selectedBarangay != null &&
+          (_selectedBarangay != 'Other / Outside Sta. Cruz' ||
+              _customBarangayController.text.trim().isNotEmpty);
+      return _houseStreetController.text.trim().isNotEmpty && brgyValid;
     }
     
     // For drop-off orders, require loads with weights
+    final brgyValid = _selectedBarangay != null &&
+        (_selectedBarangay != 'Other / Outside Sta. Cruz' ||
+            _customBarangayController.text.trim().isNotEmpty);
     return _loads.isNotEmpty &&
         _loads.every((load) => _getLoadWeight(_loads.indexOf(load)) > 0) &&
         (_selectedReturn != ReturnMethod.delivery || 
-         _addressController.text.trim().isNotEmpty);
+         (_houseStreetController.text.trim().isNotEmpty && brgyValid));
   }
 
   void _addLoad() {
@@ -564,14 +689,18 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
       if (customer.returnMethod == ReturnMethod.delivery) {
         _selectedReturn = ReturnMethod.delivery;
-        if (customer.address != null) {
-          _addressController.text = customer.address!;
-        }
-        if (customer.landmark != null) {
-          _landmarkController.text = customer.landmark!;
-        }
       } else {
         _selectedReturn = ReturnMethod.shopPickup;
+      }
+
+      if (customer.address != null && customer.address!.isNotEmpty) {
+        _parseAndSetCustomerAddress(customer.address!);
+      }
+      if (customer.landmark != null) {
+        _landmarkController.text = customer.landmark!;
+      }
+      if (customer.pinLatitude != null && customer.pinLongitude != null) {
+        _deliveryPinLocation = LatLng(customer.pinLatitude!, customer.pinLongitude!);
       }
 
       if (customer.instructions != null && customer.instructions!.isNotEmpty) {
@@ -609,7 +738,8 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     _firstNameController.dispose();
     _lastNameController.dispose();
     _phoneController.dispose();
-    _addressController.dispose();
+    _houseStreetController.dispose();
+    _customBarangayController.dispose();
     _landmarkController.dispose();
     _instructionsController.dispose();
     _notesController.dispose();
@@ -661,12 +791,18 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     }
 
     // Validation 3: Address required for pickup or delivery orders
-    if ((_selectedCollection == CollectionMethod.riderPickup || _selectedReturn == ReturnMethod.delivery) && 
-        _addressController.text.trim().isEmpty) {
+    final hasPickupOrDelivery = _selectedCollection == CollectionMethod.riderPickup ||
+        _selectedReturn == ReturnMethod.delivery;
+    final brgyValid = _selectedBarangay != null &&
+        (_selectedBarangay != 'Other / Outside Sta. Cruz' ||
+            _customBarangayController.text.trim().isNotEmpty);
+
+    if (hasPickupOrDelivery &&
+        (_houseStreetController.text.trim().isEmpty || !brgyValid)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter an address for pickup/delivery orders.'),
-          backgroundColor: Colors.orange,
+          content: Text('Please enter house/street and select a barangay for pickup/delivery.'),
+          backgroundColor: AppTheme.errorRed,
         ),
       );
       return;
@@ -744,7 +880,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         
         // Optionally update customer info if changed (phone, address, etc.)
         final needsUpdate = _phoneController.text.trim().isNotEmpty ||
-                          (_selectedReturn == ReturnMethod.delivery && _addressController.text.trim().isNotEmpty);
+                          (_selectedReturn == ReturnMethod.delivery && _fullDeliveryAddress.isNotEmpty);
         
         if (needsUpdate) {
           print('🔄 Updating customer info...');
@@ -757,8 +893,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           await _customerService.updateCustomer(
             customerId: customerId,
             phone: normalizedPhone,
-            address: _selectedReturn == ReturnMethod.delivery ? _addressController.text.trim() : null,
+            address: _selectedReturn == ReturnMethod.delivery ? _fullDeliveryAddress : null,
             landmark: _selectedReturn == ReturnMethod.delivery ? _landmarkController.text.trim() : null,
+            pinLatitude: _deliveryPinLocation?.latitude,
+            pinLongitude: _deliveryPinLocation?.longitude,
           );
           print('✅ Customer info updated');
         }
@@ -782,8 +920,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           lastName: lastName,
           phone: normalizedPhone,
           email: null, // Email not collected in walk-in flow
-          address: _selectedReturn == ReturnMethod.delivery ? _addressController.text.trim() : null,
+          address: _selectedReturn == ReturnMethod.delivery ? _fullDeliveryAddress : null,
           landmark: _selectedReturn == ReturnMethod.delivery ? _landmarkController.text.trim() : null,
+          pinLatitude: _deliveryPinLocation?.latitude,
+          pinLongitude: _deliveryPinLocation?.longitude,
         );
 
         print('✅ New customer created: $customerId');
@@ -865,16 +1005,16 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         // Different notes for rider pickup vs drop-off
         if (_selectedCollection == CollectionMethod.riderPickup) ...[
           'Awaiting rider pickup and intake',
-          if (_addressController.text.trim().isNotEmpty)
-            'Pickup Address: ${_addressController.text.trim()}${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
+          if (_fullDeliveryAddress.isNotEmpty)
+            'Pickup Address: $_fullDeliveryAddress${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
         ] else ...[
           // Drop-off: Include load details
           if (_loads.length > 1) '${_loads.length} loads: ${orderLoads.map((l) => '${l.weight}${l.unit} ${l.category}').join(', ')}',
           if (_loads.length == 1) 'Load: ${orderLoads[0].weight}${orderLoads[0].unit} ${orderLoads[0].category}',
         ],
         if (_loyaltyCardUid != null) 'Loyalty Card: $_loyaltyCardUid',
-        if (_selectedReturn == ReturnMethod.delivery && _selectedCollection != CollectionMethod.riderPickup && _addressController.text.trim().isNotEmpty)
-          'Delivery Address: ${_addressController.text.trim()}${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
+        if (_selectedReturn == ReturnMethod.delivery && _selectedCollection != CollectionMethod.riderPickup && _fullDeliveryAddress.isNotEmpty)
+          'Delivery Address: $_fullDeliveryAddress${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
         if (_selectedReturn == ReturnMethod.delivery && _selectedCollection == CollectionMethod.riderPickup)
           'Delivery to same address as pickup',
         if (_addExtraFabCon) 'Extra Fab Con (+₱20)',
@@ -926,7 +1066,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         pickupRequested: _selectedCollection == CollectionMethod.riderPickup,
         deliveryRequested: _selectedReturn == ReturnMethod.delivery,
         deliveryAddress: (_selectedCollection == CollectionMethod.riderPickup || _selectedReturn == ReturnMethod.delivery) 
-            ? _addressController.text.trim() 
+            ? _fullDeliveryAddress 
             : null,
         deliveryLandmark: (_selectedCollection == CollectionMethod.riderPickup || _selectedReturn == ReturnMethod.delivery) 
             ? _landmarkController.text.trim() 
@@ -1819,12 +1959,22 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.location_on_outlined, size: 11, color: AppTheme.textLight),
+                Icon(
+                  customer.pinLatitude != null ? Icons.location_on : Icons.location_on_outlined,
+                  size: 11,
+                  color: customer.pinLatitude != null ? Colors.green.shade700 : AppTheme.textLight,
+                ),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
-                    customer.address!,
-                    style: const TextStyle(fontSize: 10, color: AppTheme.textLight),
+                    customer.pinLatitude != null
+                        ? '${customer.address!} (20m Pinned)'
+                        : customer.address!,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: customer.pinLatitude != null ? Colors.green.shade800 : AppTheme.textLight,
+                      fontWeight: customer.pinLatitude != null ? FontWeight.w600 : FontWeight.normal,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -2020,22 +2170,8 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                       ),
                     ],
                   ),
-                  if (_selectedCollection == CollectionMethod.riderPickup) ...[
-                    const SizedBox(height: 12),
-                    CustomTextField(
-                      label: 'Pickup Address',
-                      hint: 'House/Unit No., Street, Barangay, City',
-                      prefixIcon: Icons.location_on_outlined,
-                      controller: _addressController,
-                    ),
-                    const SizedBox(height: 10),
-                    CustomTextField(
-                      label: 'Landmark (Optional)',
-                      hint: 'Near blue gate, across grocery store...',
-                      prefixIcon: Icons.flag_outlined,
-                      controller: _landmarkController,
-                    ),
-                  ],
+                  if (_selectedCollection == CollectionMethod.riderPickup)
+                    _buildAddressFormSection(title: 'Pickup Location & Address'),
 
                   const Divider(height: 24),
 
@@ -2154,23 +2290,11 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                     ],
                   ),
                   if (_selectedReturn == ReturnMethod.delivery) ...[
-                    const SizedBox(height: 12),
                     // Show address fields only if not already shown for pickup
-                    if (_selectedCollection != CollectionMethod.riderPickup) ...[
-                      CustomTextField(
-                        label: 'Delivery Address',
-                        hint: 'House/Unit No., Street, Barangay, City',
-                        prefixIcon: Icons.location_on_outlined,
-                        controller: _addressController,
-                      ),
-                      const SizedBox(height: 10),
-                      CustomTextField(
-                        label: 'Landmark (Optional)',
-                        hint: 'Near blue gate, across grocery store...',
-                        prefixIcon: Icons.flag_outlined,
-                        controller: _landmarkController,
-                      ),
-                    ] else ...[
+                    if (_selectedCollection != CollectionMethod.riderPickup)
+                      _buildAddressFormSection(title: 'Delivery Location & Address')
+                    else ...[
+                      const SizedBox(height: 12),
                       // If pickup is selected, show a note that the same address will be used
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -2540,6 +2664,174 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     );
   }
 
+
+  Widget _buildAddressFormSection({required String title}) {
+    final hasPin = _deliveryPinLocation != null;
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.softGray.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.borderGray),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.location_on, size: 18, color: AppTheme.accentBlue),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // 20m Meetup Zone Pin Card
+          InkWell(
+            onTap: _openPinLocationPicker,
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: hasPin ? Colors.green.shade50 : Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: hasPin ? Colors.green.shade300 : AppTheme.accentBlue.withValues(alpha: 0.4),
+                  width: hasPin ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    hasPin ? Icons.check_circle : Icons.add_location_alt_outlined,
+                    color: hasPin ? Colors.green.shade700 : AppTheme.accentBlue,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          hasPin ? '20m Meetup Zone Pinned' : 'Pin 20m Meetup Zone on Map',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: hasPin ? Colors.green.shade900 : AppTheme.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          hasPin
+                              ? '${LocationHelper.getFormattedDistance(_deliveryPinLocation!)} from shop • (${_deliveryPinLocation!.latitude.toStringAsFixed(5)}, ${_deliveryPinLocation!.longitude.toStringAsFixed(5)})'
+                              : 'Optional: Tap to set exact gate or meetup location for rider',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: hasPin ? Colors.green.shade800 : AppTheme.textLight,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (hasPin)
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 16, color: AppTheme.textLight),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      tooltip: 'Clear Pin',
+                      onPressed: () => setState(() => _deliveryPinLocation = null),
+                    )
+                  else
+                    const Icon(Icons.chevron_right, size: 18, color: AppTheme.textLight),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Field 1: House / Unit / Blk & Lot, Street, Subdivision
+          CustomTextField(
+            label: 'House / Blk & Lot, Street, Subdivision',
+            hint: 'e.g. Blk 5 Lot 12, Phase 2, Villa San Jose',
+            prefixIcon: Icons.home_outlined,
+            controller: _houseStreetController,
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 10),
+
+          // Field 2: Barangay (Santa Cruz, Laguna)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.borderGray),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  icon: Icon(Icons.location_city_outlined, size: 20, color: AppTheme.textLight),
+                  labelText: 'Barangay (Santa Cruz, Laguna)',
+                  labelStyle: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(vertical: 4),
+                ),
+                value: _selectedBarangay,
+                hint: const Text('Select Barangay', style: TextStyle(fontSize: 13, color: AppTheme.textLight)),
+                isExpanded: true,
+                items: santaCruzBarangays.map((String b) {
+                  return DropdownMenuItem<String>(
+                    value: b,
+                    child: Text(
+                      b == 'Other / Outside Sta. Cruz' ? b : 'Brgy. $b',
+                      style: const TextStyle(fontSize: 13, color: AppTheme.textDark),
+                    ),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  setState(() {
+                    _selectedBarangay = val;
+                  });
+                },
+              ),
+            ),
+          ),
+
+          // Optional extra field if outside Santa Cruz
+          if (_selectedBarangay == 'Other / Outside Sta. Cruz') ...[
+            const SizedBox(height: 10),
+            CustomTextField(
+              label: 'Barangay & Municipality',
+              hint: 'e.g. Sampaloc, Pagsanjan',
+              prefixIcon: Icons.edit_location_outlined,
+              controller: _customBarangayController,
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+
+          const SizedBox(height: 10),
+
+          // Field 3: Landmark / Meetup Note
+          CustomTextField(
+            label: 'Landmark / Meetup Note (Crucial for Rider)',
+            hint: 'e.g. Beside yellow gate, across sari-sari store',
+            prefixIcon: Icons.flag_outlined,
+            controller: _landmarkController,
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildReturnOption({
     required IconData icon,
