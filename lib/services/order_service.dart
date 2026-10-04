@@ -868,7 +868,8 @@ class OrderService {
           .from('orders')
           .select('''
             *,
-            order_loads(*)
+            order_loads(*),
+            customers(first_name, last_name, customer_code, phone, address, landmark)
           ''')
           .eq('id', orderId)
           .maybeSingle();
@@ -883,13 +884,21 @@ class OrderService {
 
       final order = LaundryOrder.fromJson(response);
 
+      // Extract customer information from joined data
+      final customerData = response['customers'] as Map<String, dynamic>?;
+      final firstName = customerData?['first_name'] as String? ?? '';
+      final lastName = customerData?['last_name'] as String? ?? '';
+      final customerName = lastName.isNotEmpty ? '$firstName $lastName' : firstName.isNotEmpty ? firstName : 'Unknown';
+      final customerPhone = customerData?['phone'] as String?;
+
       // Return order with loads
       return LaundryOrder(
         id: order.id,
-        customerName: response['customer_name'] as String? ?? 'Unknown',
-        customerPhone: order.customerPhone,
-        deliveryAddress: order.deliveryAddress,
-        deliveryLandmark: order.deliveryLandmark,
+        orderNumber: response['order_number'] as String?, // Include order number from database
+        customerName: customerName.isNotEmpty && customerName != 'Unknown' ? customerName : order.customerName, // Prefer customer name from joined data
+        customerPhone: customerPhone?.isNotEmpty == true ? customerPhone : order.customerPhone, // Prefer customer phone from joined data
+        deliveryAddress: order.deliveryAddress ?? (customerData?['address'] as String?),
+        deliveryLandmark: order.deliveryLandmark ?? (customerData?['landmark'] as String?),
         channel: order.channel,
         collectionMethod: order.collectionMethod,
         returnMethod: order.returnMethod,
@@ -899,6 +908,7 @@ class OrderService {
         instructions: order.instructions,
         rfidTag: null, // Loyalty cards are permanent per-customer, not per-order
         createdAt: order.createdAt,
+        processingAt: order.processingAt, // Include processing timestamp
         paymentMethod: order.paymentMethod,
         paidAt: order.paidAt,
         laundryPhotoUrls: order.laundryPhotoUrls,

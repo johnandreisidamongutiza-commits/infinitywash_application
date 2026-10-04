@@ -35,8 +35,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
         limit: 100,
       );
 
-      final unpaid = allOrders.where((o) => o.paymentStatus == PaymentStatus.unpaid).toList();
-      final paid = allOrders.where((o) => o.paymentStatus == PaymentStatus.paid).toList();
+      // Filter orders: Only show orders that have been checked in (have loads)
+      // This excludes pending_approval and pending_pickup orders that haven't been weighed yet
+      final checkedInOrders = allOrders.where((o) => o.loads.isNotEmpty).toList();
+
+      final unpaid = checkedInOrders.where((o) => o.paymentStatus == PaymentStatus.unpaid).toList();
+      final paid = checkedInOrders.where((o) => o.paymentStatus == PaymentStatus.paid).toList();
 
       if (!mounted) return;
       setState(() {
