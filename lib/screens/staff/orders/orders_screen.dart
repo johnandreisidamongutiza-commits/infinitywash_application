@@ -877,6 +877,9 @@ class OrdersScreenState extends State<OrdersScreen>
   }
 
   Widget _buildOrderCard(LaundryOrder order) {
+    final isPendingPickup = order.status == OrderStatus.pending_pickup;
+    final isOutForDelivery = order.status == OrderStatus.out_for_delivery;
+    
     return GestureDetector(
       onTap: () async {
         final result = await Navigator.push(
@@ -904,6 +907,17 @@ class OrdersScreenState extends State<OrdersScreen>
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
+          border: isPendingPickup
+              ? Border.all(
+                  color: Colors.orange.withValues(alpha: 0.4),
+                  width: 2,
+                )
+              : isOutForDelivery
+                  ? Border.all(
+                      color: Colors.purple.withValues(alpha: 0.4),
+                      width: 2,
+                    )
+                  : null,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.05),
@@ -932,6 +946,60 @@ class OrdersScreenState extends State<OrdersScreen>
                 _buildStatusBadge(order.status),
               ],
             ),
+            // Add warning banner for pending pickup
+            if (isPendingPickup) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Tap to complete pickup manually',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            // Add warning banner for out for delivery
+            if (isOutForDelivery) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.purple.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, size: 16, color: Colors.purple),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Tap to complete delivery manually',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.purple,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Text(
               order.customerName,

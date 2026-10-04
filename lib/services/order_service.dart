@@ -861,6 +861,123 @@ class OrderService {
     }
   }
 
+  /// Staff manually completes pickup when rider forgets
+  /// This updates the dispatch job status and syncs order status to 'processing'
+  Future<void> staffCompletePickup({
+    required String orderId,
+    required String staffId,
+    String? notes,
+  }) async {
+    try {
+      print('🔧 Staff completing pickup for order: $orderId');
+      
+      // Find the active pickup dispatch job for this order
+      final dispatchJobResponse = await _client
+          .from('dispatch_jobs')
+          .select('id, status')
+          .eq('order_id', orderId)
+          .eq('job_type', 'pickup')
+          .neq('status', 'pickup_done') // Find incomplete pickup jobs
+          .maybeSingle();
+
+      if (dispatchJobResponse == null) {
+        throw Exception('No active pickup job found for this order');
+      }
+
+      final jobId = dispatchJobResponse['id'] as String;
+      final now = DateTime.now().toUtc().toIso8601String();
+
+      // Update dispatch job to pickup_done
+      await _client.from('dispatch_jobs').update({
+        'status': 'pickup_done',
+        'completed_at': now,
+        'updated_at': now,
+      }).eq('id', jobId);
+
+      print('✅ Updated dispatch job $jobId to pickup_done');
+
+      // Update order status to processing and add staff note
+      final updates = {
+        'status': 'processing',
+        'received_at': now,
+        'processing_at': now,
+        'updated_at': now,
+      };
+
+      // Append staff note about manual completion
+      if (notes != null && notes.trim().isNotEmpty) {
+        updates['staff_notes'] = notes.trim();
+      } else {
+        updates['staff_notes'] = 'Pickup manually completed by staff (rider did not mark complete)';
+      }
+
+      await _client.from('orders').update(updates).eq('id', orderId);
+
+      print('✅ Order status updated to processing by staff $staffId');
+    } catch (e) {
+      print('❌ Error staff completing pickup: $e');
+      rethrow;
+    }
+  }
+
+  /// Staff manually completes delivery when rider forgets
+  /// This updates the dispatch job status and syncs order status to 'completed'
+  Future<void> staffCompleteDelivery({
+    required String orderId,
+    required String staffId,
+    String? notes,
+  }) async {
+    try {
+      print('🔧 Staff completing delivery for order: $orderId');
+      
+      // Find the active delivery dispatch job for this order
+      final dispatchJobResponse = await _client
+          .from('dispatch_jobs')
+          .select('id, status')
+          .eq('order_id', orderId)
+          .eq('job_type', 'delivery')
+          .neq('status', 'delivery_done') // Find incomplete delivery jobs
+          .maybeSingle();
+
+      if (dispatchJobResponse == null) {
+        throw Exception('No active delivery job found for this order');
+      }
+
+      final jobId = dispatchJobResponse['id'] as String;
+      final now = DateTime.now().toUtc().toIso8601String();
+
+      // Update dispatch job to delivery_done
+      await _client.from('dispatch_jobs').update({
+        'status': 'delivery_done',
+        'completed_at': now,
+        'updated_at': now,
+      }).eq('id', jobId);
+
+      print('✅ Updated dispatch job $jobId to delivery_done');
+
+      // Update order status to completed and add staff note
+      final updates = {
+        'status': 'completed',
+        'completed_at': now,
+        'updated_at': now,
+      };
+
+      // Append staff note about manual completion
+      if (notes != null && notes.trim().isNotEmpty) {
+        updates['staff_notes'] = notes.trim();
+      } else {
+        updates['staff_notes'] = 'Delivery manually completed by staff (rider did not mark complete)';
+      }
+
+      await _client.from('orders').update(updates).eq('id', orderId);
+
+      print('✅ Order status updated to completed by staff $staffId');
+    } catch (e) {
+      print('❌ Error staff completing delivery: $e');
+      rethrow;
+    }
+  }
+
   /// Get order by ID with loads
   Future<LaundryOrder?> getOrderById(String orderId) async {
     try {

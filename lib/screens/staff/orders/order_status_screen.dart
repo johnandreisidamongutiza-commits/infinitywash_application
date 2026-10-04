@@ -84,6 +84,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
            _currentStatus == OrderStatus.ready;
   }
 
+  bool get _isPendingPickup {
+    return _currentStatus == OrderStatus.pending_pickup;
+  }
+
+  bool get _isOutForDelivery {
+    return _currentStatus == OrderStatus.out_for_delivery;
+  }
+
   Future<bool> _showConfirmationDialog() async {
     return await showDialog<bool>(
       context: context,
@@ -260,6 +268,233 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
+  Future<bool> _showForceCompletePickupDialog() async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+            SizedBox(width: 12),
+            Text('Complete Pickup Manually?'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'The rider hasn\'t marked this pickup as complete.',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: Colors.red),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Only proceed if you have the laundry at the shop',
+                      style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Order: ${_currentOrder.displayNumber}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Customer: ${_currentOrder.customerName}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Complete Pickup'),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  Future<void> _forceCompletePickup() async {
+    // Show confirmation dialog
+    final confirm = await _showForceCompletePickupDialog();
+    if (!confirm) return;
+
+    // Show loading state
+    setState(() => _isUpdating = true);
+
+    try {
+      // Call staff complete pickup service
+      await _orderService.staffCompletePickup(
+        orderId: _currentOrder.id,
+        staffId: 'current_staff_id', // TODO: Get actual staff ID from auth
+        notes: 'Pickup manually completed by staff (rider did not mark complete)',
+      );
+
+      // Refresh order data to get updated status
+      await _refreshOrderData();
+
+      // Show success message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✓ Pickup completed. You can now check in the laundry.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+      // Update UI state
+      setState(() => _isUpdating = false);
+    } catch (e) {
+      // Handle error
+      if (!mounted) return;
+      setState(() => _isUpdating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error completing pickup: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  Future<bool> _showForceCompleteDeliveryDialog() async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.purple, size: 28),
+            SizedBox(width: 12),
+            Text('Complete Delivery Manually?'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'The rider hasn\'t marked this delivery as complete.',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: Colors.red),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Only proceed if customer has received the laundry',
+                      style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Order: ${_currentOrder.displayNumber}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Customer: ${_currentOrder.customerName}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purple,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Complete Delivery'),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  Future<void> _forceCompleteDelivery() async {
+    // Show confirmation dialog
+    final confirm = await _showForceCompleteDeliveryDialog();
+    if (!confirm) return;
+
+    // Show loading state
+    setState(() => _isUpdating = true);
+
+    try {
+      // Call staff complete delivery service
+      await _orderService.staffCompleteDelivery(
+        orderId: _currentOrder.id,
+        staffId: 'current_staff_id', // TODO: Get actual staff ID from auth
+        notes: 'Delivery manually completed by staff (rider did not mark complete)',
+      );
+
+      // Show success message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✓ Delivery completed. Order is now complete.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+      // Navigate back with success flag to refresh list
+      Navigator.pop(context, true);
+    } catch (e) {
+      // Handle error
+      if (!mounted) return;
+      setState(() => _isUpdating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error completing delivery: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -274,6 +509,172 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
+            // Warning banner for pending pickup
+            if (_isPendingPickup) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.orange.withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Waiting for Rider Pickup',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'The rider hasn\'t marked the pickup as complete yet.',
+                      style: TextStyle(fontSize: 13, color: AppTheme.textDark),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isUpdating ? null : _forceCompletePickup,
+                        icon: _isUpdating
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.check_circle_outline, size: 20, color: Colors.white),
+                        label: Text(
+                          _isUpdating ? 'Completing...' : 'Force Complete Pickup',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          disabledBackgroundColor: Colors.grey,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '💡 Only use if laundry is already at the shop',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textLight,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+            // Warning banner for out for delivery
+            if (_isOutForDelivery) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.purple.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.purple.withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Colors.purple, size: 24),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Waiting for Delivery Completion',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.purple,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'The rider hasn\'t marked the delivery as complete yet.',
+                      style: TextStyle(fontSize: 13, color: AppTheme.textDark),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isUpdating ? null : _forceCompleteDelivery,
+                        icon: _isUpdating
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.check_circle_outline, size: 20, color: Colors.white),
+                        label: Text(
+                          _isUpdating ? 'Completing...' : 'Force Complete Delivery',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          disabledBackgroundColor: Colors.grey,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '💡 Only use if customer has confirmed receipt',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textLight,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
             _buildStatusTracker(),
             const SizedBox(height: 40),
             _buildOrderDetails(),
