@@ -36,6 +36,9 @@ class LocationConstants {
   
   /// Delivery service radius in kilometers
   static const double deliveryRadiusKm = 10.0;
+
+  /// Customer & rider meeting area radius in meters around the pinned location
+  static const double customerMeetingRadiusMeters = 20.0;
   
   // ========================================
   // TEST DATA (Phase 4)

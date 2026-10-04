@@ -267,10 +267,10 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
               Expanded(
                 child: Text(
                   _selectedLocation == null
-                      ? 'Search your address, tap the map, or use GPS to pin'
+                      ? 'Search your address, tap the map, or use GPS to pin (20m meetup zone)'
                       : _isOutOfRange
                           ? 'Outside delivery range (${_getDistanceText()} from shop)'
-                          : 'Within delivery range (${_getDistanceText()} from shop)',
+                          : 'Within delivery range (${_getDistanceText()} from shop) • 20m meetup zone',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -331,6 +331,21 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                       ],
                     ),
 
+                  // 20-meter customer meetup zone around pinned location
+                  if (_selectedLocation != null)
+                    CircleLayer(
+                      circles: [
+                        CircleMarker(
+                          point: _selectedLocation!,
+                          radius: LocationConstants.customerMeetingRadiusMeters,
+                          useRadiusInMeter: true,
+                          color: (_isOutOfRange ? AppTheme.errorRed : Colors.green).withValues(alpha: 0.20),
+                          borderColor: _isOutOfRange ? AppTheme.errorRed : Colors.green.shade700,
+                          borderStrokeWidth: 2,
+                        ),
+                      ],
+                    ),
+
                   // Markers layer
                   MarkerLayer(
                     markers: [
@@ -355,22 +370,49 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                           ),
                         ),
 
-                      // Selected location pin
+                      // Selected location pin with 20m meetup zone badge
                       if (_selectedLocation != null)
                         Marker(
                           point: _selectedLocation!,
-                          width: 50,
-                          height: 50,
+                          width: 120,
+                          height: 65,
                           alignment: Alignment.topCenter,
-                          child: Icon(
-                            Icons.location_on,
-                            color: _isOutOfRange ? AppTheme.errorRed : Colors.green.shade600,
-                            size: 50,
-                            shadows: const [
-                              Shadow(
-                                color: Colors.black38,
-                                blurRadius: 8,
-                                offset: Offset(0, 2),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: _isOutOfRange ? AppTheme.errorRed : Colors.green.shade700,
+                                  borderRadius: BorderRadius.circular(10),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 3,
+                                      offset: Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                child: const Text(
+                                  '20m Meetup Zone',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                Icons.location_on,
+                                color: _isOutOfRange ? AppTheme.errorRed : Colors.green.shade600,
+                                size: 40,
+                                shadows: const [
+                                  Shadow(
+                                    color: Colors.black38,
+                                    blurRadius: 6,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -626,7 +668,7 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                       const SizedBox(height: 2),
                       Text(
                         _selectedLocation != null
-                            ? '${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)} • ${_getDistanceText()}'
+                            ? '20m Meetup Zone • ${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)} • ${_getDistanceText()}'
                             : 'Tap on the map or search to drop a pin',
                         style: const TextStyle(
                           fontSize: 11,
@@ -852,7 +894,7 @@ class _LocationPickerScreenState extends State<_LocationPickerScreen> {
                         ),
                         if (_selectedLocation != null)
                           Text(
-                            '${LocationHelper.getFormattedDistance(_selectedLocation!)} from shop • (${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)})',
+                            '20m Meetup Zone • ${LocationHelper.getFormattedDistance(_selectedLocation!)} from shop • (${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)})',
                             style: const TextStyle(
                               fontSize: 11,
                               color: AppTheme.textLight,

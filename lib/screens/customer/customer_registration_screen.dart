@@ -136,9 +136,13 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         _selectedLocation = result.coordinates;
         _selectedAddress = result.address;
         if (_addressController.text.trim().isEmpty && result.address != null && result.address!.isNotEmpty) {
-          _addressController.text = result.address!;
+          _addressController.text = 'Blk _ Lot _, ${result.address!}';
+          _addressController.selection = const TextSelection(baseOffset: 4, extentOffset: 5);
         }
       });
+      if (result.address != null && result.address!.isNotEmpty) {
+        _showMessage('Location pinned! Please specify your House / Block & Lot number above.', isError: false);
+      }
     }
   }
 
@@ -170,16 +174,16 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Pin Location (Optional)',
+                    'Pin Location (20m Meetup Zone)',
                     style: AppTheme.lightTheme.textTheme.bodyLarge,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     hasPin
                         ? '${_selectedAddress != null && _selectedAddress!.isNotEmpty ? "$_selectedAddress\n" : ""}'
-                            '${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)} '
+                            '20m Meetup Zone • ${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)} '
                             '(${LocationHelper.getFormattedDistance(_selectedLocation!)})'
-                        : 'Tap to drop a pin on the map',
+                        : 'Tap to drop a pin on the map (defines pickup/delivery meeting area)',
                     style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                       color: hasPin ? AppTheme.textDark : AppTheme.textLight,
                     ),
@@ -311,7 +315,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                 const SizedBox(height: 20),
                 CustomTextField(
                   label: 'Address',
-                  hint: 'Enter your primary address',
+                  hint: 'e.g. Blk 5 Lot 12, Sunflower St., Bubukal',
                   prefixIcon: Icons.location_on_outlined,
                   controller: _addressController,
                 ),

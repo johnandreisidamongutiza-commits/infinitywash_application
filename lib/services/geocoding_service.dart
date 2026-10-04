@@ -98,8 +98,8 @@ class GeocodingService {
     }
   }
 
-  /// Reverse geocode coordinates to a clean, human-readable address.
-  /// Example return: "Bubukal, Santa Cruz, Laguna"
+  /// Reverse geocode coordinates to a clean, granular, human-readable address.
+  /// Extracts house number, building, road, subdivision, barangay, and municipality.
   Future<String?> reverseGeocode(double lat, double lon) async {
     final cacheKey = '${lat.toStringAsFixed(4)},${lon.toStringAsFixed(4)}';
     if (_reverseCache.containsKey(cacheKey)) {
@@ -128,13 +128,27 @@ class GeocodingService {
 
         String result;
         if (address != null) {
-          // Construct clean, compact address
-          final road = address['road'] ?? address['pedestrian'] ?? address['building'] ?? address['amenity'];
+          // Extract specific location tags with maximum granularity
+          final houseNumber = address['house_number'];
+          final building = address['building'] ?? address['amenity'] ?? address['office'];
+          final road = address['road'] ?? address['pedestrian'] ?? address['street'];
+          final subdivision = address['residential'] ?? address['subdivision'];
           final barangay = address['quarter'] ?? address['suburb'] ?? address['neighbourhood'] ?? address['village'];
           final town = address['town'] ?? address['city'] ?? address['municipality'];
 
-          final parts = [road, barangay, town]
-              .where((p) => p != null && p.toString().trim().isNotEmpty)
+          final streetPart = [
+            if (houseNumber != null) '#$houseNumber',
+            if (building != null && building != road) building,
+            ?road,
+          ].join(' ').trim();
+
+          final parts = [
+            if (streetPart.isNotEmpty) streetPart,
+            if (subdivision != null && subdivision != road && subdivision != barangay) subdivision,
+            if (barangay != null) 'Brgy. $barangay',
+            ?town,
+          ]
+              .where((p) => p.toString().trim().isNotEmpty)
               .map((p) => p.toString().trim())
               .toList();
 

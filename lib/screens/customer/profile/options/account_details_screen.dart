@@ -119,7 +119,8 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
         _pinLocation = result.coordinates;
         _pinChanged = true;
         if (_addressController.text.trim().isEmpty && result.address != null && result.address!.isNotEmpty) {
-          _addressController.text = result.address!;
+          _addressController.text = 'Blk _ Lot _, ${result.address!}';
+          _addressController.selection = const TextSelection(baseOffset: 4, extentOffset: 5);
         }
       });
     }
@@ -153,13 +154,13 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Pin Location',
+                    'Pin Location (20m Meetup Zone)',
                     style: AppTheme.lightTheme.textTheme.bodyLarge,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     hasPin
-                        ? '${_pinLocation!.latitude.toStringAsFixed(6)}, '
+                        ? '20m Meetup Zone • ${_pinLocation!.latitude.toStringAsFixed(6)}, '
                             '${_pinLocation!.longitude.toStringAsFixed(6)}'
                         : 'Not set - tap to drop a pin on the map',
                     style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(

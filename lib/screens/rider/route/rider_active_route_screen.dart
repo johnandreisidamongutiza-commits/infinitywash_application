@@ -265,7 +265,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                 userAgentPackageName: 'com.infinitywash.app',
                 tileProvider: CachedTileProvider(), // Use cached tiles
               ),
-              // Shop delivery radius circle
+              // Shop delivery radius circle & customer meetup radius circles
               CircleLayer(
                 circles: [
                   CircleMarker(
@@ -276,6 +276,18 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                     borderColor: AppTheme.accentBlue.withValues(alpha: 0.3),
                     borderStrokeWidth: 2,
                   ),
+                  ..._remainingJobs
+                      .where((j) => j.latitude != null && j.longitude != null)
+                      .map(
+                        (j) => CircleMarker(
+                          point: LatLng(j.latitude!, j.longitude!),
+                          radius: LocationConstants.customerMeetingRadiusMeters,
+                          useRadiusInMeter: true,
+                          color: Colors.green.withValues(alpha: 0.22),
+                          borderColor: Colors.green.shade700,
+                          borderStrokeWidth: 2,
+                        ),
+                      ),
                 ],
               ),
               // Route line

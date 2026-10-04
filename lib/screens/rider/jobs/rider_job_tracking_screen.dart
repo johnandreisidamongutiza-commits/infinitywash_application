@@ -395,7 +395,7 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
                 userAgentPackageName: 'com.infinitywash.app',
                 tileProvider: CachedTileProvider(), // Use cached tiles
               ),
-              // Shop delivery radius circle
+              // Shop delivery radius circle & customer meetup radius circle
               CircleLayer(
                 circles: [
                   CircleMarker(
@@ -406,6 +406,15 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
                     borderColor: AppTheme.accentBlue.withValues(alpha: 0.3),
                     borderStrokeWidth: 2,
                   ),
+                  if (jobLocation != null)
+                    CircleMarker(
+                      point: jobLocation,
+                      radius: LocationConstants.customerMeetingRadiusMeters,
+                      useRadiusInMeter: true,
+                      color: Colors.green.withValues(alpha: 0.22),
+                      borderColor: Colors.green.shade700,
+                      borderStrokeWidth: 2,
+                    ),
                 ],
               ),
               // Route line following roads
