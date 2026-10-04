@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import 'home/rider_home_screen.dart';
-import 'jobs/rider_jobs_map_screen.dart';
 import 'route/rider_route_screen_new.dart';
 import 'chats/rider_chats_screen.dart';
 import 'profile/rider_profile_screen.dart';
@@ -36,7 +35,6 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
           RiderRouteScreenNew(
             onBackToHome: () => setState(() => _currentIndex = 0),
           ),
-          const RiderJobsMapScreen(),
           const RiderChatsScreen(),
           const RiderProfileScreen(),
         ],
@@ -74,11 +72,6 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
               icon: Icon(Icons.route_outlined),
               activeIcon: Icon(Icons.route),
               label: 'Route',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.map_outlined),
-              activeIcon: Icon(Icons.map),
-              label: 'Jobs',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.chat_bubble_outline),
