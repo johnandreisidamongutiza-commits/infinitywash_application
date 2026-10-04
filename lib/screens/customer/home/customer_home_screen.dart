@@ -9,6 +9,7 @@ import '../orders/request_service_flow.dart';
 import '../delivery/delivery_tracking_screen.dart';
 import '../orders/customer_orders_screen.dart';
 import '../notifications/customer_notifications_screen.dart';
+import '../../../widgets/legal_consent_banner.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -80,6 +81,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Soft, non-blocking re-consent prompt when a newer
+              // version of the Terms / Privacy Policy is published.
+              const LegalConsentBanner(),
               _buildHeader(),
               const SizedBox(height: 30),
               _buildStatusCard(),

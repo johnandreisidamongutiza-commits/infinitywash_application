@@ -4,6 +4,8 @@ import '../../theme/app_theme.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/location_picker_widget.dart';
 import '../../services/auth_service.dart';
+import '../../services/legal_service.dart';
+import '../../widgets/legal_consent_checkbox.dart';
 
 class CustomerRegistrationScreen extends StatefulWidget {
   const CustomerRegistrationScreen({super.key});
@@ -23,7 +25,12 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _authService = AuthService();
+  final _legalService = LegalService();
   bool _isLoading = false;
+
+  /// Terms of Service / Privacy Policy consent. Server-enforced: the
+  /// registration trigger refuses the sign-up without it.
+  bool _agreedToLegal = false;
   LatLng? _selectedLocation;
 
   @override
@@ -68,8 +75,22 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
       return;
     }
 
+    if (!_agreedToLegal) {
+      _showMessage(
+        'Please read and accept the Terms of Service and Privacy Policy.',
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
+      // Consent evidence: document keys, versions and the sha256 of the
+      // exact text bundled in this build. handle_new_auth_user() writes
+      // the legal_acceptances rows and rejects the sign-up if anything
+      // required is missing.
+      final legalAcceptances = await _legalService.registrationAcceptances();
+      final appVersion = await _legalService.appVersion();
+
       final response = await _authService.registerCustomer(
         email: _emailController.text.trim(),
         password: _passwordController.text,
@@ -80,6 +101,8 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         landmark: _landmarkController.text.trim(),
         latitude: _selectedLocation?.latitude,
         longitude: _selectedLocation?.longitude,
+        legalAcceptances: legalAcceptances,
+        appVersion: appVersion,
       );
 
       if (!mounted) return;
@@ -307,7 +330,22 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                   isPassword: true,
                   controller: _confirmPasswordController,
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: LegalConsentCheckbox(
+                    value: _agreedToLegal,
+                    onChanged: (v) => setState(() => _agreedToLegal = v),
+                  ),
+                ),
+                const SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: _isLoading ? null : _register,
                   child: _isLoading
