@@ -3,6 +3,7 @@ import 'package:latlong2/latlong.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/location_picker_widget.dart';
+import '../../config/location_constants.dart';
 import '../../services/auth_service.dart';
 import '../../services/legal_service.dart';
 import '../../widgets/legal_consent_checkbox.dart';
@@ -171,7 +172,8 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                   Text(
                     hasPin
                         ? '${_selectedLocation!.latitude.toStringAsFixed(6)}, '
-                            '${_selectedLocation!.longitude.toStringAsFixed(6)}'
+                            '${_selectedLocation!.longitude.toStringAsFixed(6)} '
+                            '(${LocationHelper.getFormattedDistance(_selectedLocation!)})'
                         : 'Tap to drop a pin on the map',
                     style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                       color: hasPin ? AppTheme.textDark : AppTheme.textLight,

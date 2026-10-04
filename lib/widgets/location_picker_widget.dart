@@ -2,30 +2,35 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../config/location_constants.dart';
+import '../services/location_service.dart';
+import '../theme/app_theme.dart';
 
 /// Interactive location picker widget
-/// 
+///
 /// Allows users to drop a pin on the map to select a location.
-/// Used when creating dispatch jobs to capture exact coordinates.
-/// 
+/// Used during registration, customer profile, and dispatch jobs.
+///
 /// Features:
-/// - Tap to place pin
-/// - Drag pin to adjust position
-/// - Shows distance from shop
+/// - Tap anywhere to place or move pin
+/// - "My Location" GPS button to automatically zoom to current device position
+/// - Shows distance from shop and delivery radius status
 /// - Returns LatLng coordinates
 /// - Validates delivery range
 class LocationPickerWidget extends StatefulWidget {
-  /// Initial position for the pin (defaults to shop location)
+  /// Initial position for the pin (defaults to shop location or null)
   final LatLng? initialPosition;
-  
+
   /// Whether to enforce delivery radius
   final bool enforceDeliveryRadius;
-  
-  /// Callback when location is selected/changed
-  final Function(LatLng)? onLocationChanged;
-  
+
+  /// Callback when location is selected/changed (passes null if cleared)
+  final void Function(LatLng?)? onLocationChanged;
+
   /// Whether to show the shop marker
   final bool showShopMarker;
+
+  /// Whether to show the bottom location info footer
+  final bool showFooter;
 
   const LocationPickerWidget({
     super.key,
@@ -33,6 +38,7 @@ class LocationPickerWidget extends StatefulWidget {
     this.enforceDeliveryRadius = true,
     this.onLocationChanged,
     this.showShopMarker = true,
+    this.showFooter = true,
   });
 
   @override
@@ -40,9 +46,10 @@ class LocationPickerWidget extends StatefulWidget {
 }
 
 class _LocationPickerWidgetState extends State<LocationPickerWidget> {
-  late MapController _mapController;
+  late final MapController _mapController;
   LatLng? _selectedLocation;
   bool _isOutOfRange = false;
+  bool _isLocating = false;
 
   @override
   void initState() {
@@ -68,6 +75,51 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
     widget.onLocationChanged?.call(latLng);
   }
 
+  Future<void> _locateUser() async {
+    if (_isLocating) return;
+    setState(() => _isLocating = true);
+
+    try {
+      final locationData = await LocationService().getCurrentLocation();
+      if (!mounted) return;
+
+      if (locationData != null &&
+          locationData.latitude != null &&
+          locationData.longitude != null) {
+        final userLatLng = LatLng(locationData.latitude!, locationData.longitude!);
+        _mapController.move(userLatLng, 16.0);
+        _onMapTap(userLatLng);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not access current location. Please check device permissions.'),
+            backgroundColor: AppTheme.errorRed,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error getting location: $e'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
+  }
+
+  void _clearLocation() {
+    setState(() {
+      _selectedLocation = null;
+      _isOutOfRange = false;
+    });
+    widget.onLocationChanged?.call(null);
+  }
+
   String _getDistanceText() {
     if (_selectedLocation == null) return '';
     return LocationHelper.getFormattedDistance(_selectedLocation!);
@@ -80,7 +132,7 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
         // Instructions banner
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: _isOutOfRange ? Colors.red.shade50 : Colors.blue.shade50,
             border: Border(
@@ -92,21 +144,21 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
           child: Row(
             children: [
               Icon(
-                _isOutOfRange ? Icons.warning_amber : Icons.info_outline,
+                _isOutOfRange ? Icons.warning_amber_rounded : Icons.info_outline,
                 size: 20,
-                color: _isOutOfRange ? Colors.red : Colors.blue,
+                color: _isOutOfRange ? AppTheme.errorRed : AppTheme.accentBlue,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       _selectedLocation == null
-                          ? 'Tap on the map to select a location'
+                          ? 'Tap anywhere on map or tap GPS button to pin'
                           : _isOutOfRange
                               ? 'Location is outside delivery range'
-                              : 'Location selected',
+                              : 'Pin placed successfully',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
@@ -154,10 +206,10 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                       circles: [
                         CircleMarker(
                           point: LocationConstants.infinityWashShop,
-                          radius: LocationConstants.deliveryRadiusKm * 1000, // Convert to meters
+                          radius: LocationConstants.deliveryRadiusKm * 1000,
                           useRadiusInMeter: true,
-                          color: Colors.blue.withValues(alpha: 0.1),
-                          borderColor: Colors.blue.withValues(alpha: 0.3),
+                          color: Colors.blue.withValues(alpha: 0.08),
+                          borderColor: Colors.blue.withValues(alpha: 0.35),
                           borderStrokeWidth: 2,
                         ),
                       ],
@@ -170,13 +222,13 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                       if (widget.showShopMarker)
                         Marker(
                           point: LocationConstants.infinityWashShop,
-                          width: 40,
-                          height: 40,
+                          width: 44,
+                          height: 44,
                           alignment: Alignment.topCenter,
                           child: const Icon(
                             Icons.storefront,
-                            color: Colors.blue,
-                            size: 32,
+                            color: AppTheme.primaryBlue,
+                            size: 34,
                             shadows: [
                               Shadow(
                                 color: Colors.black26,
@@ -196,7 +248,7 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                           alignment: Alignment.topCenter,
                           child: Icon(
                             Icons.location_on,
-                            color: _isOutOfRange ? Colors.red : Colors.green,
+                            color: _isOutOfRange ? AppTheme.errorRed : Colors.green.shade600,
                             size: 50,
                             shadows: const [
                               Shadow(
@@ -222,80 +274,168 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                 ],
               ),
 
-              // Center crosshair (visual aid)
+              // Center crosshair (visual aid - ignores pointers so taps reach the map)
               if (_selectedLocation == null)
                 Center(
-                  child: Icon(
-                    Icons.add,
-                    size: 32,
-                    color: Colors.grey.withValues(alpha: 0.5),
+                  child: IgnorePointer(
+                    child: Icon(
+                      Icons.add,
+                      size: 36,
+                      color: Colors.black.withValues(alpha: 0.4),
+                    ),
                   ),
                 ),
+
+              // Floating map action controls (Locate GPS & Shop)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Column(
+                  children: [
+                    // Locate Me GPS
+                    Material(
+                      elevation: 3,
+                      shape: const CircleBorder(),
+                      color: Colors.white,
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: _isLocating ? null : _locateUser,
+                        child: Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: _isLocating
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(strokeWidth: 2.2),
+                                )
+                              : const Icon(
+                                  Icons.my_location,
+                                  color: AppTheme.accentBlue,
+                                  size: 22,
+                                ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Recenter Shop
+                    Material(
+                      elevation: 3,
+                      shape: const CircleBorder(),
+                      color: Colors.white,
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () {
+                          _mapController.move(
+                            LocationConstants.infinityWashShop,
+                            LocationConstants.defaultZoom,
+                          );
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.all(10.0),
+                          child: Icon(
+                            Icons.storefront,
+                            color: AppTheme.primaryBlue,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
 
-        // Location info footer
-        if (_selectedLocation != null)
+        // Optional footer for standalone mode
+        if (widget.showFooter)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 4,
                   offset: const Offset(0, -2),
                 ),
               ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                const Text(
-                  'Selected Coordinates:',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${_selectedLocation!.latitude.toStringAsFixed(6)}, ${_selectedLocation!.longitude.toStringAsFixed(6)}',
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _selectedLocation != null ? 'Coordinates:' : 'No pin placed',
                         style: const TextStyle(
-                          fontSize: 13,
-                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textLight,
                         ),
                       ),
-                    ),
-                    TextButton.icon(
-                      onPressed: () {
-                        _mapController.move(
-                          LocationConstants.infinityWashShop,
-                          LocationConstants.defaultZoom,
-                        );
-                      },
-                      icon: const Icon(Icons.my_location, size: 16),
-                      label: const Text('Shop', style: TextStyle(fontSize: 12)),
-                    ),
-                    TextButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _selectedLocation = null;
-                          _isOutOfRange = false;
-                        });
-                        widget.onLocationChanged?.call(LocationConstants.infinityWashShop);
-                      },
-                      icon: const Icon(Icons.clear, size: 16),
-                      label: const Text('Clear', style: TextStyle(fontSize: 12)),
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      Text(
+                        _selectedLocation != null
+                            ? '${_selectedLocation!.latitude.toStringAsFixed(6)}, ${_selectedLocation!.longitude.toStringAsFixed(6)}'
+                            : 'Tap on the map to drop a pin',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: _selectedLocation != null ? 'monospace' : null,
+                          color: _selectedLocation != null ? AppTheme.textDark : AppTheme.textLight,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: _isLocating ? null : _locateUser,
+                  icon: const Icon(Icons.my_location, size: 16),
+                  label: const Text('Locate', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.accentBlue,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: const Size(0, 0),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                TextButton.icon(
+                  onPressed: () {
+                    _mapController.move(
+                      LocationConstants.infinityWashShop,
+                      LocationConstants.defaultZoom,
+                    );
+                  },
+                  icon: const Icon(Icons.storefront, size: 16),
+                  label: const Text('Shop', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.textDark,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: const Size(0, 0),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+                if (_selectedLocation != null) ...[
+                  const SizedBox(width: 4),
+                  TextButton.icon(
+                    onPressed: _clearLocation,
+                    icon: const Icon(Icons.clear, size: 16),
+                    label: const Text('Clear', style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.errorRed,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: const Size(0, 0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -304,93 +444,198 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
   }
 }
 
-/// Dialog wrapper for location picker
-/// 
-/// Use this to show the location picker as a dialog and get the result
+/// Modal wrapper for location picker
+///
+/// Uses a fullscreen [MaterialPageRoute] with [Scaffold] for a smooth,
+/// responsive map experience with zero layout or clipping assertion issues.
 class LocationPickerDialog {
   static Future<LatLng?> show(
     BuildContext context, {
     LatLng? initialPosition,
     bool enforceDeliveryRadius = true,
-    String title = 'Select Location',
-  }) async {
-    LatLng? selectedLocation = initialPosition;
+    String title = 'Pin Your Location',
+  }) {
+    return Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => _LocationPickerScreen(
+          initialPosition: initialPosition,
+          enforceDeliveryRadius: enforceDeliveryRadius,
+          title: title,
+        ),
+      ),
+    );
+  }
+}
 
-    final result = await showDialog<LatLng?>(
-      context: context,
-      builder: (context) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        child: SizedBox(
-          width: MediaQuery.of(context).size.width,
-          height: MediaQuery.of(context).size.height * 0.8,
+class _LocationPickerScreen extends StatefulWidget {
+  final LatLng? initialPosition;
+  final bool enforceDeliveryRadius;
+  final String title;
+
+  const _LocationPickerScreen({
+    this.initialPosition,
+    this.enforceDeliveryRadius = true,
+    this.title = 'Pin Your Location',
+  });
+
+  @override
+  State<_LocationPickerScreen> createState() => _LocationPickerScreenState();
+}
+
+class _LocationPickerScreenState extends State<_LocationPickerScreen> {
+  late LatLng? _selectedLocation;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedLocation = widget.initialPosition;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isOutOfRange = _selectedLocation != null &&
+        widget.enforceDeliveryRadius &&
+        !LocationHelper.isWithinDeliveryRange(_selectedLocation!);
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: AppTheme.primaryBlue,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          widget.title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        actions: [
+          if (_selectedLocation != null)
+            TextButton(
+              onPressed: () {
+                setState(() => _selectedLocation = null);
+              },
+              child: const Text(
+                'Clear',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+        ],
+      ),
+      body: LocationPickerWidget(
+        initialPosition: widget.initialPosition,
+        enforceDeliveryRadius: widget.enforceDeliveryRadius,
+        showFooter: false,
+        onLocationChanged: (latLng) {
+          setState(() {
+            _selectedLocation = latLng;
+          });
+        },
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 6,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(4),
-                    topRight: Radius.circular(4),
+              Row(
+                children: [
+                  Icon(
+                    _selectedLocation == null
+                        ? Icons.touch_app_outlined
+                        : isOutOfRange
+                            ? Icons.warning_amber_rounded
+                            : Icons.check_circle_outline,
+                    size: 20,
+                    color: _selectedLocation == null
+                        ? AppTheme.accentBlue
+                        : isOutOfRange
+                            ? AppTheme.errorRed
+                            : Colors.green.shade700,
                   ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.location_on, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _selectedLocation == null
+                              ? 'Tap map or GPS to set your location'
+                              : isOutOfRange
+                                  ? 'Outside delivery range'
+                                  : 'Within delivery range',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: _selectedLocation == null
+                                ? AppTheme.textDark
+                                : isOutOfRange
+                                    ? AppTheme.errorRed
+                                    : Colors.green.shade800,
+                          ),
                         ),
-                      ),
+                        if (_selectedLocation != null)
+                          Text(
+                            '${_selectedLocation!.latitude.toStringAsFixed(6)}, ${_selectedLocation!.longitude.toStringAsFixed(6)} • ${LocationHelper.getFormattedDistance(_selectedLocation!)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.textLight,
+                            ),
+                          ),
+                      ],
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Location picker
-              Expanded(
-                child: LocationPickerWidget(
-                  initialPosition: initialPosition,
-                  enforceDeliveryRadius: enforceDeliveryRadius,
-                  onLocationChanged: (latLng) {
-                    selectedLocation = latLng;
-                  },
-                ),
-              ),
-
-              // Footer buttons
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(color: Colors.grey.shade300),
                   ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.accentBlue,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    disabledForegroundColor: Colors.grey.shade600,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: selectedLocation != null
-                          ? () => Navigator.of(context).pop(selectedLocation)
-                          : null,
-                      child: const Text('Confirm Location'),
+                    elevation: 0,
+                  ),
+                  onPressed: _selectedLocation != null
+                      ? () => Navigator.of(context).pop(_selectedLocation)
+                      : null,
+                  child: const Text(
+                    'Confirm Location',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],
@@ -398,7 +643,5 @@ class LocationPickerDialog {
         ),
       ),
     );
-
-    return result;
   }
 }

@@ -68,7 +68,11 @@ class _TestLocationPickerScreenState extends State<TestLocationPickerScreen> {
               onLocationChanged: (latLng) {
                 setState(() {
                   _selectedLocation = latLng;
-                  _lastAction = 'Location selected: ${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)}';
+                  if (latLng != null) {
+                    _lastAction = 'Location selected: ${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)}';
+                  } else {
+                    _lastAction = 'Location cleared';
+                  }
                 });
               },
             ),
