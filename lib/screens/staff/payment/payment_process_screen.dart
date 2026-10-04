@@ -1,8 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
+import '../../../services/payment_service.dart';
 import '../../../services/supabase_service.dart';
+import '../../shared/gcash_qr_payment_screen.dart';
 
 class PaymentProcessScreen extends StatefulWidget {
   final LaundryOrder order;
@@ -14,6 +18,7 @@ class PaymentProcessScreen extends StatefulWidget {
 
 class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   final OrderService _orderService = OrderService();
+  final PaymentService _paymentService = PaymentService();
   String? _selectedMethod;
   bool _isSuccess = false;
   bool _isProcessing = false;
@@ -47,14 +52,18 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
             _buildMethodCard('GCash', Icons.account_balance_wallet_outlined),
             const Spacer(),
             ElevatedButton(
-              onPressed: (_selectedMethod == null || _isProcessing) ? null : _processPayment,
+              onPressed: (_selectedMethod == null || _isProcessing)
+                  ? null
+                  : (_selectedMethod == 'GCash' ? _startGcashPayment : _processPayment),
               child: _isProcessing
                   ? const SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                     )
-                  : const Text('Complete Payment'),
+                  : Text(_selectedMethod == 'GCash'
+                      ? 'Next: Show GCash QR'
+                      : 'Complete Payment'),
             ),
           ],
         ),
@@ -120,7 +129,25 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
     );
   }
 
-  Future<void> _processPayment() async {
+  /// GCash: show the admin-uploaded QR first, then capture/upload the
+  /// payment receipt before recording the payment.
+  Future<void> _startGcashPayment() async {
+    final receipt = await Navigator.push<File>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GcashQrPaymentScreen(
+          title: 'Pay with GCash',
+          orderLabel: widget.order.displayNumber,
+          amount: _totalAmount,
+          customerName: widget.order.customerName,
+        ),
+      ),
+    );
+    if (receipt == null || !mounted) return;
+    await _processPayment(gcashReceiptFile: receipt);
+  }
+
+  Future<void> _processPayment({File? gcashReceiptFile}) async {
     if (_selectedMethod == null) return;
 
     setState(() {
@@ -151,12 +178,25 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
         }
       }
 
-      final txNumber = await _orderService.recordPayment(
-        orderId: widget.order.id,
-        amount: _totalAmount,
-        paymentMethod: _selectedMethod!,
-        assignedStaffId: assignedStaffId,
-      );
+      final String txNumber;
+      if (_selectedMethod == 'GCash' && gcashReceiptFile != null) {
+        // GCash receipt flow: uploads the receipt and records the payment
+        // as 'pending' (for review on the admin website) while marking the
+        // order paid immediately.
+        txNumber = await _paymentService.submitGcashPayment(
+          orderId: widget.order.id,
+          amount: _totalAmount,
+          receiptFile: gcashReceiptFile,
+          assignedStaffId: assignedStaffId,
+        );
+      } else {
+        txNumber = await _orderService.recordPayment(
+          orderId: widget.order.id,
+          amount: _totalAmount,
+          paymentMethod: _selectedMethod!,
+          assignedStaffId: assignedStaffId,
+        );
+      }
 
       if (!mounted) return;
 
@@ -192,7 +232,13 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
               const SizedBox(height: 20),
               Text('Payment Successful', style: AppTheme.lightTheme.textTheme.headlineMedium),
               const SizedBox(height: 8),
-              Text('The digital receipt has been generated.', style: AppTheme.lightTheme.textTheme.bodyMedium),
+              Text(
+                _selectedMethod == 'GCash'
+                    ? 'GCash receipt uploaded. Payment is marked as paid and is pending admin verification.'
+                    : 'The digital receipt has been generated.',
+                style: AppTheme.lightTheme.textTheme.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 30),
               _buildReceiptCard(),
               const SizedBox(height: 30),

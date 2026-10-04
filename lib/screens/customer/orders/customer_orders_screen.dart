@@ -10,6 +10,8 @@ import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
 import '../../../services/customer_service.dart';
 import '../../../services/feedback_service.dart';
+import '../../../services/payment_service.dart';
+import '../../shared/gcash_qr_payment_screen.dart';
 import 'request_service_flow.dart';
 import 'customer_order_details_screen.dart';
 import '../chats/customer_chat_detail_screen.dart';
@@ -113,6 +115,92 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
   }
 
   /// Cancel an order
+  /// Opens the admin-uploaded GCash QR, lets the customer capture/upload
+  /// the payment receipt, then records the payment: the order is marked
+  /// paid immediately, while the payment is 'pending' (for review) on the
+  /// admin website until the OCR verification runs.
+  Future<void> _payWithGcash(LaundryOrder order, double amount) async {
+    final receipt = await Navigator.push<File>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GcashQrPaymentScreen(
+          title: 'Pay with GCash',
+          orderLabel: order.displayNumber,
+          amount: amount,
+          customerName: order.customerName,
+        ),
+      ),
+    );
+    if (receipt == null || !mounted) return;
+
+    // Saving state — non-dismissible while uploading
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Uploading receipt...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      await PaymentService().submitGcashPayment(
+        orderId: order.id,
+        amount: amount,
+        receiptFile: receipt,
+      );
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // close saving dialog
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 8),
+              Expanded(child: Text('Receipt Uploaded', style: TextStyle(fontSize: 18))),
+            ],
+          ),
+          content: const Text(
+            'Your GCash payment is marked as PAID. It is now pending verification by our admin team.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+
+      await _loadCustomerOrders();
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // close saving dialog
+      print('❌ GCash payment failed: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment could not be saved: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Retry',
+            textColor: Colors.white,
+            onPressed: () => _payWithGcash(order, amount),
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _cancelOrder(String orderId) async {
     try {
       await _serviceRequestService.cancelOrder(orderId);
@@ -949,6 +1037,21 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () => _payWithGcash(order, displayPrice),
+                      icon: const Icon(Icons.qr_code_2, size: 16),
+                      label: const Text(
+                        'Pay via GCash instead',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF007DFE),
+                        side: const BorderSide(color: Color(0xFF007DFE)),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
                   ],
 
                   // Rider info for delivery status
@@ -1325,14 +1428,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
             order.paymentPreference != 'Cash on Delivery') ...[
           const SizedBox(height: 14),
           ElevatedButton(
-            onPressed: () {
-              showTopNotification(
-                context,
-                message: 'Opening ${order.paymentPreference ?? "GCash"} payment...',
-                icon: Icons.payment,
-                backgroundColor: AppTheme.accentBlue,
-              );
-            },
+            onPressed: () => _payWithGcash(order, displayPrice),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.accentBlue,
               minimumSize: const Size(double.infinity, 50),
@@ -1382,6 +1478,21 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () => _payWithGcash(order, displayPrice),
+            icon: const Icon(Icons.qr_code_2, size: 16),
+            label: const Text(
+              'Pay via GCash instead',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF007DFE),
+              side: const BorderSide(color: Color(0xFF007DFE)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
         ],

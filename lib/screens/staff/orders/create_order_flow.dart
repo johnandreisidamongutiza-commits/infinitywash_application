@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_text_field.dart';
@@ -8,7 +9,9 @@ import '../../../services/customer_service.dart';
 import '../../../services/service_catalog_service.dart';
 import '../../../services/order_service.dart';
 import '../../../services/loyalty_service.dart';
+import '../../../services/payment_service.dart';
 import '../../../services/supabase_service.dart';
+import '../../shared/gcash_qr_payment_screen.dart';
 
 class _CustomerProfile {
   final String? customerId;
@@ -633,9 +636,18 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     });
   }
 
-  Future<void> _submitOrder({required bool isPaidImmediately, String? paymentMethod}) async {
+  Future<void> _submitOrder({
+    required bool isPaidImmediately,
+    String? paymentMethod,
+    File? gcashReceiptFile,
+  }) async {
     // Prevent duplicate submissions
     if (_isSubmitting) return;
+
+    // GCash Pay Now with a captured receipt: the order is created without an
+    // inline payment row, then PaymentService uploads the receipt and records
+    // the payment as 'pending' (for review on the admin website).
+    final gcashWithReceipt = paymentMethod == 'GCash' && gcashReceiptFile != null;
 
     // Validation 1: Customer name (required)
     if (_customerFullName.trim().isEmpty || _customerFullName == 'Walk-in Customer') {
@@ -923,13 +935,46 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         staffNotes: staffNotes.isNotEmpty ? staffNotes : null,
         rfidTag: null,
         addons: addons,
-        isPaid: isPaidImmediately,
-        paymentMethod: paymentMethod,
+        isPaid: isPaidImmediately && !gcashWithReceipt,
+        paymentMethod: gcashWithReceipt ? null : paymentMethod,
       );
 
       print('✅ Order created: $orderId');
 
-      print('✅ Order created: $orderId');
+      // GCash Pay Now: upload the receipt and record the payment as
+      // 'pending' (for review on the admin website). The order is marked
+      // paid immediately inside submitGcashPayment.
+      if (gcashWithReceipt) {
+        try {
+          await PaymentService().submitGcashPayment(
+            orderId: orderId,
+            amount: totalAmount,
+            receiptFile: gcashReceiptFile,
+            assignedStaffId: assignedStaffId,
+          );
+        } catch (paymentError) {
+          // The order exists — do NOT retry the whole submit (that would
+          // duplicate the order). Staff can complete the payment from the
+          // Payments tab instead.
+          setState(() {
+            _isSubmitting = false;
+          });
+          if (!mounted) return;
+          print('❌ GCash payment recording failed: $paymentError');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Order $orderNumber was created, but saving the GCash payment failed. '
+                'Please complete the payment from the Payments tab.',
+              ),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 6),
+            ),
+          );
+          Navigator.pop(context, true);
+          return;
+        }
+      }
 
       setState(() {
         _isSubmitting = false;
@@ -943,7 +988,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         successMessage = 'Order $orderNumber Created!\n'
             'Rider pickup scheduled. Price will be calculated after laundry is received.';
       } else if (isPaidImmediately) {
-        successMessage = 'Order $orderNumber Created! ₱${totalAmount.toStringAsFixed(2)} paid via $paymentMethod.';
+        successMessage = gcashWithReceipt
+            ? 'Order $orderNumber Created! ₱${totalAmount.toStringAsFixed(2)} paid via GCash — receipt uploaded, pending verification.'
+            : 'Order $orderNumber Created! ₱${totalAmount.toStringAsFixed(2)} paid via $paymentMethod.';
       } else {
         successMessage = 'Order $orderNumber Created! Saved as UNPAID (to pay on claiming).';
       }
@@ -998,12 +1045,13 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           action: SnackBarAction(
             label: 'Retry',
             textColor: Colors.white,
-            onPressed: () {
-              _submitOrder(
-                isPaidImmediately: isPaidImmediately,
-                paymentMethod: paymentMethod,
-              );
-            },
+          onPressed: () {
+            _submitOrder(
+              isPaidImmediately: isPaidImmediately,
+              paymentMethod: paymentMethod,
+              gcashReceiptFile: gcashReceiptFile,
+            );
+          },
           ),
         ),
       );
@@ -1125,9 +1173,32 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : () {
-                    Navigator.pop(ctx);
-                    _submitOrder(isPaidImmediately: true, paymentMethod: method);
+                  onPressed: _isSubmitting ? null : () async {
+                    if (method == 'GCash') {
+                      // GCash: show the admin-uploaded QR, then capture/upload
+                      // the receipt BEFORE creating the order + payment.
+                      Navigator.pop(ctx);
+                      final receipt = await Navigator.push<File>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => GcashQrPaymentScreen(
+                            title: 'Pay Now with GCash',
+                            orderLabel: 'New Walk-in Order',
+                            amount: _finalTotal,
+                            customerName: _customerFullName,
+                          ),
+                        ),
+                      );
+                      if (receipt == null || !mounted) return;
+                      _submitOrder(
+                        isPaidImmediately: true,
+                        paymentMethod: 'GCash',
+                        gcashReceiptFile: receipt,
+                      );
+                    } else {
+                      Navigator.pop(ctx);
+                      _submitOrder(isPaidImmediately: true, paymentMethod: method);
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
