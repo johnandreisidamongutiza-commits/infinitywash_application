@@ -35,13 +35,14 @@ class GeocodingResult {
   }
 }
 
-/// Service to search addresses, landmarks, and streets via OpenStreetMap Nominatim.
+/// Service to search addresses, landmarks, and reverse geocode coordinates.
 class GeocodingService {
   static final GeocodingService _instance = GeocodingService._internal();
   factory GeocodingService() => _instance;
   GeocodingService._internal();
 
   final http.Client _client = http.Client();
+  final Map<String, String> _reverseCache = {};
 
   /// Search for places matching [query].
   /// When [boundedToServiceArea] is true, results are strictly scoped to the
@@ -94,6 +95,66 @@ class GeocodingService {
       return [];
     } catch (_) {
       return [];
+    }
+  }
+
+  /// Reverse geocode coordinates to a clean, human-readable address.
+  /// Example return: "Bubukal, Santa Cruz, Laguna"
+  Future<String?> reverseGeocode(double lat, double lon) async {
+    final cacheKey = '${lat.toStringAsFixed(4)},${lon.toStringAsFixed(4)}';
+    if (_reverseCache.containsKey(cacheKey)) {
+      return _reverseCache[cacheKey];
+    }
+
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
+        'lat': lat.toString(),
+        'lon': lon.toString(),
+        'format': 'json',
+        'addressdetails': '1',
+      });
+
+      final response = await _client.get(
+        uri,
+        headers: {
+          'User-Agent': 'InfinityWashApp/1.0 (com.infinitywash.app)',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 6));
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
+        final address = data['address'] as Map<String, dynamic>?;
+
+        String result;
+        if (address != null) {
+          // Construct clean, compact address
+          final road = address['road'] ?? address['pedestrian'] ?? address['building'] ?? address['amenity'];
+          final barangay = address['quarter'] ?? address['suburb'] ?? address['neighbourhood'] ?? address['village'];
+          final town = address['town'] ?? address['city'] ?? address['municipality'];
+
+          final parts = [road, barangay, town]
+              .where((p) => p != null && p.toString().trim().isNotEmpty)
+              .map((p) => p.toString().trim())
+              .toList();
+
+          if (parts.isNotEmpty) {
+            result = parts.join(', ');
+          } else {
+            result = (data['display_name'] as String? ?? '').split(',').take(3).join(', ').trim();
+          }
+        } else {
+          result = (data['display_name'] as String? ?? '').split(',').take(3).join(', ').trim();
+        }
+
+        if (result.isNotEmpty) {
+          _reverseCache[cacheKey] = result;
+          return result;
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 }

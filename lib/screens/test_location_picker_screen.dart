@@ -196,8 +196,8 @@ class _TestLocationPickerScreenState extends State<TestLocationPickerScreen> {
 
     if (result != null) {
       setState(() {
-        _selectedLocation = result;
-        _lastAction = 'Dialog returned: ${result.latitude.toStringAsFixed(4)}, ${result.longitude.toStringAsFixed(4)}';
+        _selectedLocation = result.coordinates;
+        _lastAction = 'Dialog returned: ${result.address ?? "${result.latitude.toStringAsFixed(4)}, ${result.longitude.toStringAsFixed(4)}"}';
       });
       
       if (mounted) {

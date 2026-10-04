@@ -7,6 +7,20 @@ import '../services/geocoding_service.dart';
 import '../services/location_service.dart';
 import '../theme/app_theme.dart';
 
+/// Result object returned by [LocationPickerDialog.show].
+class LocationPickResult {
+  final LatLng coordinates;
+  final String? address;
+
+  const LocationPickResult({
+    required this.coordinates,
+    this.address,
+  });
+
+  double get latitude => coordinates.latitude;
+  double get longitude => coordinates.longitude;
+}
+
 /// Interactive location picker widget
 ///
 /// Allows users to search for an address, drop a pin on the map,
@@ -28,6 +42,9 @@ class LocationPickerWidget extends StatefulWidget {
   /// Callback when location is selected/changed (passes null if cleared)
   final void Function(LatLng?)? onLocationChanged;
 
+  /// Callback when location and its resolved address are selected
+  final void Function(LatLng?, String?)? onLocationWithAddressChanged;
+
   /// Whether to show the shop marker
   final bool showShopMarker;
 
@@ -39,6 +56,7 @@ class LocationPickerWidget extends StatefulWidget {
     this.initialPosition,
     this.enforceDeliveryRadius = true,
     this.onLocationChanged,
+    this.onLocationWithAddressChanged,
     this.showShopMarker = true,
     this.showFooter = true,
   });
@@ -50,8 +68,10 @@ class LocationPickerWidget extends StatefulWidget {
 class _LocationPickerWidgetState extends State<LocationPickerWidget> {
   late final MapController _mapController;
   LatLng? _selectedLocation;
+  String? _resolvedAddress;
   bool _isOutOfRange = false;
   bool _isLocating = false;
+  bool _isResolvingAddress = false;
 
   // Address search state
   final _searchController = TextEditingController();
@@ -67,6 +87,9 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
     _mapController = MapController();
     _selectedLocation = widget.initialPosition;
     _checkDeliveryRange();
+    if (_selectedLocation != null) {
+      _resolveAddress(_selectedLocation!);
+    }
   }
 
   @override
@@ -85,6 +108,19 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
     }
   }
 
+  Future<void> _resolveAddress(LatLng latLng) async {
+    setState(() => _isResolvingAddress = true);
+    final addr = await GeocodingService().reverseGeocode(latLng.latitude, latLng.longitude);
+    if (!mounted) return;
+    if (_selectedLocation == latLng) {
+      setState(() {
+        _resolvedAddress = addr;
+        _isResolvingAddress = false;
+      });
+      widget.onLocationWithAddressChanged?.call(latLng, addr);
+    }
+  }
+
   void _onMapTap(LatLng latLng) {
     if (_showSuggestions) {
       setState(() => _showSuggestions = false);
@@ -92,9 +128,11 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
     }
     setState(() {
       _selectedLocation = latLng;
+      _resolvedAddress = null;
       _checkDeliveryRange();
     });
     widget.onLocationChanged?.call(latLng);
+    _resolveAddress(latLng);
   }
 
   void _onSearchChanged(String query) {
@@ -127,15 +165,20 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
 
   void _selectSearchResult(GeocodingResult result) {
     final latLng = LatLng(result.latitude, result.longitude);
+    final addressText = result.title + (result.subtitle.isNotEmpty ? ', ${result.subtitle}' : '');
+
     _searchFocusNode.unfocus();
     _searchController.text = result.title;
     setState(() {
       _showSuggestions = false;
       _selectedLocation = latLng;
+      _resolvedAddress = addressText;
+      _isResolvingAddress = false;
       _checkDeliveryRange();
     });
     _mapController.move(latLng, 16.5);
     widget.onLocationChanged?.call(latLng);
+    widget.onLocationWithAddressChanged?.call(latLng, addressText);
   }
 
   Future<void> _locateUser() async {
@@ -183,11 +226,13 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
     _searchController.clear();
     setState(() {
       _selectedLocation = null;
+      _resolvedAddress = null;
       _isOutOfRange = false;
       _showSuggestions = false;
       _searchResults = [];
     });
     widget.onLocationChanged?.call(null);
+    widget.onLocationWithAddressChanged?.call(null, null);
   }
 
   String _getDistanceText() {
@@ -567,22 +612,25 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        _selectedLocation != null ? 'Coordinates:' : 'No pin placed',
+                        _selectedLocation != null
+                            ? (_isResolvingAddress ? 'Finding address name...' : (_resolvedAddress ?? 'Selected Location'))
+                            : 'No pin placed',
                         style: const TextStyle(
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: AppTheme.textLight,
+                          color: AppTheme.textDark,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
                       Text(
                         _selectedLocation != null
-                            ? '${_selectedLocation!.latitude.toStringAsFixed(6)}, ${_selectedLocation!.longitude.toStringAsFixed(6)}'
+                            ? '${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)} • ${_getDistanceText()}'
                             : 'Tap on the map or search to drop a pin',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: _selectedLocation != null ? 'monospace' : null,
-                          color: _selectedLocation != null ? AppTheme.textDark : AppTheme.textLight,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.textLight,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -617,13 +665,13 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
 /// Uses a fullscreen [MaterialPageRoute] with [Scaffold] for a smooth,
 /// responsive map experience with zero layout or clipping assertion issues.
 class LocationPickerDialog {
-  static Future<LatLng?> show(
+  static Future<LocationPickResult?> show(
     BuildContext context, {
     LatLng? initialPosition,
     bool enforceDeliveryRadius = true,
     String title = 'Pin Your Location',
   }) {
-    return Navigator.of(context).push<LatLng>(
+    return Navigator.of(context).push<LocationPickResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (context) => _LocationPickerScreen(
@@ -653,11 +701,28 @@ class _LocationPickerScreen extends StatefulWidget {
 
 class _LocationPickerScreenState extends State<_LocationPickerScreen> {
   late LatLng? _selectedLocation;
+  String? _selectedAddress;
+  bool _isResolvingAddress = false;
 
   @override
   void initState() {
     super.initState();
     _selectedLocation = widget.initialPosition;
+    if (_selectedLocation != null) {
+      _resolveInitialAddress(_selectedLocation!);
+    }
+  }
+
+  Future<void> _resolveInitialAddress(LatLng latLng) async {
+    setState(() => _isResolvingAddress = true);
+    final addr = await GeocodingService().reverseGeocode(latLng.latitude, latLng.longitude);
+    if (!mounted) return;
+    if (_selectedLocation == latLng) {
+      setState(() {
+        _selectedAddress = addr;
+        _isResolvingAddress = false;
+      });
+    }
   }
 
   @override
@@ -688,7 +753,10 @@ class _LocationPickerScreenState extends State<_LocationPickerScreen> {
           if (_selectedLocation != null)
             TextButton(
               onPressed: () {
-                setState(() => _selectedLocation = null);
+                setState(() {
+                  _selectedLocation = null;
+                  _selectedAddress = null;
+                });
               },
               child: const Text(
                 'Clear',
@@ -708,7 +776,19 @@ class _LocationPickerScreenState extends State<_LocationPickerScreen> {
         onLocationChanged: (latLng) {
           setState(() {
             _selectedLocation = latLng;
+            _selectedAddress = null;
+            if (latLng != null) {
+              _isResolvingAddress = true;
+            }
           });
+        },
+        onLocationWithAddressChanged: (latLng, address) {
+          if (mounted && _selectedLocation == latLng) {
+            setState(() {
+              _selectedAddress = address;
+              _isResolvingAddress = false;
+            });
+          }
         },
       ),
       bottomNavigationBar: SafeArea(
@@ -755,7 +835,9 @@ class _LocationPickerScreenState extends State<_LocationPickerScreen> {
                               ? 'Search or tap on the map to pin'
                               : isOutOfRange
                                   ? 'Outside delivery zone (maximum ${LocationConstants.deliveryRadiusKm.toInt()} km from shop)'
-                                  : 'Within delivery range',
+                                  : _isResolvingAddress
+                                      ? 'Finding address name...'
+                                      : (_selectedAddress ?? 'Selected Location'),
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
@@ -765,14 +847,18 @@ class _LocationPickerScreenState extends State<_LocationPickerScreen> {
                                     ? AppTheme.errorRed
                                     : Colors.green.shade800,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         if (_selectedLocation != null)
                           Text(
-                            '${_selectedLocation!.latitude.toStringAsFixed(6)}, ${_selectedLocation!.longitude.toStringAsFixed(6)} • ${LocationHelper.getFormattedDistance(_selectedLocation!)}',
+                            '${LocationHelper.getFormattedDistance(_selectedLocation!)} from shop • (${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)})',
                             style: const TextStyle(
                               fontSize: 11,
                               color: AppTheme.textLight,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                       ],
                     ),
@@ -795,7 +881,12 @@ class _LocationPickerScreenState extends State<_LocationPickerScreen> {
                     elevation: 0,
                   ),
                   onPressed: (_selectedLocation != null && (!widget.enforceDeliveryRadius || !isOutOfRange))
-                      ? () => Navigator.of(context).pop(_selectedLocation)
+                      ? () => Navigator.of(context).pop(
+                            LocationPickResult(
+                              coordinates: _selectedLocation!,
+                              address: _selectedAddress,
+                            ),
+                          )
                       : null,
                   child: Text(
                     isOutOfRange && widget.enforceDeliveryRadius

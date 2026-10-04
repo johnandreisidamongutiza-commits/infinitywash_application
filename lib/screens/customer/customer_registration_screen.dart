@@ -33,6 +33,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   /// registration trigger refuses the sign-up without it.
   bool _agreedToLegal = false;
   LatLng? _selectedLocation;
+  String? _selectedAddress;
 
   @override
   void dispose() {
@@ -127,13 +128,17 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     final result = await LocationPickerDialog.show(
       context,
       initialPosition: _selectedLocation,
-      // Registration never blocks on the delivery radius; the picker
-      // only shows a warning banner when the pin is out of range.
       enforceDeliveryRadius: true,
       title: 'Pin Your Location',
     );
     if (result != null && mounted) {
-      setState(() => _selectedLocation = result);
+      setState(() {
+        _selectedLocation = result.coordinates;
+        _selectedAddress = result.address;
+        if (_addressController.text.trim().isEmpty && result.address != null && result.address!.isNotEmpty) {
+          _addressController.text = result.address!;
+        }
+      });
     }
   }
 
@@ -171,8 +176,8 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                   const SizedBox(height: 2),
                   Text(
                     hasPin
-                        ? '${_selectedLocation!.latitude.toStringAsFixed(6)}, '
-                            '${_selectedLocation!.longitude.toStringAsFixed(6)} '
+                        ? '${_selectedAddress != null && _selectedAddress!.isNotEmpty ? "$_selectedAddress\n" : ""}'
+                            '${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)} '
                             '(${LocationHelper.getFormattedDistance(_selectedLocation!)})'
                         : 'Tap to drop a pin on the map',
                     style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
@@ -193,7 +198,10 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                 tooltip: 'Remove pin',
                 icon: const Icon(Icons.highlight_off_outlined,
                     color: AppTheme.errorRed),
-                onPressed: () => setState(() => _selectedLocation = null),
+                onPressed: () => setState(() {
+                  _selectedLocation = null;
+                  _selectedAddress = null;
+                }),
               ),
             ],
           ],

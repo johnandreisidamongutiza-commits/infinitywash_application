@@ -116,8 +116,11 @@ class _CustomerAccountDetailsScreenState extends State<CustomerAccountDetailsScr
     );
     if (result != null && mounted) {
       setState(() {
-        _pinLocation = result;
+        _pinLocation = result.coordinates;
         _pinChanged = true;
+        if (_addressController.text.trim().isEmpty && result.address != null && result.address!.isNotEmpty) {
+          _addressController.text = result.address!;
+        }
       });
     }
   }
