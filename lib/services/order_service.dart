@@ -660,10 +660,13 @@ class OrderService {
       print('📦 Recording payment: $paymentData');
       await _client.from('payments').insert(paymentData);
 
-      // Update orders table — only update columns that exist on the orders table.
-      // payment_method and paid_at are recorded in the payments table only.
+      // Update orders table — mirror payment_method and paid_at so both the
+      // payments row and the orders row stay in sync (the GCash flow in
+      // PaymentService already does this).
       await _client.from('orders').update({
         'payment_status': 'paid',
+        'payment_method': paymentMethod.toLowerCase(),
+        'paid_at': now,
         'updated_at': now,
       }).eq('id', orderId);
 
