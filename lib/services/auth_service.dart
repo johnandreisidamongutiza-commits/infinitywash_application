@@ -40,6 +40,16 @@ class AuthService {
     required String landmark,
     double? latitude,
     double? longitude,
+
+    /// Consent evidence built by [LegalService.registrationAcceptances].
+    /// Read and enforced by handle_new_auth_user(), which writes the
+    /// legal_acceptances rows and refuses the registration when a
+    /// required document is missing.
+    required List<Map<String, String>> legalAcceptances,
+
+    /// Build version stamped on the acceptance rows. Built by
+    /// [LegalService.appVersion].
+    required String? appVersion,
   }) async {
     final metadata = {
       'first_name': firstName,
@@ -53,6 +63,15 @@ class AuthService {
       // DB trigger stores NULL instead of failing to parse.
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
+
+      // Legal consent (Terms of Service + Privacy Policy).
+      // handle_new_auth_user() rejects the sign-up if a required
+      // document is absent, so this is what makes acceptance stick.
+      'legal_acceptances': legalAcceptances,
+
+      // Recorded on each acceptance row so we can prove WHICH build
+      // showed the user the document text.
+      'app_version': appVersion,
     };
 
     // Don't pass phone to signUp - it's for SMS auth, not user data

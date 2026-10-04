@@ -7,6 +7,7 @@ import '../../login_screen.dart';
 import 'options/account_details_screen.dart';
 import 'options/change_password_screen.dart';
 import 'options/loyalty_card_screen.dart';
+import 'options/terms_and_privacy_screen.dart';
 
 class CustomerProfileScreen extends StatefulWidget {
   const CustomerProfileScreen({super.key});
@@ -133,6 +134,12 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
               Icons.lock_outline,
               'Change Password',
               const CustomerChangePasswordScreen(),
+            ),
+            _buildProfileOption(
+              context,
+              Icons.gavel_outlined,
+              'Terms & Privacy',
+              const CustomerTermsAndPrivacyScreen(),
             ),
             const SizedBox(height: 40),
             ElevatedButton(
