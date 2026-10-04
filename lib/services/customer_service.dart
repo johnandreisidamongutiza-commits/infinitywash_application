@@ -91,27 +91,46 @@ class CustomerService {
       final now = DateTime.now().toIso8601String();
 
       // Insert customer record
-      final response = await _client
-          .from('customers')
-          .insert({
-            'customer_code': customerCode,
-            'first_name': firstName.trim(),
-            'last_name': lastName?.trim(),
-            'phone': normalizedPhone,
-            'email': email?.trim(),
-            'address': address?.trim(),
-            'landmark': landmark?.trim(),
-            if (pinLatitude != null) 'pin_latitude': pinLatitude,
-            if (pinLongitude != null) 'pin_longitude': pinLongitude,
-            'customer_type': customerType,
-            'profile_id': null, // Walk-in customers don't have app profiles
-            'status': 'active',
-            'joined_at': now,
-            'created_at': now,
-            'updated_at': now,
-          })
-          .select('id')
-          .single();
+      final insertData = <String, dynamic>{
+        'customer_code': customerCode,
+        'first_name': firstName.trim(),
+        'last_name': lastName?.trim(),
+        'phone': normalizedPhone,
+        'email': email?.trim(),
+        'address': address?.trim(),
+        'landmark': landmark?.trim(),
+        if (pinLatitude != null) 'pin_latitude': pinLatitude,
+        if (pinLongitude != null) 'pin_longitude': pinLongitude,
+        'customer_type': customerType,
+        'profile_id': null, // Walk-in customers don't have app profiles
+        'status': 'active',
+        'joined_at': now,
+        'created_at': now,
+        'updated_at': now,
+      };
+
+      Map<String, dynamic> response;
+      try {
+        response = await _client
+            .from('customers')
+            .insert(insertData)
+            .select('id')
+            .single();
+      } on PostgrestException catch (e) {
+        // If pin_latitude/pin_longitude columns do not exist in the database, retry without them
+        if ((e.message.contains('pin_latitude') || e.code == '42703') &&
+            (insertData.containsKey('pin_latitude') || insertData.containsKey('pin_longitude'))) {
+          insertData.remove('pin_latitude');
+          insertData.remove('pin_longitude');
+          response = await _client
+              .from('customers')
+              .insert(insertData)
+              .select('id')
+              .single();
+        } else {
+          rethrow;
+        }
+      }
 
       final customerId = response['id'] as String;
       final fullName = lastName != null && lastName.trim().isNotEmpty 
@@ -326,10 +345,24 @@ class CustomerService {
       if (pinLatitude != null) updates['pin_latitude'] = pinLatitude;
       if (pinLongitude != null) updates['pin_longitude'] = pinLongitude;
 
-      await _client
-          .from('customers')
-          .update(updates)
-          .eq('id', customerId);
+      try {
+        await _client
+            .from('customers')
+            .update(updates)
+            .eq('id', customerId);
+      } on PostgrestException catch (e) {
+        if ((e.message.contains('pin_latitude') || e.code == '42703') &&
+            (updates.containsKey('pin_latitude') || updates.containsKey('pin_longitude'))) {
+          updates.remove('pin_latitude');
+          updates.remove('pin_longitude');
+          await _client
+              .from('customers')
+              .update(updates)
+              .eq('id', customerId);
+        } else {
+          rethrow;
+        }
+      }
 
       print('✅ Updated customer: $customerId');
     } catch (e) {
@@ -367,19 +400,25 @@ class CustomerService {
   /// Normalizes phone numbers for flexible matching
   Future<List<Map<String, dynamic>>> searchCustomersWithHistory({
     String? name,
+    String? firstName,
+    String? lastName,
     String? phone,
   }) async {
     try {
+      final fName = firstName?.trim() ?? '';
+      final lName = lastName?.trim() ?? '';
+      final rawName = name?.trim() ?? '';
+      final rawPhone = phone?.trim() ?? '';
+
       // Build search conditions
-      if ((name == null || name.trim().isEmpty) && 
-          (phone == null || phone.trim().isEmpty)) {
+      if (fName.isEmpty && lName.isEmpty && rawName.isEmpty && rawPhone.isEmpty) {
         return [];
       }
 
       // Normalize phone for database comparison
       String? normalizedPhone;
-      if (phone != null && phone.trim().isNotEmpty) {
-        normalizedPhone = normalizePhone(phone.trim());
+      if (rawPhone.isNotEmpty) {
+        normalizedPhone = normalizePhone(rawPhone);
       }
 
       // Query customers with their most recent order
@@ -394,8 +433,6 @@ class CustomerService {
             email,
             address,
             landmark,
-            pin_latitude,
-            pin_longitude,
             customer_type,
             joined_at,
             orders!customer_id (
@@ -407,22 +444,23 @@ class CustomerService {
           ''')
           .eq('status', 'active');
 
-      // Build OR condition for name and phone search
-      List<String> orConditions = [];
-      
-      if (name != null && name.trim().isNotEmpty) {
-        final searchName = name.trim();
-        orConditions.add('first_name.ilike.%$searchName%');
-        orConditions.add('last_name.ilike.%$searchName%');
-      }
-      
-      if (normalizedPhone != null && normalizedPhone.isNotEmpty) {
-        // Search normalized phone (matches "09123456789")
-        orConditions.add('phone.ilike.%$normalizedPhone%');
+      if (fName.isNotEmpty && lName.isNotEmpty) {
+        query = query.ilike('first_name', '%$fName%').ilike('last_name', '%$lName%');
+      } else if (fName.isNotEmpty) {
+        query = query.or('first_name.ilike.%$fName%,last_name.ilike.%$fName%');
+      } else if (lName.isNotEmpty) {
+        query = query.or('first_name.ilike.%$lName%,last_name.ilike.%$lName%');
+      } else if (rawName.isNotEmpty) {
+        final parts = rawName.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
+        if (parts.length >= 2) {
+          query = query.ilike('first_name', '%${parts.first}%').ilike('last_name', '%${parts.sublist(1).join(' ')}%');
+        } else {
+          query = query.or('first_name.ilike.%$rawName%,last_name.ilike.%$rawName%');
+        }
       }
 
-      if (orConditions.isNotEmpty) {
-        query = query.or(orConditions.join(','));
+      if (normalizedPhone != null && normalizedPhone.isNotEmpty) {
+        query = query.ilike('phone', '%$normalizedPhone%');
       }
 
       final response = await query.limit(10);

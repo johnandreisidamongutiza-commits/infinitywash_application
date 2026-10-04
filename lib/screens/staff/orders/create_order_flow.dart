@@ -179,6 +179,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   _SuggestionType _suggestionType = _SuggestionType.none;
   String? _suggestionMessage;
   bool _dismissedSuggestion = false;
+  String? _dismissedQuery;
   Timer? _searchDebounce;
   String? _acceptedCustomerId; // Track if staff accepted an existing customer
   
@@ -421,7 +422,18 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     // Cancel previous search timer
     _searchDebounce?.cancel();
 
-    // If suggestion was already dismissed, don't search again
+    // Check if input changed from the previously dismissed query
+    final curFirst = _firstNameController.text.trim();
+    final curLast = _lastNameController.text.trim();
+    final curPhone = _phoneController.text.trim();
+    final currentQuery = '$curFirst|$curLast|$curPhone';
+
+    if (_dismissedQuery != null && _dismissedQuery != currentQuery) {
+      _dismissedSuggestion = false;
+      _dismissedQuery = null;
+    }
+
+    // If suggestion was already dismissed for this exact query, don't search again
     if (_dismissedSuggestion) return;
 
     // Debounce the search to avoid excessive database queries
@@ -431,14 +443,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         final lastName = _lastNameController.text.trim();
         final phone = _phoneController.text.trim();
 
-        // Build name query
-        final nameQuery = '$firstName $lastName'.trim();
-
         // Require minimum characters
-        final hasValidName = nameQuery.length >= 2;
+        final hasValidFirstName = firstName.length >= 2;
+        final hasValidLastName = lastName.length >= 2;
         final hasValidPhone = phone.length >= 4;
 
-        if (!hasValidName && !hasValidPhone) {
+        if (!hasValidFirstName && !hasValidLastName && !hasValidPhone) {
           // Clear suggestion if query too short
           if (!mounted) return; // Add mounted check
           if (_suggestionType != _SuggestionType.none) {
@@ -451,9 +461,13 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           return;
         }
 
-        // Search database by name and/or phone
+        final combinedName = '$firstName $lastName'.trim();
+
+        // Search database by first name, last name, combined name, and/or phone
         final results = await _customerService.searchCustomersWithHistory(
-          name: hasValidName ? nameQuery : null,
+          firstName: hasValidFirstName ? firstName : null,
+          lastName: hasValidLastName ? lastName : null,
+          name: combinedName.length >= 2 ? combinedName : null,
           phone: hasValidPhone ? phone : null,
         );
 
@@ -517,14 +531,14 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           setState(() {
             _suggestedCustomers = matches;
             _suggestionType = _SuggestionType.uncertain;
-            _suggestionMessage = '$matchCount customers named "${nameQuery.isNotEmpty ? nameQuery : firstName}"';
+            _suggestionMessage = '$matchCount customers named "${combinedName.isNotEmpty ? combinedName : firstName}"';
           });
         } else {
           // >10 matches: Too many - show prompt only
           setState(() {
             _suggestedCustomers = [];
             _suggestionType = _SuggestionType.tooMany;
-            _suggestionMessage = '$matchCount customers named "${nameQuery.isNotEmpty ? nameQuery : firstName}". '
+            _suggestionMessage = '$matchCount customers named "${combinedName.isNotEmpty ? combinedName : firstName}". '
                 'Add ${lastName.isEmpty ? "last name or " : ""}phone number to narrow down.';
           });
         }
@@ -648,6 +662,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       _suggestionType = _SuggestionType.none;
       _suggestionMessage = null;
       _dismissedSuggestion = true;
+      _dismissedQuery = '${customer.firstName}|${customer.lastName}|${customer.phone}';
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -663,6 +678,19 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  void _dismissCurrentSuggestions() {
+    final curFirst = _firstNameController.text.trim();
+    final curLast = _lastNameController.text.trim();
+    final curPhone = _phoneController.text.trim();
+    setState(() {
+      _suggestedCustomers = [];
+      _suggestionType = _SuggestionType.none;
+      _suggestionMessage = null;
+      _dismissedSuggestion = true;
+      _dismissedQuery = '$curFirst|$curLast|$curPhone';
+    });
   }
 
   @override
@@ -1621,11 +1649,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 ),
               ),
               InkWell(
-                onTap: () => setState(() {
-                  _suggestedCustomers = [];
-                  _suggestionType = _SuggestionType.none;
-                  _dismissedSuggestion = true;
-                }),
+                onTap: _dismissCurrentSuggestions,
                 child: const Padding(
                   padding: EdgeInsets.all(2),
                   child: Icon(Icons.close, size: 16, color: AppTheme.textLight),
@@ -1647,11 +1671,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             const Divider(height: 1),
             const SizedBox(height: 8),
             TextButton.icon(
-              onPressed: () => setState(() {
-                _suggestedCustomers = [];
-                _suggestionType = _SuggestionType.none;
-                _dismissedSuggestion = true;
-              }),
+              onPressed: _dismissCurrentSuggestions,
               icon: const Icon(Icons.add_circle_outline, size: 16),
               label: const Text('None of These - Create New Customer'),
               style: TextButton.styleFrom(
@@ -1700,11 +1720,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 ),
               ),
               InkWell(
-                onTap: () => setState(() {
-                  _suggestedCustomers = [];
-                  _suggestionType = _SuggestionType.none;
-                  _dismissedSuggestion = true;
-                }),
+                onTap: _dismissCurrentSuggestions,
                 child: const Padding(
                   padding: EdgeInsets.all(2),
                   child: Icon(Icons.close, size: 16, color: AppTheme.textLight),
@@ -1730,11 +1746,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           const Divider(height: 1),
           const SizedBox(height: 8),
           TextButton.icon(
-            onPressed: () => setState(() {
-              _suggestedCustomers = [];
-              _suggestionType = _SuggestionType.none;
-              _dismissedSuggestion = true;
-            }),
+            onPressed: _dismissCurrentSuggestions,
             icon: const Icon(Icons.add_circle_outline, size: 16),
             label: const Text('None of These - Create New Customer'),
             style: TextButton.styleFrom(
@@ -1777,10 +1789,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 ],
               ),
               InkWell(
-                onTap: () => setState(() {
-                  _suggestionType = _SuggestionType.none;
-                  _dismissedSuggestion = true;
-                }),
+                onTap: _dismissCurrentSuggestions,
                 child: const Padding(
                   padding: EdgeInsets.all(2),
                   child: Icon(Icons.close, size: 16, color: AppTheme.textLight),
@@ -1837,10 +1846,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           ),
           const SizedBox(height: 10),
           TextButton(
-            onPressed: () => setState(() {
-              _suggestionType = _SuggestionType.none;
-              _dismissedSuggestion = true;
-            }),
+            onPressed: _dismissCurrentSuggestions,
             child: const Text(
               'Continue Without (creates new customer)',
               style: TextStyle(fontSize: 11),
