@@ -246,24 +246,47 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
     }
   }
 
+  void _recenterToRider() {
+    if (_riderLocation != null) {
+      _mapController.move(_riderLocation!, 15.0);
+    } else {
+      _mapController.move(LocationConstants.shopLocation, 14.0);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Route Overview'),
+        title: const Text(
+          'Route Overview',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+            color: AppTheme.textDark,
+          ),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(
+            color: AppTheme.borderGray.withValues(alpha: 0.6),
+            height: 1,
+          ),
+        ),
         leading: widget.onBackToHome != null
             ? IconButton(
-                icon: const Icon(Icons.arrow_back),
+                icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
                 onPressed: widget.onBackToHome,
               )
             : null,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, color: AppTheme.primaryBlue),
+            tooltip: 'Refresh Route',
             onPressed: _isLoading ? null : _loadJobs,
           ),
         ],
@@ -272,7 +295,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? _buildErrorState()
-              : _buildRouteView(), // Always show route view with filters
+              : _buildRouteView(),
     );
   }
 
@@ -283,12 +306,20 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, size: 64, color: AppTheme.errorRed),
+            const Icon(Icons.error_outline, size: 56, color: AppTheme.errorRed),
             const SizedBox(height: 16),
-            Text(_error!, textAlign: TextAlign.center),
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppTheme.textDark, fontSize: 14),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadJobs,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryBlue,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
               child: const Text('Retry'),
             ),
           ],
@@ -299,45 +330,73 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
 
   Widget _buildFilteredEmptyState() {
     String message;
+    String subtitle;
     IconData icon;
-    
+    Color iconColor;
+
     switch (_filter) {
       case 'completed':
-        message = 'No completed jobs today';
+        message = 'No Completed Jobs Today';
+        subtitle = 'Jobs you complete today will appear here.';
         icon = Icons.check_circle_outline;
+        iconColor = Colors.green;
         break;
       case 'pickup':
-        message = 'No pickup jobs available';
+        message = 'No Pickups Scheduled';
+        subtitle = 'There are no active pickup jobs on your route.';
         icon = Icons.shopping_bag_outlined;
+        iconColor = AppTheme.errorRed;
         break;
       case 'delivery':
-        message = 'No delivery jobs available';
+        message = 'No Deliveries Scheduled';
+        subtitle = 'There are no active delivery jobs on your route.';
         icon = Icons.local_shipping_outlined;
+        iconColor = AppTheme.teamMemberIconOrange;
         break;
-      default: // 'all'
+      default:
         final hasCompleted = _completedPickupJobs.isNotEmpty || _completedDeliveryJobs.isNotEmpty;
         if (hasCompleted) {
-          message = 'All jobs completed!\nCheck the Completed tab to view.';
+          message = 'All Stops Completed!';
+          subtitle = 'Great work! Check the Completed tab to view details.';
         } else {
-          message = 'No jobs available';
+          message = 'No Jobs in Route';
+          subtitle = 'Waiting for dispatch jobs to be assigned.';
         }
-        icon = Icons.inbox_outlined;
+        icon = Icons.route_outlined;
+        iconColor = AppTheme.primaryBlue;
     }
-    
+
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(32.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 64, color: AppTheme.textLight.withValues(alpha: 0.5)),
-            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 36, color: iconColor),
+            ),
+            const SizedBox(height: 14),
             Text(
               message,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
               textAlign: TextAlign.center,
               style: const TextStyle(
+                fontSize: 13,
                 color: AppTheme.textLight,
-                fontSize: 16,
+                height: 1.4,
               ),
             ),
           ],
@@ -352,35 +411,31 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
 
     return Column(
       children: [
-        // Map
+        // Map Area
         Expanded(
           flex: 3,
           child: Stack(
             children: [
               FlutterMap(
-                key: ValueKey('map_$_filter'), // Force rebuild on filter change
+                key: ValueKey('map_$_filter'),
                 mapController: _mapController,
                 options: MapOptions(
                   initialCenter: LocationConstants.shopLocation,
                   initialZoom: 13.0,
-                  minZoom: 12.0, // Restrict zoom out to keep within delivery area
+                  minZoom: 12.0,
                   maxZoom: 18.0,
-                  // Restrict map bounds to 10km around shop
                   cameraConstraint: CameraConstraint.contain(
                     bounds: LatLngBounds(
-                      // Southwest corner (10km south and west of shop)
                       LatLng(
-                        LocationConstants.shopLocation.latitude - 0.09, // ~10km south
-                        LocationConstants.shopLocation.longitude - 0.09, // ~10km west
+                        LocationConstants.shopLocation.latitude - 0.09,
+                        LocationConstants.shopLocation.longitude - 0.09,
                       ),
-                      // Northeast corner (10km north and east of shop)
                       LatLng(
-                        LocationConstants.shopLocation.latitude + 0.09, // ~10km north
-                        LocationConstants.shopLocation.longitude + 0.09, // ~10km east
+                        LocationConstants.shopLocation.latitude + 0.09,
+                        LocationConstants.shopLocation.longitude + 0.09,
                       ),
                     ),
                   ),
-                  // Keep map centered on delivery area when user interacts
                   interactionOptions: const InteractionOptions(
                     flags: InteractiveFlag.all,
                   ),
@@ -389,68 +444,90 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                   TileLayer(
                     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'com.infinitywash.app',
-                    tileProvider: CachedTileProvider(), // Use cached tiles
+                    tileProvider: CachedTileProvider(),
                   ),
-                  // Route lines
                   if (_routePoints.isNotEmpty)
                     PolylineLayer(polylines: _buildRouteLines()),
-                  // Markers
                   if (_buildMarkers().isNotEmpty)
                     MarkerLayer(markers: _buildMarkers()),
-                  // Shop delivery radius circle
                   CircleLayer(
                     circles: [
                       CircleMarker(
                         point: LocationConstants.shopLocation,
                         radius: LocationConstants.deliveryRadiusMeters,
                         useRadiusInMeter: true,
-                        color: AppTheme.accentBlue.withValues(alpha: 0.1),
-                        borderColor: AppTheme.accentBlue.withValues(alpha: 0.3),
-                        borderStrokeWidth: 2,
+                        color: AppTheme.accentBlue.withValues(alpha: 0.08),
+                        borderColor: AppTheme.accentBlue.withValues(alpha: 0.25),
+                        borderStrokeWidth: 1.5,
                       ),
                     ],
                   ),
                 ],
               ),
-              // Stats overlay
+
+              // Floating Summary Bar
               Positioned(
-                top: 16,
+                top: 12,
                 left: 16,
                 right: 16,
-                child: Card(
-                  elevation: 4,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                child: _buildStatsCard(totalDistance, totalStops),
+              ),
+
+              // Route Fallback Banner
+              if (_isRouteFallback)
+                Positioned(
+                  top: 76,
+                  left: 16,
+                  right: 16,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade700,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _buildStatItem(Icons.straighten, '${totalDistance.toStringAsFixed(1)}km', 'Distance'),
-                        _buildStatItem(Icons.location_on, '$totalStops', 'Stops'),
-                        _buildStatItem(Icons.local_shipping, '${_pickupJobs.length}', 'Pickups'),
-                        _buildStatItem(Icons.home, '${_deliveryJobs.length}', 'Deliveries'),
+                        Icon(Icons.info_outline, color: Colors.white, size: 14),
+                        SizedBox(width: 6),
+                        Text(
+                          'Showing direct path — road route unavailable',
+                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
+                        ),
                       ],
                     ),
                   ),
                 ),
-              ),
-              if (_isRouteFallback)
-                Positioned(
-                  top: 96,
-                  left: 16,
-                  right: 16,
-                  child: Material(
-                    color: Colors.orange,
-                    borderRadius: BorderRadius.circular(8),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      child: Text(
-                        'Showing straight line — road route unavailable.',
-                        style: TextStyle(color: Colors.white, fontSize: 12),
-                        textAlign: TextAlign.center,
-                      ),
+
+              // Floating Map Quick-Controls
+              Positioned(
+                bottom: 12,
+                right: 12,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildMapControlButton(
+                      icon: Icons.crop_free,
+                      tooltip: 'Fit All Stops',
+                      onPressed: _fitMapToJobs,
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    _buildMapControlButton(
+                      icon: Icons.my_location,
+                      tooltip: 'My Location',
+                      onPressed: _recenterToRider,
+                    ),
+                  ],
                 ),
+              ),
+
               // Map loading overlay
               MapLoadingOverlay(
                 isLoading: _isMapLoading,
@@ -460,121 +537,217 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
           ),
         ),
 
-        // Jobs list
+        // Filter Tabs
+        _buildFilterTabs(),
+
+        // Jobs List
         Expanded(
           flex: 2,
-          child: Column(
-            children: [
-              // Filter tabs
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    _buildFilterTab('All (${_allJobs.length})', 'all'),
-                    const SizedBox(width: 8),
-                    _buildFilterTab('Pickups (${_pickupJobs.length})', 'pickup'),
-                    const SizedBox(width: 8),
-                    _buildFilterTab('Deliveries (${_deliveryJobs.length})', 'delivery'),
-                    const SizedBox(width: 8),
-                    _buildFilterTab('Completed (${_completedPickupJobs.length + _completedDeliveryJobs.length})', 'completed'),
-                  ],
+          child: _filteredJobs.isEmpty
+              ? _buildFilteredEmptyState()
+              : ListView.builder(
+                  padding: const EdgeInsets.only(top: 4, bottom: 8),
+                  itemCount: _filteredJobs.length,
+                  itemBuilder: (context, index) => _buildJobCard(_filteredJobs[index], index + 1),
                 ),
-              ),
-              // Jobs list
-              Expanded(
-                child: _filteredJobs.isEmpty
-                    ? _buildFilteredEmptyState()
-                    : ListView.builder(
-                        itemCount: _filteredJobs.length,
-                        itemBuilder: (context, index) => _buildJobCard(_filteredJobs[index], index + 1),
-                      ),
-              ),
-            ],
-          ),
         ),
 
-        // Start route button
+        // Bottom Action Bar
         if (_allJobs.isNotEmpty && _filter != 'completed')
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: () {
-                  // Navigate to active route tracking screen
-                  if (_allJobs.isNotEmpty) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => RiderActiveRouteScreen(jobs: _allJobs),
-                      ),
-                    ).then((_) => _loadJobs());
-                  }
-                },
-                child: const Text('Start This Route'),
-              ),
-            ),
-          ),
+          _buildBottomActionBar(),
       ],
     );
   }
 
-  Widget _buildStatItem(IconData icon, String value, String label) {
+  Widget _buildStatsCard(double totalDistance, int totalStops) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem(
+            Icons.route_outlined,
+            _isLoadingRoute ? '...' : '${totalDistance.toStringAsFixed(1)}km',
+            'Distance',
+            AppTheme.primaryBlue,
+          ),
+          _buildStatDivider(),
+          _buildStatItem(Icons.pin_drop_outlined, '$totalStops', 'Stops', AppTheme.accentBlue),
+          _buildStatDivider(),
+          _buildStatItem(Icons.shopping_bag_outlined, '${_pickupJobs.length}', 'Pickups', AppTheme.errorRed),
+          _buildStatDivider(),
+          _buildStatItem(Icons.local_shipping_outlined, '${_deliveryJobs.length}', 'Deliveries', AppTheme.teamMemberIconOrange),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatDivider() {
+    return Container(
+      height: 24,
+      width: 1,
+      color: AppTheme.borderGray.withValues(alpha: 0.7),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, String value, String label, Color accentColor) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 20, color: AppTheme.textLight),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: accentColor),
+            const SizedBox(width: 4),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
+              ),
+            ),
+          ],
         ),
+        const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+          style: const TextStyle(
+            fontSize: 10,
+            color: AppTheme.textLight,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildFilterTab(String label, String value) {
+  Widget _buildMapControlButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.8)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 18, color: AppTheme.primaryBlue),
+        tooltip: tooltip,
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  Widget _buildFilterTabs() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            _buildFilterChip('All', _allJobs.length, 'all'),
+            const SizedBox(width: 8),
+            _buildFilterChip('Pickups', _pickupJobs.length, 'pickup', color: AppTheme.errorRed),
+            const SizedBox(width: 8),
+            _buildFilterChip('Deliveries', _deliveryJobs.length, 'delivery', color: AppTheme.teamMemberIconOrange),
+            const SizedBox(width: 8),
+            _buildFilterChip('Completed', _completedPickupJobs.length + _completedDeliveryJobs.length, 'completed', color: Colors.green),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, int count, String value, {Color? color}) {
     final isSelected = _filter == value;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () async {
-          setState(() => _filter = value);
-          // Recalculate route when filter changes
-          await _calculateRoute();
-          // Recenter map to show filtered jobs
-          _fitMapToJobs();
-          // Force map to repaint tiles
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              try {
-                // Trigger a tiny zoom change to force tile refresh
-                final currentZoom = _mapController.camera.zoom;
-                _mapController.move(_mapController.camera.center, currentZoom);
-              } catch (e) {
-                print('⚠️ Could not refresh map: $e');
-              }
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () async {
+        setState(() => _filter = value);
+        await _calculateRoute();
+        _fitMapToJobs();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            try {
+              final currentZoom = _mapController.camera.zoom;
+              _mapController.move(_mapController.camera.center, currentZoom);
+            } catch (e) {
+              print('⚠️ Could not refresh map: $e');
             }
-          });
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? AppTheme.accentBlue : AppTheme.softGray,
-            borderRadius: BorderRadius.circular(20),
+          }
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryBlue : AppTheme.softGray,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryBlue : AppTheme.borderGray,
+            width: 1,
           ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isSelected ? Colors.white : AppTheme.textDark,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              fontSize: 12,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : AppTheme.textDark,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                fontSize: 12,
+              ),
             ),
-          ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.white.withValues(alpha: 0.22)
+                    : (color != null ? color.withValues(alpha: 0.12) : AppTheme.borderGray),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  color: isSelected
+                      ? Colors.white
+                      : (color ?? AppTheme.textDark),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -582,103 +755,243 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
 
   Widget _buildJobCard(DispatchJob job, int number) {
     final isCompleted = _filter == 'completed';
-    
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      color: isCompleted ? Colors.grey.withValues(alpha: 0.1) : Colors.white,
-      child: ListTile(
-        leading: isCompleted
-            ? Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.check_circle, color: Colors.green, size: 24),
-              )
-            : CircleAvatar(
-                backgroundColor: job.jobType == 'pickup' ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
-                child: Text(
-                  '$number',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                job.customerName ?? 'Unknown Customer',
-                style: TextStyle(
-                  color: isCompleted ? AppTheme.textLight : AppTheme.textDark,
-                  fontWeight: isCompleted ? FontWeight.normal : FontWeight.w600,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (isCompleted && job.jobType != null) ...[
-              const SizedBox(width: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: job.jobType == 'pickup' 
-                      ? AppTheme.errorRed.withValues(alpha: 0.1) 
-                      : AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  job.jobType == 'pickup' ? 'PICKUP' : 'DELIVERY',
-                  style: TextStyle(
-                    color: job.jobType == 'pickup' 
-                        ? AppTheme.errorRed 
-                        : AppTheme.teamMemberIconOrange,
-                    fontSize: 8,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ],
+    final isPickup = job.jobType == 'pickup';
+    final accentColor = isCompleted
+        ? Colors.green
+        : (isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      decoration: BoxDecoration(
+        color: isCompleted ? const Color(0xFFF9FAFB) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isCompleted ? AppTheme.borderGray.withValues(alpha: 0.6) : AppTheme.borderGray,
+          width: 1,
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              job.address ?? 'No address',
-              style: TextStyle(
-                fontSize: 12,
-                color: isCompleted ? AppTheme.textLight : AppTheme.textDark,
+        boxShadow: isCompleted
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => RiderJobDetailsScreen(job: job),
               ),
-            ),
-            if (isCompleted && job.completedAt != null) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(Icons.access_time, size: 12, color: Colors.green),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Completed ${_formatCompletionTime(job.completedAt!)}',
-                    style: const TextStyle(
-                      color: Colors.green,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+            ).then((_) => _loadJobs());
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top row: Stop badge + Type tag + Job number
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: accentColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isCompleted
+                                ? Icons.check_circle
+                                : (isPickup ? Icons.shopping_bag_outlined : Icons.local_shipping_outlined),
+                            size: 13,
+                            color: accentColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isCompleted
+                                ? 'COMPLETED'
+                                : (isPickup ? 'STOP #$number • PICKUP' : 'STOP #$number • DELIVERY'),
+                            style: TextStyle(
+                              color: accentColor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    if (job.jobNumber != null)
+                      Text(
+                        job.jobNumber!,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textLight,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // Customer Name
+                Text(
+                  job.customerName ?? 'Unknown Customer',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: isCompleted ? AppTheme.textLight : AppTheme.textDark,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+
+                // Address
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Icon(Icons.location_on_outlined, size: 14, color: AppTheme.textLight),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        job.address ?? 'No address provided',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textLight,
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Landmark if present
+                if (job.landmark != null && job.landmark!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.softGray,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.place_outlined, size: 12, color: AppTheme.accentBlue),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            job.landmark!,
+                            style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
-              ),
-            ],
-          ],
-        ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => RiderJobDetailsScreen(job: job),
+
+                // Footer row: Completed time OR Details arrow
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (isCompleted && job.completedAt != null)
+                      Row(
+                        children: [
+                          const Icon(Icons.check_circle_outline, size: 13, color: Colors.green),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Completed ${_formatCompletionTime(job.completedAt!)}',
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        'Tap to view order details',
+                        style: TextStyle(
+                          color: AppTheme.textLight.withValues(alpha: 0.7),
+                          fontSize: 11,
+                        ),
+                      ),
+                    const Icon(Icons.chevron_right, size: 18, color: AppTheme.textLight),
+                  ],
+                ),
+              ],
             ),
-          ).then((_) => _loadJobs());
-        },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomActionBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppTheme.borderGray.withValues(alpha: 0.6))),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              if (_allJobs.isNotEmpty) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => RiderActiveRouteScreen(jobs: _allJobs),
+                  ),
+                ).then((_) => _loadJobs());
+              }
+            },
+            icon: const Icon(Icons.navigation_outlined, size: 18),
+            label: Text(
+              'Start Route (${_allJobs.length} ${_allJobs.length == 1 ? 'Stop' : 'Stops'})',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accentBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -700,96 +1013,120 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
 
   List<Marker> _buildMarkers() {
     final markers = <Marker>[];
-    
-    // Shop marker
+
+    // Shop hub marker
     markers.add(Marker(
       point: LocationConstants.shopLocation,
       width: 40,
       height: 40,
-      child: const Icon(Icons.store, color: AppTheme.accentBlue, size: 40),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.primaryBlue,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Icon(Icons.local_laundry_service, color: Colors.white, size: 20),
+      ),
     ));
-    
+
     // Rider marker
     if (_riderLocation != null) {
       markers.add(Marker(
         point: _riderLocation!,
-        width: 40,
-        height: 40,
+        width: 36,
+        height: 36,
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.green,
+            color: AppTheme.accentBlue.withValues(alpha: 0.25),
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
           ),
-          child: const Icon(Icons.navigation, color: Colors.white, size: 20),
+          padding: const EdgeInsets.all(4),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppTheme.accentBlue,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.accentBlue.withValues(alpha: 0.4),
+                  blurRadius: 6,
+                ),
+              ],
+            ),
+            child: const Icon(Icons.navigation, color: Colors.white, size: 14),
+          ),
         ),
       ));
     }
-    
-    // Job markers - only add if coordinates are valid
+
+    // Job markers
     final isCompleted = _filter == 'completed';
     for (int i = 0; i < _filteredJobs.length; i++) {
       final job = _filteredJobs[i];
       if (job.latitude == null || job.longitude == null) continue;
-      
-      // Validate coordinates are not NaN or Infinity
       if (!job.latitude!.isFinite || !job.longitude!.isFinite) continue;
-      
+
       final Color markerColor = isCompleted
           ? Colors.green
           : (job.jobType == 'pickup' ? AppTheme.errorRed : AppTheme.teamMemberIconOrange);
-      
+
       markers.add(Marker(
         point: LatLng(job.latitude!, job.longitude!),
-        width: 40,
-        height: 40,
-        child: Stack(
-          children: [
-            Icon(
-              Icons.location_on,
-              color: markerColor,
-              size: 40,
-            ),
-            Positioned(
-              top: 8,
-              left: 0,
-              right: 0,
-              child: isCompleted
-                  ? const Icon(Icons.check, color: Colors.white, size: 16)
-                  : Text(
-                      '${i + 1}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
+        width: 34,
+        height: 34,
+        child: Container(
+          decoration: BoxDecoration(
+            color: markerColor,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: markerColor.withValues(alpha: 0.35),
+                blurRadius: 5,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Center(
+            child: isCompleted
+                ? const Icon(Icons.check, color: Colors.white, size: 16)
+                : Text(
+                    '${i + 1}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
                     ),
-            ),
-          ],
+                  ),
+          ),
         ),
       ));
     }
-    
+
     return markers;
   }
 
   double _calculateTotalDistance() {
-    // Filter jobs with valid coordinates
     final validJobs = _filteredJobs
-        .where((j) => 
-            j.latitude != null && 
+        .where((j) =>
+            j.latitude != null &&
             j.longitude != null &&
-            j.latitude!.isFinite && 
+            j.latitude!.isFinite &&
             j.longitude!.isFinite)
         .toList();
-    
+
     if (validJobs.isEmpty || _riderLocation == null) return 0;
-    
+
     const Distance distance = Distance();
     double total = 0;
-    
-    // Distance to first job
+
     try {
       total += distance.as(
         LengthUnit.Kilometer,
@@ -799,8 +1136,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
     } catch (e) {
       print('⚠️ Error calculating distance to first job: $e');
     }
-    
-    // Distance between jobs
+
     for (int i = 0; i < validJobs.length - 1; i++) {
       final current = validJobs[i];
       final next = validJobs[i + 1];
@@ -814,14 +1150,14 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
         print('⚠️ Error calculating distance between jobs: $e');
       }
     }
-    
+
     return total;
   }
 
   String _formatCompletionTime(DateTime completedAt) {
     final now = DateTime.now();
     final difference = now.difference(completedAt);
-    
+
     if (difference.inMinutes < 60) {
       return '${difference.inMinutes} min ago';
     } else if (difference.inHours < 24) {

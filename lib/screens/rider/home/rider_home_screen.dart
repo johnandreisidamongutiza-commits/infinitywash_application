@@ -4,7 +4,6 @@ import 'package:latlong2/latlong.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/rider_service.dart';
-import '../../../services/supabase_service.dart';
 import '../../../models/dispatch_job.dart';
 import '../../../config/location_constants.dart';
 import '../../../widgets/cached_tile_provider.dart';
@@ -358,6 +357,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   Widget _buildRouteSection() {
     // Combine pickups and deliveries for route display
     final allJobs = [..._pickupJobs, ..._deliveryJobs];
+    final totalCompleted = _completedPickupJobs.length + _completedDeliveryJobs.length;
     
     // Show max 3 jobs in preview
     final displayJobs = allJobs.take(3).toList();
@@ -369,28 +369,66 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.route_outlined, color: AppTheme.accentBlue, size: 20),
-              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.route_outlined, color: AppTheme.accentBlue, size: 18),
+              ),
+              const SizedBox(width: 10),
               Text('Today\'s Route', style: AppTheme.lightTheme.textTheme.titleMedium),
+              const SizedBox(width: 8),
+              if (allJobs.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${allJobs.length} active',
+                    style: const TextStyle(
+                      color: AppTheme.primaryBlue,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               const Spacer(),
               TextButton(
                 onPressed: () => widget.onSelectTab?.call(1),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 child: const Row(
                   children: [
-                    Text('View Map', style: TextStyle(color: AppTheme.accentBlue)),
-                    Icon(Icons.arrow_forward_ios, size: 12, color: AppTheme.accentBlue),
+                    Text(
+                      'View Map',
+                      style: TextStyle(
+                        color: AppTheme.accentBlue,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    SizedBox(width: 2),
+                    Icon(Icons.chevron_right, size: 16, color: AppTheme.accentBlue),
                   ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
+
           // Mini Map Preview (tap to view full map)
           InkWell(
             onTap: () => widget.onSelectTab?.call(1),
             borderRadius: BorderRadius.circular(16),
             child: Container(
-              height: 150,
+              height: 160,
               width: double.infinity,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
@@ -399,7 +437,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               clipBehavior: Clip.antiAlias,
               child: Stack(
                 children: [
-                  // Actual map with markers
+                  // Actual map with radius & markers
                   AbsorbPointer(
                     child: FlutterMap(
                       options: MapOptions(
@@ -415,37 +453,56 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                           userAgentPackageName: 'com.infinitywash.app',
                           tileProvider: CachedTileProvider(),
                         ),
+                        CircleLayer(
+                          circles: [
+                            CircleMarker(
+                              point: LocationConstants.shopLocation,
+                              radius: LocationConstants.deliveryRadiusMeters,
+                              useRadiusInMeter: true,
+                              color: AppTheme.accentBlue.withValues(alpha: 0.08),
+                              borderColor: AppTheme.accentBlue.withValues(alpha: 0.25),
+                              borderStrokeWidth: 1.5,
+                            ),
+                          ],
+                        ),
                         if (_buildMiniMapMarkers().isNotEmpty)
                           MarkerLayer(markers: _buildMiniMapMarkers()),
                       ],
                     ),
                   ),
+
                   // Tap hint overlay
                   Positioned(
-                    bottom: 12,
+                    bottom: 10,
                     left: 0,
                     right: 0,
                     child: Center(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.7)),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              blurRadius: 4,
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.touch_app_outlined, size: 14, color: AppTheme.accentBlue),
-                            SizedBox(width: 4),
+                            Icon(Icons.explore_outlined, size: 14, color: AppTheme.primaryBlue),
+                            SizedBox(width: 5),
                             Text(
                               'Tap to explore route map',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.accentBlue),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textDark,
+                              ),
                             ),
                           ],
                         ),
@@ -456,25 +513,69 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 24),
-          if (displayJobs.isEmpty)
+          const SizedBox(height: 20),
+
+          // Route Stops or Empty / Completed State
+          if (displayJobs.isEmpty) ...[
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
+              padding: const EdgeInsets.symmetric(vertical: 16),
               child: Column(
                 children: [
-                  Icon(Icons.inbox_outlined, size: 48, color: AppTheme.textLight.withValues(alpha: 0.5)),
-                  const SizedBox(height: 12),
-                  Text(
-                    'No orders for today',
-                    style: TextStyle(
-                      color: AppTheme.textLight.withValues(alpha: 0.7),
-                      fontSize: 14,
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: totalCompleted > 0
+                          ? Colors.green.withValues(alpha: 0.1)
+                          : AppTheme.primaryBlue.withValues(alpha: 0.08),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      totalCompleted > 0 ? Icons.check_circle_outline : Icons.route_outlined,
+                      size: 34,
+                      color: totalCompleted > 0 ? Colors.green : AppTheme.primaryBlue,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  Text(
+                    totalCompleted > 0
+                        ? 'All Route Stops Completed!'
+                        : 'No Orders for Today',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    totalCompleted > 0
+                        ? 'You have completed all $totalCompleted ${totalCompleted == 1 ? 'order' : 'orders'} today.'
+                        : 'New orders dispatched by the shop will appear here.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textLight,
+                      height: 1.3,
+                    ),
+                  ),
+                  if (totalCompleted > 0) ...[
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: () => widget.onSelectTab?.call(1),
+                      icon: const Icon(Icons.history, size: 15),
+                      label: const Text('View Completed in Route'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primaryBlue,
+                        side: const BorderSide(color: AppTheme.borderGray),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      ),
+                    ),
+                  ],
                 ],
               ),
-            )
-          else
+            ),
+          ] else ...[
             ...displayJobs.asMap().entries.map((entry) {
               final index = entry.key;
               final job = entry.value;
@@ -484,14 +585,15 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                 index,
                 '${index + 1}',
                 job.customerName ?? 'Unknown Customer',
-                job.address ?? 'No address',
-                isPickup ? 'Pickup' : 'Drop-off',
+                job.address ?? 'No address provided',
+                isPickup ? 'PICKUP' : 'DELIVERY',
                 _formatTime(job.createdAt),
                 isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
                 job,
                 isPickup,
               );
             }),
+          ],
         ],
       ),
     );
@@ -516,48 +618,96 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     DispatchJob job,
     bool isPickup,
   ) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => RiderJobDetailsScreen(job: job),
-            ),
-          ).then((_) => _loadOrders()); // Refresh after viewing details
-        },
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-          child: Row(
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: const BoxDecoration(color: AppTheme.accentBlue, shape: BoxShape.circle),
-                child: Center(child: Text(number, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.7)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => RiderJobDetailsScreen(job: job),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                    const SizedBox(height: 2),
-                    Text(address, style: TextStyle(color: AppTheme.textLight, fontSize: 11), overflow: TextOverflow.ellipsis),
-                  ],
+            ).then((_) => _loadOrders());
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: typeColor.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      number,
+                      style: TextStyle(
+                        color: typeColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                child: Text(type, style: TextStyle(color: typeColor, fontSize: 10, fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(width: 12),
-              Text(time, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.textLight)),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: AppTheme.textDark,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: typeColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              type,
+                              style: TextStyle(
+                                color: typeColor,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        address,
+                        style: const TextStyle(color: AppTheme.textLight, fontSize: 11),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.chevron_right, size: 16, color: AppTheme.textLight),
+              ],
+            ),
           ),
         ),
       ),
@@ -636,12 +786,26 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     final markers = <Marker>[];
     final allJobs = [..._pickupJobs, ..._deliveryJobs];
 
-    // Always show shop marker
+    // Shop hub marker (consistent with Route tab)
     markers.add(Marker(
       point: LocationConstants.shopLocation,
-      width: 30,
-      height: 30,
-      child: const Icon(Icons.store, color: AppTheme.accentBlue, size: 30),
+      width: 32,
+      height: 32,
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.primaryBlue,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: const Icon(Icons.local_laundry_service, color: Colors.white, size: 16),
+      ),
     ));
 
     // If no jobs, return just the shop marker
@@ -662,30 +826,31 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
       markers.add(Marker(
         point: LatLng(job.latitude!, job.longitude!),
-        width: 30,
-        height: 30,
-        child: Stack(
-          children: [
-            Icon(
-              Icons.location_on,
-              color: markerColor,
-              size: 30,
-            ),
-            Positioned(
-              top: 6,
-              left: 0,
-              right: 0,
-              child: Text(
-                '${i + 1}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
+        width: 26,
+        height: 26,
+        child: Container(
+          decoration: BoxDecoration(
+            color: markerColor,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: markerColor.withValues(alpha: 0.35),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              '${i + 1}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
               ),
             ),
-          ],
+          ),
         ),
       ));
     }
