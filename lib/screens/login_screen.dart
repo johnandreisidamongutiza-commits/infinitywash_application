@@ -4,7 +4,6 @@ import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/auth_service.dart';
 import '../models/saved_account.dart';
-import '../config/location_constants.dart';
 import 'staff/staff_main_screen.dart';
 import 'customer/customer_main_screen.dart';
 import 'rider/rider_main_screen.dart';
@@ -223,65 +222,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _showContactSupportDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: const [
-            Icon(Icons.headset_mic_outlined, color: AppTheme.errorRed),
-            SizedBox(width: 12),
-            Text('Contact Support'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'We\'re here to help with your account, bookings, or deliveries.',
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Icon(Icons.phone_outlined,
-                    size: 20, color: AppTheme.accentBlue),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    LocationConstants.shopPhone,
-                    style: AppTheme.lightTheme.textTheme.bodyLarge,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.location_on_outlined,
-                    size: 20, color: AppTheme.accentBlue),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    LocationConstants.shopAddress,
-                    style: AppTheme.lightTheme.textTheme.bodyMedium,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close',
-                style: TextStyle(color: AppTheme.accentBlue)),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -502,36 +442,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: const Text(
                     'Register',
                     style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Help footer.
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.headset_mic_outlined,
-                    color: AppTheme.errorRed, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Need help? ',
-                  style: AppTheme.lightTheme.textTheme.bodyMedium,
-                ),
-                TextButton(
-                  onPressed: _showContactSupportDialog,
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    minimumSize: const Size(0, 0),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(
-                    'Contact support.',
-                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.accentBlue,
-                      fontWeight: FontWeight.bold,
-                    ),
                   ),
                 ),
               ],

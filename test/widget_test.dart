@@ -38,18 +38,5 @@ void main() {
     expect(find.text('Remember me'), findsOneWidget);
     expect(find.text('Forgot password?'), findsOneWidget);
     expect(find.text('Register'), findsOneWidget);
-
-    // Help footer moved here from the removed role-selection screen.
-    expect(find.text('Need help? '), findsOneWidget);
-    expect(find.text('Contact support.'), findsOneWidget);
-
-    // Opening the support dialog shows the shop contact details.
-    // The footer sits below the fold, so bring it into view first.
-    await tester.ensureVisible(find.text('Contact support.'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Contact support.'));
-    await tester.pumpAndSettle();
-    expect(find.text('Contact Support'), findsOneWidget);
-    expect(find.byIcon(Icons.phone_outlined), findsOneWidget);
   });
 }
