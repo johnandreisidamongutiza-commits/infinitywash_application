@@ -875,4 +875,168 @@ class RiderService {
     return _adapter.getCompletionTime(orderId);
   }
 
+  // =========================================================================
+  // RIDER PAYMENT METHODS
+  // =========================================================================
+
+  /// Get current rider's employee ID (from profiles -> employees)
+  Future<String?> getCurrentRiderEmployeeId() async {
+    try {
+      final currentUser = _supabaseClient.auth.currentUser;
+      if (currentUser == null) return null;
+
+      final profile = await _supabaseClient
+          .from('profiles')
+          .select('id')
+          .eq('supabase_user_id', currentUser.id)
+          .maybeSingle();
+
+      if (profile != null) {
+        final employee = await _supabaseClient
+            .from('employees')
+            .select('id')
+            .eq('profile_id', profile['id'])
+            .maybeSingle();
+
+        if (employee != null) {
+          return employee['id'] as String;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Error getting rider employee ID: $e');
+      return null;
+    }
+  }
+
+  /// Fetch order payment status and total amount for a given orderId
+  Future<Map<String, dynamic>?> getOrderPaymentInfo(String orderId) async {
+    try {
+      final row = await _supabaseClient
+          .from('orders')
+          .select('id, order_number, payment_status, total_amount, subtotal, delivery_fee')
+          .eq('id', orderId)
+          .maybeSingle();
+      return row;
+    } catch (e) {
+      print('❌ Error fetching order payment info: $e');
+      return null;
+    }
+  }
+
+  /// Fetch single order by ID as LaundryOrder
+  Future<LaundryOrder?> fetchOrderById(String orderId) async {
+    try {
+      final response = await _supabaseClient
+          .from('orders')
+          .select('''
+            id,
+            order_number,
+            customer_id,
+            source,
+            service_id,
+            service_name,
+            weight_kg,
+            loads_count,
+            customer_notes,
+            staff_notes,
+            assigned_staff_id,
+            assigned_rider_id,
+            pickup_requested,
+            delivery_requested,
+            pickup_address,
+            delivery_address,
+            landmark,
+            subtotal,
+            delivery_fee,
+            total_amount,
+            payment_status,
+            status,
+            received_at,
+            processing_at,
+            ready_at,
+            out_for_delivery_at,
+            completed_at,
+            created_at,
+            updated_at,
+            laundry_photo_urls,
+            customer_description,
+            estimated_loads,
+            rejection_reason,
+            reviewed_at,
+            reviewed_by,
+            expires_at,
+            order_loads(*),
+            customers(first_name, last_name, customer_code, phone, address, landmark)
+          ''')
+          .eq('id', orderId)
+          .maybeSingle();
+
+      if (response == null) return null;
+      final parsed = _parseOrdersFromResponse([response]);
+      return parsed.isNotEmpty ? parsed.first : null;
+    } catch (e) {
+      print('❌ Error fetching order by ID: $e');
+      return null;
+    }
+  }
+
+  /// Fetch orders for Rider Payment tab (both Unpaid and Paid)
+  Future<List<LaundryOrder>> fetchRiderPaymentOrders({int limit = 100}) async {
+    try {
+      print('💳 Fetching rider payment orders...');
+      final response = await _supabaseClient
+          .from('orders')
+          .select('''
+            id,
+            order_number,
+            customer_id,
+            source,
+            service_id,
+            service_name,
+            weight_kg,
+            loads_count,
+            customer_notes,
+            staff_notes,
+            assigned_staff_id,
+            assigned_rider_id,
+            pickup_requested,
+            delivery_requested,
+            pickup_address,
+            delivery_address,
+            landmark,
+            subtotal,
+            delivery_fee,
+            total_amount,
+            payment_status,
+            status,
+            received_at,
+            processing_at,
+            ready_at,
+            out_for_delivery_at,
+            completed_at,
+            created_at,
+            updated_at,
+            laundry_photo_urls,
+            customer_description,
+            estimated_loads,
+            rejection_reason,
+            reviewed_at,
+            reviewed_by,
+            expires_at,
+            order_loads(*),
+            customers(first_name, last_name, customer_code, phone, address, landmark)
+          ''')
+          .or('delivery_requested.eq.true,pickup_requested.eq.true')
+          .not('status', 'in', '("cancelled","rejected")')
+          .order('created_at', ascending: false)
+          .limit(limit);
+
+      print('💳 Fetched ${response.length} rider payment orders');
+      return _parseOrdersFromResponse(response);
+    } catch (e) {
+      print('❌ Error fetching rider payment orders: $e');
+      rethrow;
+    }
+  }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import 'home/rider_home_screen.dart';
 import 'route/rider_route_screen_new.dart';
+import 'payments/rider_payment_screen.dart';
 import 'chats/rider_chats_screen.dart';
 import 'profile/rider_profile_screen.dart';
 
@@ -16,6 +17,7 @@ class RiderMainScreen extends StatefulWidget {
 
 class _RiderMainScreenState extends State<RiderMainScreen> {
   late int _currentIndex;
+  final GlobalKey<RiderPaymentScreenState> _paymentScreenKey = GlobalKey<RiderPaymentScreenState>();
 
   @override
   void initState() {
@@ -30,10 +32,19 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
         index: _currentIndex,
         children: [
           RiderHomeScreen(
-            onSelectTab: (index) => setState(() => _currentIndex = index),
+            onSelectTab: (index) {
+              setState(() => _currentIndex = index);
+              if (index == 2) {
+                _paymentScreenKey.currentState?.refreshOrders();
+              }
+            },
           ),
           RiderRouteScreenNew(
             onBackToHome: () => setState(() => _currentIndex = 0),
+          ),
+          RiderPaymentScreen(
+            key: _paymentScreenKey,
+            isActive: _currentIndex == 2,
           ),
           const RiderChatsScreen(),
           const RiderProfileScreen(),
@@ -52,9 +63,13 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
+            final prevIndex = _currentIndex;
             setState(() {
               _currentIndex = index;
             });
+            if (index == 2 && prevIndex != 2) {
+              _paymentScreenKey.currentState?.refreshOrders();
+            }
           },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
@@ -72,6 +87,11 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
               icon: Icon(Icons.route_outlined),
               activeIcon: Icon(Icons.route),
               label: 'Route',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.payments_outlined),
+              activeIcon: Icon(Icons.payments),
+              label: 'Payment',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.chat_bubble_outline),

@@ -12,6 +12,7 @@ import '../../../state/gps_provider.dart';
 import '../../../state/rider_location_provider.dart';
 import '../../../widgets/map_loading_overlay.dart';
 import '../../../widgets/cached_tile_provider.dart';
+import '../payments/rider_payment_process_screen.dart';
 
 /// Active job tracking screen with real-time location updates
 class RiderJobTrackingScreen extends StatefulWidget {
@@ -198,6 +199,110 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
 
     if (confirmed != true) return;
 
+    bool isOrderPaid = false;
+
+    // Check payment status before closing the job
+    try {
+      final paymentInfo = await _riderService.getOrderPaymentInfo(widget.job.orderId);
+      final paymentStatus = paymentInfo?['payment_status'] as String? ?? 'pending';
+      isOrderPaid = (paymentStatus == 'paid');
+
+      if (!isOrderPaid && mounted) {
+        final double totalAmount = (paymentInfo?['total_amount'] as num?)?.toDouble() ??
+            (paymentInfo?['subtotal'] as num?)?.toDouble() ??
+            170.0;
+
+        final shouldPay = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.payments_outlined, color: AppTheme.accentBlue),
+                SizedBox(width: 8),
+                Text('Payment Due'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This order has an unpaid balance of ₱${totalAmount.toStringAsFixed(2)}.',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Would you like to collect payment now via Cash or GCash?',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Skip / Pay Later', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentBlue,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Collect Payment', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldPay == true && mounted) {
+          final order = await _riderService.fetchOrderById(widget.job.orderId);
+          if (!mounted) return;
+
+          final paid = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RiderPaymentProcessScreen(
+                order: order,
+                orderId: widget.job.orderId,
+                customerName: widget.job.customerName,
+                address: widget.job.address,
+                amount: totalAmount,
+                jobType: widget.job.jobType,
+              ),
+            ),
+          );
+
+          if (!mounted) return;
+          if (paid == true) {
+            isOrderPaid = true;
+          } else {
+            final continueAnyway = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Payment Skipped'),
+                content: const Text('Payment was not recorded. Mark the job as complete anyway?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Go Back'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Complete Anyway'),
+                  ),
+                ],
+              ),
+            );
+
+            if (continueAnyway != true) return;
+          }
+        }
+      }
+    } catch (e) {
+      print('⚠️ Non-critical error checking payment status: $e');
+    }
+
     setState(() => _isCompleting = true);
 
     try {
@@ -211,9 +316,27 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Job completed!'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(
+                  isOrderPaid ? Icons.check_circle : Icons.info_outline,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    isOrderPaid
+                        ? 'Job completed & payment recorded!'
+                        : 'Job completed! Payment pending — collect anytime in the Payment tab.',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: isOrderPaid ? Colors.green : Colors.blueGrey.shade800,
+            duration: const Duration(seconds: 4),
           ),
         );
         Navigator.of(context).popUntil((route) => route.isFirst);

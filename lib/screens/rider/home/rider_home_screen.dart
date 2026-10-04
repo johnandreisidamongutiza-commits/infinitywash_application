@@ -374,7 +374,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               Text('Today\'s Route', style: AppTheme.lightTheme.textTheme.titleMedium),
               const Spacer(),
               TextButton(
-                onPressed: () => widget.onSelectTab?.call(2),
+                onPressed: () => widget.onSelectTab?.call(1),
                 child: const Row(
                   children: [
                     Text('View Map', style: TextStyle(color: AppTheme.accentBlue)),
