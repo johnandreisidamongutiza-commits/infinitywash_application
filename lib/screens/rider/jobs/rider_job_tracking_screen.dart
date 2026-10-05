@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../models/dispatch_job.dart';
 import '../../../services/rider_service.dart';
 import '../../../services/supabase_service.dart';
@@ -345,7 +346,7 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
+            content: Text(mapErrorToMessage(e)),
             backgroundColor: AppTheme.errorRed,
           ),
         );

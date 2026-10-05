@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../services/loyalty_service.dart';
 
 class RfidCheckerScreen extends StatefulWidget {
@@ -68,7 +69,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
       if (!mounted) return;
       setState(() {
         _isSearching = false;
-        _error = 'Failed to look up card: $e';
+        _error = mapErrorToMessage(e);
       });
     }
   }
@@ -192,7 +193,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Registration failed: $e'),
+          content: Text('Registration failed. ${mapErrorToMessage(e)}'),
           backgroundColor: Colors.red,
         ),
       );

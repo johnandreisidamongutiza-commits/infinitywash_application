@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/location_constants.dart';
+import '../utils/app_error.dart';
+import 'connectivity_service.dart';
 
 /// Represents an address search match returned by Nominatim / OpenStreetMap.
 class GeocodingResult {
@@ -47,6 +50,10 @@ class GeocodingService {
   /// Search for places matching [query].
   /// When [boundedToServiceArea] is true, results are strictly scoped to the
   /// Infinity Wash operational region in Laguna.
+  ///
+  /// Returns an empty list when there are no matches. Throws a friendly
+  /// [AppError] when offline or when the service is unreachable so callers
+  /// can tell "no results" apart from "no internet".
   Future<List<GeocodingResult>> search(
     String query, {
     bool boundedToServiceArea = true,
@@ -92,9 +99,38 @@ class GeocodingService {
             .where((r) => r.latitude != 0.0 && r.longitude != 0.0)
             .toList();
       }
-      return [];
-    } catch (_) {
-      return [];
+      if (response.statusCode == 429) {
+        throw const AppError(
+          'The address service is busy right now. Please try again in a moment.',
+          type: AppErrorType.server,
+        );
+      }
+      throw AppError(
+        'The address service could not complete your search. Please try again.',
+        type: AppErrorType.server,
+        originalError: 'Nominatim HTTP ${response.statusCode}',
+      );
+    } on AppError {
+      rethrow;
+    } on TimeoutException {
+      throw const AppError(
+        'Searching for that address took too long. Check your connection and try again.',
+        type: AppErrorType.timeout,
+      );
+    } catch (e) {
+      // Offline / DNS failures → clear network message; JSON parse errors → generic.
+      if (!ConnectivityService.instance.isOnline) {
+        throw const AppError(
+          'No internet connection. Please check your connection and try again.',
+          type: AppErrorType.network,
+        );
+      }
+      throw AppError(
+        'The address search failed. Please try a different search term.',
+        type: AppErrorType.unknown,
+        originalError: e,
+        stackTrace: StackTrace.current,
+      );
     }
   }
 
@@ -168,6 +204,8 @@ class GeocodingService {
       }
       return null;
     } catch (_) {
+      // Reverse geocoding is best-effort (used for labels); return null and
+      // let callers show the raw coordinates instead of an error.
       return null;
     }
   }

@@ -152,7 +152,7 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not get the receipt photo: $e'),
+          content: Text('Could not take the receipt photo. Please try again.'),
           backgroundColor: Colors.red,
         ),
       );

@@ -2,6 +2,7 @@ import 'package:meta/meta.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
 import '../models/dispatch_job.dart';
+import '../utils/app_error.dart';
 import '../config/cache_config.dart';
 import 'cache/job_cache_service.dart';
 import 'supabase_service.dart';
@@ -557,8 +558,9 @@ class RiderService {
       // Resolve the real employee ID (dispatch_jobs.rider_id -> employees.id).
       final riderEmployeeId = await getCurrentRiderEmployeeId();
       if (riderEmployeeId == null) {
-        throw Exception(
-          'No employee record found for your account. Ask an admin to link your rider profile.',
+        throw const AppError(
+          'No employee record was found for your account. Ask an admin to link your rider profile.',
+          type: AppErrorType.notFound,
         );
       }
 
@@ -572,7 +574,10 @@ class RiderService {
         if (currentRiderId != null && currentRiderId != riderEmployeeId) {
           throw JobClaimedException();
         }
-        throw Exception('This job is no longer available (status: $status).');
+        throw AppError(
+          'This job is no longer available. Refresh your job list to see the latest jobs.',
+          type: AppErrorType.notFound,
+        );
       }
 
       // Atomic claim: the WHERE clause only matches if the job is still
@@ -610,9 +615,11 @@ class RiderService {
       print('✅ Job started: $jobId (type: $jobType, order: $orderId)');
     } on JobClaimedException {
       rethrow;
+    } on AppError {
+      rethrow;
     } catch (e) {
       print('❌ Error starting job: $e');
-      rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -676,9 +683,11 @@ class RiderService {
       print('   Final status: ${verifyResponse['status']}');
       print('   Final rider_id: ${verifyResponse['rider_id']}');
       print('   Completed at: ${verifyResponse['completed_at']}');
+    } on AppError {
+      rethrow;
     } catch (e) {
       print('❌ Error completing pickup: $e');
-      rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -709,9 +718,11 @@ class RiderService {
       print('   Final status: ${verifyResponse['status']}');
       print('   Final rider_id: ${verifyResponse['rider_id']}');
       print('   Completed at: ${verifyResponse['completed_at']}');
+    } on AppError {
+      rethrow;
     } catch (e) {
       print('❌ Error completing delivery: $e');
-      rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 

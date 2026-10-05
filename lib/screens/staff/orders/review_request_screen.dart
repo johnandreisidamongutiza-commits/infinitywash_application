@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
 import '../../../services/supabase_service.dart';
@@ -270,7 +271,7 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
         if (mounted) {
           setState(() => _isProcessing = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to accept request: $e'), backgroundColor: Colors.red),
+            SnackBar(content: Text(mapErrorToMessage(e)), backgroundColor: Colors.red),
           );
         }
       }
@@ -375,7 +376,7 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
         if (mounted) {
           setState(() => _isProcessing = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to decline request: $e'), backgroundColor: Colors.red),
+            SnackBar(content: Text(mapErrorToMessage(e)), backgroundColor: Colors.red),
           );
         }
       }

@@ -104,6 +104,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     } catch (e) {
       print('Auto-login error: $e');
+      // A saved-session failure (offline, expired token) must never crash the
+      // splash — fall through to the login screen where the user gets a
+      // clear, mapped message when they try to sign in.
       _navigateToLogin();
     }
   }

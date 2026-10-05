@@ -11,7 +11,7 @@ class NotificationService {
   static const String _notificationsCollection = 'announcements'; // Changed to match your Firebase collection
   static const String _notificationReadsCollection = 'notification_reads';
 
-  // Get current user's role
+  // Get current user's role (null on failure — callers return empty lists)
   Future<String?> _getCurrentUserRole() async {
     try {
       final profile = await _profileService.getProfile();
@@ -123,6 +123,11 @@ class NotificationService {
       }
 
       return filteredNotifications;
+    } on FirebaseException catch (e) {
+      // Firestore failures degrade to an empty list; screens show their own
+      // error/empty state when nothing could be loaded.
+      print('❌ Firestore error fetching notifications: ${e.code} ${e.message}');
+      return [];
     } catch (e) {
       print('❌ Error fetching notifications: $e');
       return [];
@@ -183,6 +188,11 @@ class NotificationService {
         'notification_id': notificationId,
         'read_at': FieldValue.serverTimestamp(),
       });
+    } on FirebaseException catch (e) {
+      print('Error marking notification as read: ${e.code}');
+      throw Exception(
+        'Could not mark that notification as read. Check your connection and try again.',
+      );
     } catch (e) {
       print('Error marking notification as read: $e');
       rethrow;
@@ -210,6 +220,11 @@ class NotificationService {
       }
 
       await batch.commit();
+    } on FirebaseException catch (e) {
+      print('Error marking all notifications as read: ${e.code}');
+      throw Exception(
+        'Could not mark all notifications as read. Check your connection and try again.',
+      );
     } catch (e) {
       print('Error marking all notifications as read: $e');
       rethrow;

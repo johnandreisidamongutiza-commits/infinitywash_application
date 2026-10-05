@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_error.dart';
+import '../utils/validators.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/password_reset_service.dart';
 
@@ -150,9 +152,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
     
     // Basic email validation
-    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(_emailController.text.trim())) {
-      _showError('Please enter a valid email address');
+    final emailError = Validators.email(_emailController.text.trim());
+    if (emailError != null) {
+      _showError(emailError);
       return;
     }
     
@@ -179,7 +181,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        _showError(e.toString().replaceAll('Exception: ', ''));
+        _showError(mapErrorToMessage(e));
       }
     }
   }
@@ -293,7 +295,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        _showError(e.toString().replaceAll('Exception: ', ''));
+        _showError(mapErrorToMessage(e));
       }
     }
   }
@@ -319,7 +321,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        _showError(e.toString().replaceAll('Exception: ', ''));
+        _showError(mapErrorToMessage(e));
       }
     }
   }
@@ -448,7 +450,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        _showError(e.toString().replaceAll('Exception: ', ''));
+        _showError(mapErrorToMessage(e));
       }
     }
   }

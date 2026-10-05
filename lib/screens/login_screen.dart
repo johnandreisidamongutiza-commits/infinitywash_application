@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_error.dart';
+import '../utils/validators.dart';
+import '../services/connectivity_service.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/auth_service.dart';
 import '../models/saved_account.dart';
@@ -109,8 +111,23 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
-    if (email.isEmpty || password.isEmpty) {
-      _showMessage('Enter your email and password.');
+    // Client-side validation with friendly messages before hitting the API.
+    final emailError = Validators.email(email);
+    if (emailError != null) {
+      _showMessage(emailError);
+      return;
+    }
+    final passwordError = Validators.passwordRequired(password);
+    if (passwordError != null) {
+      _showMessage(passwordError);
+      return;
+    }
+
+    // Fail fast when offline — a clear message beats a confusing timeout.
+    if (!await ConnectivityService.instance.checkNow()) {
+      _showMessage(
+        'No internet connection. Please check your connection and try again.',
+      );
       return;
     }
 
@@ -167,19 +184,10 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (error) {
       if (mounted) {
-        String message;
-        final errorStr = error.toString();
-
-        // Check if it's a deactivation error with reason
-        if (errorStr.contains('ACCOUNT_DEACTIVATED:')) {
-          final reason = errorStr.split('ACCOUNT_DEACTIVATED:').last.trim();
-          message = 'Your account has been deactivated.\n\nReason: $reason';
-        } else if (error is AuthApiException && error.code == 'email_not_confirmed') {
-          message = 'Email not confirmed. Check your inbox or confirm this user in Supabase Authentication.';
-        } else {
-          message = 'Login failed: ${error.toString()}';
-        }
-
+        // mapErrorToMessage turns auth errors (wrong password, unconfirmed
+        // email, deactivated account with reason) and network failures into
+        // friendly text — never a raw exception dump.
+        final message = mapErrorToMessage(error);
         _showMessage(message);
       }
     } finally {

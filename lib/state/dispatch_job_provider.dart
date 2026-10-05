@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/dispatch_job.dart';
+import '../utils/app_error.dart';
 import '../services/supabase_service.dart';
 
 /// Provider for managing dispatch jobs state
@@ -66,7 +67,7 @@ class DispatchJobProvider with ChangeNotifier {
         _allJobs = [];
         _activeJob = null;
       } else {
-        _errorMessage = 'Failed to load jobs: ${e.toString()}';
+        _errorMessage = mapErrorToMessage(e);
       }
     } finally {
       _isLoading = false;
@@ -87,7 +88,7 @@ class DispatchJobProvider with ChangeNotifier {
         _allJobs = [job];
       }
     } catch (e) {
-      _errorMessage = 'Failed to load delivery info: ${e.toString()}';
+      _errorMessage = mapErrorToMessage(e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -109,7 +110,7 @@ class DispatchJobProvider with ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      _errorMessage = 'Failed to update job: ${e.toString()}';
+      _errorMessage = mapErrorToMessage(e);
       notifyListeners();
     }
   }

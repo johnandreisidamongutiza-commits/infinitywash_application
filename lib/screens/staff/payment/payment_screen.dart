@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
 import 'payment_process_screen.dart';
@@ -54,7 +55,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error loading payments: ${e.toString()}'),
+          content: Text(mapErrorToMessage(e)),
           backgroundColor: Colors.red,
         ),
       );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../models/notification_model.dart';
 import '../../../services/notification_service.dart';
 
@@ -39,7 +40,7 @@ class _RiderNotificationsScreenState extends State<RiderNotificationsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to load notifications';
+          _errorMessage = mapErrorToMessage(e);
           _isLoading = false;
         });
       }
@@ -66,7 +67,7 @@ class _RiderNotificationsScreenState extends State<RiderNotificationsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to mark all as read: $e')),
+          SnackBar(content: Text(mapErrorToMessage(e))),
         );
       }
     }

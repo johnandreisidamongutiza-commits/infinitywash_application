@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../utils/app_error.dart';
 import 'supabase_service.dart';
 import 'secure_storage_service.dart';
 import 'saved_accounts_db.dart';
@@ -225,7 +226,10 @@ class AuthService {
 
       if (profile == null) {
         print('❌ Profile not found for user: $userId');
-        throw Exception('Profile not found. Please contact support.');
+        throw AppError(
+          'We could not find your account profile. Please contact support.',
+          type: AppErrorType.auth,
+        );
       }
 
       final status = (profile['status'] as String?)?.toLowerCase() ?? '';
@@ -269,9 +273,9 @@ class AuthService {
       if (e.toString().contains('ACCOUNT_DEACTIVATED:')) {
         rethrow;
       }
-      // Otherwise wrap it
+      // Otherwise map network/offline failures to a friendly message.
       print('❌ Error validating account status: $e');
-      throw Exception('Failed to validate account status. Please try again.');
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -310,7 +314,10 @@ class AuthService {
 
       return response;
     } catch (e) {
-      rethrow;
+      // Map Supabase auth errors (bad credentials, unconfirmed email,
+      // rate limits) and network failures to friendly, typed errors.
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -486,7 +493,8 @@ class AuthService {
     try {
       await _auth.signOut();
     } catch (e) {
-      rethrow;
+      // Signing out locally should never hard-fail the UI; log and continue.
+      print('⚠️ Sign out error (continuing): $e');
     }
   }
 
@@ -500,7 +508,7 @@ class AuthService {
     try {
       await _auth.resetPasswordForEmail(email);
     } catch (e) {
-      rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
   
@@ -516,7 +524,7 @@ class AuthService {
       );
       return response;
     } catch (e) {
-      rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -528,7 +536,7 @@ class AuthService {
       );
       return response;
     } catch (e) {
-      rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 

@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/app_error.dart';
 import 'order_service.dart';
 
 /// GCash configuration managed from the admin website, stored in the
@@ -131,24 +133,44 @@ class PaymentService {
   }
 
   /// Upload a receipt image to the 'payment-receipts' bucket and
-  /// return its public URL.
+  /// return its public URL. Throws a friendly [AppError] on failure.
   Future<String> uploadReceipt({
     required String orderId,
     required File receiptFile,
   }) async {
-    final bytes = await receiptFile.readAsBytes();
+    Uint8List bytes;
+    try {
+      bytes = await receiptFile.readAsBytes();
+    } catch (_) {
+      throw const AppError(
+        'The receipt photo could not be read. Please retake the photo and try again.',
+        type: AppErrorType.storage,
+      );
+    }
+
     final isPng = receiptFile.path.toLowerCase().endsWith('.png');
     final path =
         '$orderId/${DateTime.now().millisecondsSinceEpoch}.${isPng ? 'png' : 'jpg'}';
 
-    await _client.storage.from(_receiptBucket).uploadBinary(
-          path,
-          bytes,
-          fileOptions: FileOptions(
-            contentType: isPng ? 'image/png' : 'image/jpeg',
-            upsert: false,
-          ),
-        );
+    try {
+      await _client.storage.from(_receiptBucket).uploadBinary(
+            path,
+            bytes,
+            fileOptions: FileOptions(
+              contentType: isPng ? 'image/png' : 'image/jpeg',
+              upsert: false,
+            ),
+          );
+    } on StorageException catch (e) {
+      throw mapError(e, stackTrace: StackTrace.current);
+    } catch (e) {
+      throw AppError(
+        'The receipt could not be uploaded. Please check your connection and try again.',
+        type: AppErrorType.storage,
+        originalError: e,
+        stackTrace: StackTrace.current,
+      );
+    }
 
     final publicUrl = _client.storage.from(_receiptBucket).getPublicUrl(path);
     print('✅ Receipt uploaded: $path');

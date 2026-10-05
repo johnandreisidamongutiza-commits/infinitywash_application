@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../../widgets/custom_text_field.dart';
 import '../../../../services/auth_service.dart';
 import '../../../../theme/app_theme.dart';
+import '../../../../utils/app_error.dart';
+import '../../../../utils/validators.dart';
 
 class CustomerChangePasswordScreen extends StatefulWidget {
   const CustomerChangePasswordScreen({super.key});
@@ -34,8 +36,9 @@ class _CustomerChangePasswordScreenState extends State<CustomerChangePasswordScr
       return;
     }
 
-    if (_newPasswordController.text.length < 6) {
-      _showMessage('Password must be at least 6 characters', isError: true);
+    final passwordError = Validators.newPassword(_newPasswordController.text);
+    if (passwordError != null) {
+      _showMessage(passwordError, isError: true);
       return;
     }
 
@@ -44,7 +47,10 @@ class _CustomerChangePasswordScreenState extends State<CustomerChangePasswordScr
     try {
       final user = _authService.getCurrentUser();
       if (user == null || user.email == null) {
-        throw Exception('No user logged in');
+        throw const AppError(
+          'You are signed out. Please log in and try again.',
+          type: AppErrorType.auth,
+        );
       }
 
       // Re-authenticate with current password to verify it
@@ -70,11 +76,9 @@ class _CustomerChangePasswordScreenState extends State<CustomerChangePasswordScr
       });
     } catch (error) {
       if (!mounted) return;
-      String errorMessage = 'Failed to change password';
-      if (error.toString().contains('Invalid login credentials')) {
-        errorMessage = 'Current password is incorrect';
-      }
-      _showMessage(errorMessage, isError: true);
+      // mapErrorToMessage turns AuthApiException 'invalid_credentials' into
+      // 'Incorrect email or password' — the re-auth sign-in failure.
+      _showMessage(mapErrorToMessage(error), isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

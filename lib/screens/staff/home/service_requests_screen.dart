@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
 
@@ -42,7 +43,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString();
+          _errorMessage = mapErrorToMessage(e);
           _isLoading = false;
         });
       }
@@ -249,7 +250,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to decline request: $e'),
+          content: Text(mapErrorToMessage(e)),
           backgroundColor: AppTheme.errorRed,
         ),
       );
@@ -313,7 +314,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to accept request: $e'),
+          content: Text(mapErrorToMessage(e)),
           backgroundColor: AppTheme.errorRed,
         ),
       );

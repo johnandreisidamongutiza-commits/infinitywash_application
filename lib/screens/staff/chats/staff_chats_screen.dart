@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/empty_state_widget.dart';
 import '../../../models/staff_chat.dart';
 import '../../../services/chat_service.dart';
 import 'staff_chat_detail_screen.dart';
@@ -478,10 +479,11 @@ class _StaffChatsScreenState extends State<StaffChatsScreen> {
   }
 
   Widget _buildEmptyState() {
-    String message;
     if (_searchQuery.isNotEmpty) {
-      message = 'No conversations found for "$_searchQuery"';
-    } else if (_selectedFilterIndex == 1) {
+      return EmptyStateWidget.search(query: _searchQuery, what: 'conversations');
+    }
+    String message;
+    if (_selectedFilterIndex == 1) {
       message = 'No customer conversations yet';
     } else if (_selectedFilterIndex == 2) {
       message = 'No rider conversations yet';
@@ -489,32 +491,10 @@ class _StaffChatsScreenState extends State<StaffChatsScreen> {
       message = 'No conversations yet';
     }
 
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 60,
-            color: AppTheme.textLight.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: AppTheme.textDark,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Messages with customers and riders will appear here.',
-            style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+    return EmptyStateWidget(
+      icon: Icons.chat_bubble_outline,
+      title: message,
+      subtitle: 'Messages with customers and riders will appear here.',
     );
   }
 

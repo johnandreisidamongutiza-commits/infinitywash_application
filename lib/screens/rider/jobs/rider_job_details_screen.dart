@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../models/dispatch_job.dart';
 import '../../../services/rider_service.dart';
 import '../../../config/location_constants.dart';
@@ -101,7 +102,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error starting job: $e'),
+            content: Text(mapErrorToMessage(e)),
             backgroundColor: AppTheme.errorRed,
           ),
         );

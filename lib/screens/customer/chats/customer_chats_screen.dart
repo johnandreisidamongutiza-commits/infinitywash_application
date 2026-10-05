@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/empty_state_widget.dart';
 import 'customer_chat_detail_screen.dart';
 
 class CustomerChatsScreen extends StatefulWidget {
@@ -329,17 +330,14 @@ class _CustomerChatsScreenState extends State<CustomerChatsScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.chat_bubble_outline, size: 60, color: AppTheme.textLight.withValues(alpha: 0.3)),
-          const SizedBox(height: 16),
-          const Text('No conversations found', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textDark)),
-          const SizedBox(height: 6),
-          const Text('Your chats with riders and support will appear here.', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
-        ],
-      ),
+    // Searching with no matches → search-specific empty state naming the query.
+    if (_isSearching && _searchQuery.isNotEmpty) {
+      return EmptyStateWidget.search(query: _searchQuery, what: 'chats');
+    }
+    return const EmptyStateWidget(
+      icon: Icons.chat_bubble_outline,
+      title: 'No conversations found',
+      subtitle: 'Your chats with riders and support will appear here.',
     );
   }
 

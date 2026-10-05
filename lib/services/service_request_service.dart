@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
+import '../utils/app_error.dart';
 import '../services/supabase_service.dart';
 import '../services/customer_service.dart';
 import '../services/service_catalog_service.dart';
@@ -134,7 +135,8 @@ class ServiceRequestService {
       return orderId;
     } catch (e) {
       print('❌ Error submitting authenticated service request: $e');
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -229,7 +231,8 @@ class ServiceRequestService {
       return orderId;
     } catch (e) {
       print('❌ Error submitting service request: $e');
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -752,7 +755,8 @@ class ServiceRequestService {
       print('🔍 DEBUG: Dispatch job creation completed (or failed silently)');
     } catch (e) {
       print('❌ Error approving service request: $e');
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -791,7 +795,8 @@ class ServiceRequestService {
       print('✅ Service request $orderId rejected successfully');
     } catch (e) {
       print('❌ Error rejecting service request: $e');
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 

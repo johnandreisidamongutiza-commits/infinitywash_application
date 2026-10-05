@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../models/laundry_intake.dart';
 import '../../../models/order.dart';
+import '../../../utils/app_error.dart';
 import '../../../services/order_service.dart';
 import '../../../services/service_catalog_service.dart';
 import '../../../services/supabase_service.dart';
@@ -571,7 +572,7 @@ class _CheckInRequestScreenState extends State<CheckInRequestScreen> {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to check in: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text(mapErrorToMessage(e)), backgroundColor: Colors.red),
       );
     }
   }

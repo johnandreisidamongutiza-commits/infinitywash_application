@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
 
@@ -41,7 +42,7 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load rejected requests: $e'),
+            content: Text(mapErrorToMessage(e)),
             backgroundColor: Colors.red,
           ),
         );

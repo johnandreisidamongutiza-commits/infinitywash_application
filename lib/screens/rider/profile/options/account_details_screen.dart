@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../services/profile_service.dart';
 import '../../../../theme/app_theme.dart';
+import '../../../../utils/app_error.dart';
 import '../../../../widgets/custom_text_field.dart';
 
 class RiderAccountDetailsScreen extends StatefulWidget {
@@ -57,7 +58,7 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not load account details: $error')),
+        SnackBar(content: Text('Could not load account details. ${mapErrorToMessage(error)}')),
       );
     } finally {
       if (mounted) {
@@ -92,7 +93,7 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update account details: $error')),
+        SnackBar(content: Text(mapErrorToMessage(error))),
       );
     } finally {
       if (mounted) {

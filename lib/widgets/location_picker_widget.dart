@@ -6,6 +6,7 @@ import '../config/location_constants.dart';
 import '../services/geocoding_service.dart';
 import '../services/location_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_error.dart';
 
 /// Result object returned by [LocationPickerDialog.show].
 class LocationPickResult {
@@ -81,6 +82,10 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
   bool _isSearching = false;
   bool _showSuggestions = false;
 
+  /// Friendly message when the search itself failed (offline, timeout, etc.)
+  /// — distinct from an empty result list, which is not an error.
+  String? _searchError;
+
   @override
   void initState() {
     super.initState();
@@ -154,10 +159,17 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
     });
 
     _debounceTimer = Timer(const Duration(milliseconds: 450), () async {
-      final results = await GeocodingService().search(trimmed);
+      List<GeocodingResult> results = [];
+      String? searchError;
+      try {
+        results = await GeocodingService().search(trimmed);
+      } catch (e) {
+        searchError = mapErrorToMessage(e);
+      }
       if (!mounted) return;
       setState(() {
         _searchResults = results;
+        _searchError = searchError;
         _isSearching = false;
       });
     });
@@ -202,7 +214,7 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Could not access current location. Please check device permissions.'),
+            content: Text('Could not access your location. Please check that location services and permission are enabled for this app.'),
             backgroundColor: AppTheme.errorRed,
             duration: Duration(seconds: 3),
           ),
@@ -212,7 +224,7 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error getting location: $e'),
+            content: Text(mapErrorToMessage(e)),
             backgroundColor: AppTheme.errorRed,
           ),
         );
@@ -566,23 +578,39 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
                         color: Colors.white,
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxHeight: 220),
-                          child: _searchResults.isEmpty && !_isSearching
-                              ? const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          child: _searchError != null && _searchResults.isEmpty && !_isSearching
+                              ? Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                                   child: Row(
                                     children: [
-                                      Icon(Icons.location_off_outlined, size: 18, color: AppTheme.textLight),
-                                      SizedBox(width: 8),
+                                      const Icon(Icons.wifi_off, size: 18, color: AppTheme.errorRed),
+                                      const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
-                                          'No matching places found. Try a different keyword or tap the map directly.',
-                                          style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                                          _searchError!,
+                                          style: const TextStyle(fontSize: 12, color: AppTheme.textDark),
                                         ),
                                       ),
                                     ],
                                   ),
                                 )
-                              : ListView.separated(
+                              : _searchResults.isEmpty && !_isSearching
+                                  ? const Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.location_off_outlined, size: 18, color: AppTheme.textLight),
+                                          SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'No matching places found. Try a different keyword or tap the map directly.',
+                                              style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : ListView.separated(
                                   padding: const EdgeInsets.symmetric(vertical: 4),
                                   shrinkWrap: true,
                                   itemCount: _searchResults.length,

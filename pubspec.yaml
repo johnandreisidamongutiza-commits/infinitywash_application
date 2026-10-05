@@ -80,6 +80,7 @@ dependencies:
   # Legal document rendering (Terms of Service / Privacy Policy)
   flutter_markdown: ^0.7.7+1
   package_info_plus: ^9.0.1
+  connectivity_plus: ^7.3.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

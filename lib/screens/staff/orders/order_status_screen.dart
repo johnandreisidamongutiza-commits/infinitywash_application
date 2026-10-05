@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
 import 'check_in_request_screen.dart';
@@ -263,7 +264,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       setState(() => _isUpdating = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error completing order: $e'),
+          content: Text(mapErrorToMessage(e)),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
@@ -292,7 +293,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       setState(() => _isUpdating = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error marking order as ready: $e'),
+          content: Text(mapErrorToMessage(e)),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
@@ -388,7 +389,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       setState(() => _isUpdating = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error completing pickup: $e'),
+          content: Text(mapErrorToMessage(e)),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
@@ -483,7 +484,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       setState(() => _isUpdating = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error completing delivery: $e'),
+          content: Text(mapErrorToMessage(e)),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),

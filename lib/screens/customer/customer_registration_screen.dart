@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/app_error.dart';
+import '../../utils/validators.dart';
+import '../../services/connectivity_service.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/location_picker_widget.dart';
 import '../../widgets/address_input_widget.dart';
@@ -69,24 +72,44 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
       return;
     }
 
-    if (!_emailController.text.trim().contains('@')) {
-      _showMessage('Enter a valid email address.');
+    final emailError = Validators.email(_emailController.text.trim());
+    if (emailError != null) {
+      _showMessage(emailError);
       return;
     }
 
-    if (_passwordController.text.length < 6) {
-      _showMessage('Password must be at least 6 characters.');
+    final passwordError = Validators.newPassword(_passwordController.text);
+    if (passwordError != null) {
+      _showMessage(passwordError);
       return;
     }
 
-    if (_passwordController.text != _confirmPasswordController.text) {
-      _showMessage('Passwords do not match.');
+    final confirmError = Validators.confirmPassword(
+      _confirmPasswordController.text,
+      _passwordController.text,
+    );
+    if (confirmError != null) {
+      _showMessage(confirmError);
+      return;
+    }
+
+    final phoneError = Validators.phone(_phoneController.text.trim());
+    if (phoneError != null) {
+      _showMessage(phoneError);
       return;
     }
 
     if (!_agreedToLegal) {
       _showMessage(
         'Please read and accept the Terms of Service and Privacy Policy.',
+      );
+      return;
+    }
+
+    // Fail fast when offline — registration cannot reach the server.
+    if (!await ConnectivityService.instance.checkNow()) {
+      _showMessage(
+        'No internet connection. Please check your connection and try again.',
       );
       return;
     }
@@ -129,7 +152,9 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
       Navigator.pop(context);
     } catch (error) {
       if (mounted) {
-        _showMessage('Registration failed: ${error.toString()}');
+        // Friendly mapped message: wrong-format password, duplicate email,
+        // rate limit, network failure — never a raw exception dump.
+        _showMessage(mapErrorToMessage(error));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

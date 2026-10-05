@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../utils/app_error.dart';
 import 'supabase_service.dart';
 
 /// Data class returned when a loyalty card is looked up by UID.
@@ -313,8 +314,10 @@ class LoyaltyService {
 
       final currentBalance = (cardRow['points_balance'] as num).toInt();
       if (currentBalance < pointsToDeduct) {
-        throw Exception(
-            'Insufficient points: $currentBalance < $pointsToDeduct required');
+        throw AppError(
+          'Not enough points: this redemption needs $pointsToDeduct points but the card only has $currentBalance.',
+          type: AppErrorType.validation,
+        );
       }
 
       final newBalance = currentBalance - pointsToDeduct;
@@ -427,12 +430,18 @@ class LoyaltyService {
       // Verify card exists
       final card = await lookupCardByUid(cleanUid);
       if (card == null) {
-        throw Exception('Card not found. Please check the card code and try again.');
+        throw const AppError(
+          'Card not found. Please check the card code and try again.',
+          type: AppErrorType.notFound,
+        );
       }
 
       // Check if already linked to another customer
       if (card.hasOwner && card.customerId != customerId) {
-        throw Exception('This card is already linked to another customer.');
+        throw const AppError(
+          'This card is already linked to another customer.',
+          type: AppErrorType.validation,
+        );
       }
 
       // Link card to customer by updating customer_id in rfid_loyalty_cards table

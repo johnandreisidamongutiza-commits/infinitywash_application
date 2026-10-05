@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../utils/app_error.dart';
 import 'supabase_service.dart';
 
 class FeedbackService {
@@ -39,7 +40,10 @@ class FeedbackService {
     try {
       // Validate rating
       if (rating < 1 || rating > 5) {
-        throw Exception('Rating must be between 1 and 5');
+        throw const AppError(
+          'Please choose a rating between 1 and 5 stars.',
+          type: AppErrorType.validation,
+        );
       }
 
       print('📝 Submitting feedback for order $orderId: $rating stars');
@@ -47,7 +51,10 @@ class FeedbackService {
       // Check if feedback already exists
       final existingFeedback = await getFeedbackForOrder(orderId);
       if (existingFeedback != null) {
-        throw Exception('Feedback already submitted for this order');
+        throw const AppError(
+          'You have already submitted feedback for this order.',
+          type: AppErrorType.validation,
+        );
       }
 
       // Build feedback data
@@ -70,7 +77,8 @@ class FeedbackService {
       print('✅ Feedback submitted successfully');
     } catch (e) {
       print('❌ Error submitting feedback: $e');
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 

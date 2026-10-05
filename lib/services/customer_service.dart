@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../utils/app_error.dart';
 import 'supabase_service.dart';
 
 class CustomerService {
@@ -140,10 +141,11 @@ class CustomerService {
       return customerId;
     } on PostgrestException catch (e) {
       print('❌ Database error creating customer: ${e.message}');
-      throw Exception('Database error: ${e.message}');
+      throw mapError(e, stackTrace: StackTrace.current);
     } catch (e) {
       print('❌ Error creating customer: $e');
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -208,7 +210,10 @@ class CustomerService {
       
       // Validate required fields
       if (firstName.trim().isEmpty) {
-        throw Exception('Customer first name is required');
+        throw const AppError(
+          'Please enter the customer\'s first name.',
+          type: AppErrorType.validation,
+        );
       }
 
       // Generate unique customer code
@@ -263,10 +268,11 @@ class CustomerService {
       }
       
       print('❌ Database error creating customer: ${e.message}');
-      throw Exception('Database error: ${e.message}');
+      throw mapError(e, stackTrace: StackTrace.current);
     } catch (e) {
       print('❌ Error creating customer: $e');
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -508,13 +514,16 @@ class CustomerService {
   }
 
   /// Get customer ID for currently authenticated user
-  /// Returns customer UUID if found, throws exception if not authenticated or no customer record
+  /// Returns customer UUID if found, throws [AppError] if not authenticated or no customer record
   Future<String> getCurrentAuthenticatedCustomerId() async {
     try {
       // Get current authenticated user
       final user = SupabaseService.currentUser;
       if (user == null) {
-        throw Exception('User not authenticated. Please log in to continue.');
+        throw const AppError(
+          'You are signed out. Please log in to continue.',
+          type: AppErrorType.auth,
+        );
       }
 
       print('🔄 Looking up customer for authenticated user: ${user.id}');
@@ -527,7 +536,10 @@ class CustomerService {
           .maybeSingle();
 
       if (profileResponse == null) {
-        throw Exception('User profile not found. Please complete registration.');
+        throw const AppError(
+          'Your profile could not be found. Please complete registration or contact support.',
+          type: AppErrorType.notFound,
+        );
       }
 
       final profileId = profileResponse['id'] as String;
@@ -542,7 +554,10 @@ class CustomerService {
           .maybeSingle();
 
       if (customerResponse == null) {
-        throw Exception('Customer record not found. Please complete customer registration.');
+        throw const AppError(
+          'Your customer record could not be found. Please contact support so we can restore it.',
+          type: AppErrorType.notFound,
+        );
       }
 
       final customerId = customerResponse['id'] as String;
@@ -551,7 +566,8 @@ class CustomerService {
       return customerId;
     } catch (e) {
       print('❌ Error getting authenticated customer ID: $e');
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 

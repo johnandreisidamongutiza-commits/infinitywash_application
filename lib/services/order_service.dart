@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
+import '../utils/app_error.dart';
 import 'supabase_service.dart';
 import 'loyalty_service.dart';
 import 'service_catalog_service.dart';
@@ -138,20 +139,35 @@ class OrderService {
     try {
       // Validations
       if (customerId.isEmpty) {
-        throw Exception('Customer ID is required');
+        throw const AppError(
+          'A customer must be selected before creating the order.',
+          type: AppErrorType.validation,
+        );
       }
       if (orderNumber.isEmpty) {
-        throw Exception('Order number is required');
+        throw const AppError(
+          'Order number could not be generated. Please try again.',
+          type: AppErrorType.validation,
+        );
       }
       // Allow empty loads for rider pickup orders (will be added after pickup)
       if (loads.isEmpty && !pickupRequested) {
-        throw Exception('At least one load is required');
+        throw const AppError(
+          'Add at least one load before creating the order.',
+          type: AppErrorType.validation,
+        );
       }
       if (subtotal < 0 || totalAmount < 0) {
-        throw Exception('Invalid order amounts');
+        throw const AppError(
+          'Order amounts cannot be negative. Please review the prices.',
+          type: AppErrorType.validation,
+        );
       }
       if (deliveryRequested && (deliveryAddress == null || deliveryAddress.isEmpty)) {
-        throw Exception('Delivery address is required for delivery orders');
+        throw const AppError(
+          'A delivery address is required for delivery orders.',
+          type: AppErrorType.validation,
+        );
       }
 
       final now = DateTime.now().toUtc().toIso8601String();
@@ -354,10 +370,8 @@ class OrderService {
       return orderId;
     } catch (e) {
       print('❌ Error creating order: $e');
-      if (e.toString().contains('violates')) {
-        throw Exception('Database constraint error: ${e.toString()}');
-      }
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -456,7 +470,10 @@ class OrderService {
   }) async {
     try {
       if (loads.isEmpty) {
-        throw Exception('At least one load is required');
+        throw const AppError(
+          'Add at least one load before checking in.',
+          type: AppErrorType.validation,
+        );
       }
 
       final existingLoads = await _client
@@ -465,7 +482,10 @@ class OrderService {
           .eq('order_id', orderId);
 
       if (existingLoads.isNotEmpty) {
-        throw Exception('This order has already been checked in');
+        throw const AppError(
+          'This order has already been checked in.',
+          type: AppErrorType.validation,
+        );
       }
 
       final now = DateTime.now().toUtc().toIso8601String();
@@ -551,7 +571,8 @@ class OrderService {
       print('✅ Checked in order $orderId with ${loads.length} loads${loyaltyCardUid != null ? ' and Loyalty Card $loyaltyCardUid' : ''}');
     } catch (e) {
       print('❌ Error checking in order: $e');
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -803,7 +824,10 @@ class OrderService {
         .maybeSingle();
     switch (CompleteOrderGuards.decideAction(current?['status'] as String?)) {
       case CompleteOrderAction.notFound:
-        throw Exception('Order $orderId not found');
+        throw AppError(
+          'We could not find that order. It may have been removed.',
+          type: AppErrorType.notFound,
+        );
       case CompleteOrderAction.skip:
         print('ℹ️ Order $orderId already completed — skipping duplicate completion');
         return;
@@ -996,7 +1020,10 @@ class OrderService {
           .maybeSingle();
 
       if (dispatchJobResponse == null) {
-        throw Exception('No active pickup job found for this order');
+        throw const AppError(
+          'No active pickup job was found for this order. Refresh the list and try again.',
+          type: AppErrorType.notFound,
+        );
       }
 
       final jobId = dispatchJobResponse['id'] as String;
@@ -1031,7 +1058,8 @@ class OrderService {
       print('✅ Order status updated to processing by staff $staffId');
     } catch (e) {
       print('❌ Error staff completing pickup: $e');
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 
@@ -1055,7 +1083,10 @@ class OrderService {
           .maybeSingle();
 
       if (dispatchJobResponse == null) {
-        throw Exception('No active delivery job found for this order');
+        throw const AppError(
+          'No active delivery job was found for this order. Refresh the list and try again.',
+          type: AppErrorType.notFound,
+        );
       }
 
       final jobId = dispatchJobResponse['id'] as String;
@@ -1089,7 +1120,8 @@ class OrderService {
       print('✅ Order status updated to completed by staff $staffId');
     } catch (e) {
       print('❌ Error staff completing delivery: $e');
-      rethrow;
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 

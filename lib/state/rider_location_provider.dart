@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/supabase_service.dart';
 import '../models/dispatch_job.dart';
+import '../utils/app_error.dart';
 import 'dart:async';
 
 /// Provider for managing rider location updates to Supabase
@@ -177,7 +178,9 @@ class RiderLocationProvider with ChangeNotifier {
       
       print('✅ Upload #$_uploadCount: ${location.latitude.toStringAsFixed(6)}, ${location.longitude.toStringAsFixed(6)}');
     } catch (e) {
-      _errorMessage = 'Failed to upload location: ${e.toString()}';
+      // Location uploads are best-effort; a friendly message without
+      // interrupting the rider's active job.
+      _errorMessage = mapErrorToMessage(e);
       print('❌ Upload failed: $e');
     } finally {
       _isUploading = false;

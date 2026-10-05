@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../../widgets/custom_text_field.dart';
 import '../../../../services/auth_service.dart';
 import '../../../../theme/app_theme.dart';
+import '../../../../utils/app_error.dart';
+import '../../../../utils/validators.dart';
 
 class RiderChangePasswordScreen extends StatefulWidget {
   const RiderChangePasswordScreen({super.key});
@@ -39,12 +41,21 @@ class _RiderChangePasswordScreenState extends State<RiderChangePasswordScreen> {
       return;
     }
 
+    final passwordError = Validators.newPassword(_newPasswordController.text);
+    if (passwordError != null) {
+      _showMessage(passwordError, isError: true);
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
       final user = _authService.getCurrentUser();
       if (user == null || user.email == null) {
-        throw Exception('No user logged in');
+        throw const AppError(
+          'You are signed out. Please log in and try again.',
+          type: AppErrorType.auth,
+        );
       }
 
       // Re-authenticate with current password to verify it
@@ -70,11 +81,7 @@ class _RiderChangePasswordScreenState extends State<RiderChangePasswordScreen> {
       });
     } catch (error) {
       if (!mounted) return;
-      String errorMessage = 'Failed to change password';
-      if (error.toString().contains('Invalid login credentials')) {
-        errorMessage = 'Current password is incorrect';
-      }
-      _showMessage(errorMessage, isError: true);
+      _showMessage(mapErrorToMessage(error), isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

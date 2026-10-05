@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../config/location_constants.dart';
+import '../../../utils/app_error.dart';
 import '../../../widgets/location_picker_widget.dart';
 import '../../../widgets/address_input_widget.dart';
 import '../../../theme/app_theme.dart';
@@ -1119,28 +1120,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
       print('❌ Error creating order: $e');
 
-      // Parse error for user-friendly messages
-      String errorMessage = 'Error creating order';
-
-      if (e.toString().contains('connection')) {
-        errorMessage = 'Connection error. Please check your internet and try again.';
-      } else if (e.toString().contains('permission') || e.toString().contains('denied')) {
-        errorMessage = 'Access denied. Please contact your administrator.';
-      } else if (e.toString().contains('service_catalog') || e.toString().contains('service not found')) {
-        errorMessage = 'Service configuration error. Please contact support.';
-      } else if (e.toString().contains('addon')) {
-        errorMessage = 'Add-on configuration error. Please try without add-ons or contact support.';
-      } else if (e.toString().contains('duplicate') || e.toString().contains('unique')) {
-        errorMessage = 'Duplicate order detected. Please refresh and try again.';
-      } else {
-        // Show partial error details for debugging
-        final errorStr = e.toString();
-        if (errorStr.length > 100) {
-          errorMessage = 'Error: ${errorStr.substring(0, 100)}...';
-        } else {
-          errorMessage = 'Error: $errorStr';
-        }
-      }
+      // mapErrorToMessage classifies network, permission, duplicate,
+      // and configuration failures into friendly text.
+      final String errorMessage = mapErrorToMessage(e);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

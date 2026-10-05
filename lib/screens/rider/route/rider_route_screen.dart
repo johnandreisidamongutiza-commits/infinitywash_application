@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../services/rider_service.dart';
 import '../../../models/order.dart';
 import 'rider_route_map_screen.dart';
@@ -89,7 +90,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
       print('❌ Error loading route: $e');
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = mapErrorToMessage(e);
           _isLoading = false;
         });
       }

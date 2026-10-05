@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/feedback_service.dart';
 import '../../../services/customer_service.dart';
@@ -182,7 +183,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to submit feedback: ${e.toString()}'),
+            content: Text(mapErrorToMessage(e)),
             backgroundColor: Colors.red,
           ),
         );

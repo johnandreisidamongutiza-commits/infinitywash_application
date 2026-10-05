@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/app_error.dart';
 import 'supabase_service.dart';
 
 /// Result of a successful "request" call.
@@ -87,12 +88,22 @@ class PasswordResetService {
       if (data is Map<String, dynamic>) return data;
       return {};
     } on FunctionException catch (e) {
-      throw Exception(_extractMessage(e));
+      throw AppError(
+        _extractMessage(e),
+        type: AppErrorType.server,
+        originalError: e,
+        stackTrace: StackTrace.current,
+      );
+    } on AppError {
+      rethrow;
     } catch (e) {
       // Network or unexpected failure — keep it generic but actionable.
-      throw Exception(
+      throw AppError(
         'Could not reach the password reset service. '
         'Check your connection and try again.',
+        type: AppErrorType.network,
+        originalError: e,
+        stackTrace: StackTrace.current,
       );
     }
   }

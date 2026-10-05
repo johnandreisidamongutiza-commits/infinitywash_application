@@ -5,8 +5,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../widgets/top_notification.dart';
 import '../../../models/order.dart';
+import '../../../services/connectivity_service.dart';
 import '../../../services/service_request_service.dart';
 import '../../../services/customer_service.dart';
 import '../../../services/feedback_service.dart';
@@ -125,6 +127,11 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
         _errorMessage = 'Failed to load orders: ${e.toString()}';
       });
       print('❌ Error loading customer orders: $e');
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = mapErrorToMessage(e);
+      });
     }
   }
 
@@ -158,6 +165,20 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
       ),
     );
     if (receipt == null || !mounted) return;
+
+    // Fail fast with a clear message when offline instead of a cryptic
+    // upload failure dialog.
+    if (!await ConnectivityService.instance.checkNow()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No internet connection. Reconnect to submit your payment.'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
 
     showDialog<void>(
       context: context,
@@ -220,7 +241,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
       print('❌ GCash payment failed: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Payment could not be saved: $e'),
+          content: Text('Payment could not be saved. ${mapErrorToMessage(e)}'),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 5),
           action: SnackBarAction(
@@ -252,7 +273,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
       if (mounted) {
         showTopNotification(
           context,
-          message: 'Failed to cancel request: ${e.toString()}',
+          message: mapErrorToMessage(e),
           icon: Icons.error,
           backgroundColor: Colors.red,
         );

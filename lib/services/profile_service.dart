@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../utils/app_error.dart';
 import 'supabase_service.dart';
 
 class ProfileService {
@@ -6,14 +7,32 @@ class ProfileService {
 
   Future<Map<String, dynamic>> getProfile() async {
     final user = _client.auth.currentUser;
-    if (user == null) throw Exception('No authenticated user.');
+    if (user == null) {
+      throw const AppError(
+        'You are signed out. Please log in to continue.',
+        type: AppErrorType.auth,
+      );
+    }
 
-    final profile = await _client
-        .from('profiles')
-        .select()
-        .eq('supabase_user_id', user.id)
-        .single();
-    return profile;
+    try {
+      final profile = await _client
+          .from('profiles')
+          .select()
+          .eq('supabase_user_id', user.id)
+          .single();
+      return profile;
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST116') {
+        throw const AppError(
+          'Your profile could not be found. Please contact support.',
+          type: AppErrorType.notFound,
+        );
+      }
+      throw mapError(e, stackTrace: StackTrace.current);
+    } catch (e) {
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
+    }
   }
 
   Future<Map<String, dynamic>> getEmployee(String profileId) async {
@@ -36,7 +55,12 @@ class ProfileService {
     bool removePin = false,
   }) async {
     final user = _client.auth.currentUser;
-    if (user == null) throw Exception('No authenticated user.');
+    if (user == null) {
+      throw const AppError(
+        'You are signed out. Please log in to continue.',
+        type: AppErrorType.auth,
+      );
+    }
 
     // Pin values to persist: explicit coordinates, or NULL when removePin
     // is set (customer cleared their pin). Omitted entirely when neither is
@@ -75,8 +99,11 @@ class ProfileService {
             .update(basePayload)
             .eq('supabase_user_id', user.id);
       } else {
-        rethrow;
+        throw mapError(e, stackTrace: StackTrace.current);
       }
+    } catch (e) {
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
 
     // Also update customers table if customer record exists

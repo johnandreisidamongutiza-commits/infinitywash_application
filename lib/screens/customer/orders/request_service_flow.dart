@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../widgets/address_input_widget.dart';
 import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
@@ -93,7 +94,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
       }
     } catch (e) {
       setState(() {
-        _loadError = 'Error loading profile: $e';
+        _loadError = mapErrorToMessage(e);
         _isLoadingAddress = false;
       });
     }
@@ -1299,7 +1300,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   Navigator.of(context).pop();
                   
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to submit request: $e')),
+                    SnackBar(
+                      content: Text(mapErrorToMessage(e)),
+                      duration: const Duration(seconds: 4),
+                    ),
                   );
                 }
               },

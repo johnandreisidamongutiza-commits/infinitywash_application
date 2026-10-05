@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../../config/location_constants.dart';
 import '../../../../services/profile_service.dart';
 import '../../../../theme/app_theme.dart';
+import '../../../../utils/app_error.dart';
 import '../../../../widgets/address_input_widget.dart';
 import '../../../../widgets/custom_text_field.dart';
 import '../../../../widgets/location_picker_widget.dart';
@@ -84,7 +85,7 @@ class _CustomerAccountDetailsScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Could not load account details: $error',
+            'Could not load account details. ${mapErrorToMessage(error)}',
             style: GoogleFonts.lexend(color: Colors.white),
           ),
           backgroundColor: AppTheme.errorRed,
@@ -164,7 +165,7 @@ class _CustomerAccountDetailsScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Could not update account details: $error',
+            mapErrorToMessage(error),
             style: GoogleFonts.lexend(color: Colors.white),
           ),
           backgroundColor: AppTheme.errorRed,

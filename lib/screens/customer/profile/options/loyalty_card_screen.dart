@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../theme/app_theme.dart';
+import '../../../../utils/app_error.dart';
 import '../../../../services/loyalty_service.dart';
 import '../../../../services/customer_service.dart';
 
@@ -73,7 +74,7 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
       _cardCodeController.clear();
       await _loadLinkedCard();
     } catch (e) {
-      _showMessage('Failed to link card: ${e.toString()}', isError: true);
+      _showMessage(mapErrorToMessage(e), isError: true);
     } finally {
       if (mounted) {
         setState(() => _isLinking = false);
@@ -108,7 +109,7 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
         _showMessage('Card unlinked successfully', isError: false);
         await _loadLinkedCard();
       } catch (e) {
-        _showMessage('Failed to unlink card: ${e.toString()}', isError: true);
+        _showMessage(mapErrorToMessage(e), isError: true);
       }
     }
   }

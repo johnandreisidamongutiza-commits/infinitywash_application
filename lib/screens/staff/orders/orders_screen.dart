@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import 'create_order_flow.dart';
 import 'order_status_screen.dart';
@@ -391,7 +392,7 @@ class OrdersScreenState extends State<OrdersScreen>
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Error loading orders: $e'),
+        content: Text(mapErrorToMessage(e)),
         backgroundColor: Colors.red,
       ),
     );

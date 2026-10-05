@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../orders/orders_screen.dart';
 import '../orders/create_order_flow.dart';
@@ -81,7 +82,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
       print('✅ Loaded ${orders.length} orders');
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = mapErrorToMessage(e);
         _isLoading = false;
       });
       

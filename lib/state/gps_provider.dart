@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:location/location.dart';
 import 'package:latlong2/latlong.dart';
+import '../utils/app_error.dart';
 import '../services/location_service.dart';
 
 /// Provider for managing GPS location state
@@ -57,7 +58,7 @@ class GpsProvider with ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      _errorMessage = 'Failed to initialize GPS: ${e.toString()}';
+      _errorMessage = mapErrorToMessage(e);
       notifyListeners();
     }
   }
@@ -79,7 +80,7 @@ class GpsProvider with ChangeNotifier {
       });
     } catch (e) {
       _isTracking = false;
-      _errorMessage = 'Failed to start tracking: ${e.toString()}';
+      _errorMessage = mapErrorToMessage(e);
       notifyListeners();
     }
   }
