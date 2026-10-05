@@ -1,8 +1,33 @@
+import 'package:meta/meta.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
 import 'supabase_service.dart';
 import 'loyalty_service.dart';
 import 'service_catalog_service.dart';
+
+/// What [OrderService.completeOrder] should do given an order's current
+/// status. See [CompleteOrderGuards.decideAction].
+enum CompleteOrderAction { notFound, skip, completeAndAward }
+
+/// Pure decision points for [OrderService.completeOrder], extracted for unit
+/// testing without a Supabase backend.
+@visibleForTesting
+abstract final class CompleteOrderGuards {
+  /// Decides what [OrderService.completeOrder] should do given the order's
+  /// current DB status:
+  /// - `notFound`        → order row missing, completeOrder throws.
+  /// - `skip`            → already completed; idempotent no-op (no re-update,
+  ///   no duplicate loyalty award).
+  /// - `completeAndAward`→ transition to 'completed' + award loyalty points.
+  static CompleteOrderAction decideAction(String? currentStatus) {
+    if (currentStatus == null) return CompleteOrderAction.notFound;
+    if (currentStatus == 'completed') return CompleteOrderAction.skip;
+    return CompleteOrderAction.completeAndAward;
+  }
+
+  /// Loads-to-points mapping used for the award (minimum of 1 point).
+  static int loyaltyPointsFor(int? loadsCount) => loadsCount == null || loadsCount < 1 ? 1 : loadsCount;
+}
 
 class OrderService {
   final SupabaseClient _client = SupabaseService.client;
@@ -38,7 +63,10 @@ class OrderService {
       final sequencePart = lastOrderNumber.replaceAll(prefix, '');
       final lastSequence = int.tryParse(sequencePart) ?? 0;
 
-      // Increment and format with leading zeros
+      // Increment and format with leading zeros.
+      // NOTE: still race-prone if two staff create orders at the exact same
+      // moment — callers must catch the unique-violation on insert and retry
+      // with the next sequence (see createOrder's collision retry).
       final nextSequence = lastSequence + 1;
       return '$prefix${nextSequence.toString().padLeft(3, '0')}';
     } catch (e) {
@@ -189,13 +217,37 @@ class OrderService {
         orderData['assigned_staff_id'] = assignedStaffId;
       }
 
-      final orderResponse = await _client
-          .from('orders')
-          .insert(orderData)
-          .select('id')
-          .single();
+      // Insert the order, retrying with the next sequence if another
+      // concurrent order took the same order_number (unique constraint).
+      Object? orderResponse;
+      var attempt = 0;
+      var workingOrderNumber = orderNumber;
+      const maxAttempts = 5;
+      while (true) {
+        try {
+          orderData['order_number'] = workingOrderNumber;
+          orderResponse = await _client
+              .from('orders')
+              .insert(orderData)
+              .select('id')
+              .single();
+          break;
+        } catch (e) {
+          final isUniqueViolation = e.toString().contains('duplicate key') ||
+              e.toString().contains('orders_order_number_key');
+          attempt++;
+          if (!isUniqueViolation || attempt >= maxAttempts) rethrow;
 
-      final orderId = orderResponse['id'] as String;
+          // Bump the trailing sequence and retry.
+          final match = RegExp(r'(\d+)$').firstMatch(workingOrderNumber);
+          final nextSeq = (int.tryParse(match?.group(1) ?? '0') ?? 0) + 1;
+          workingOrderNumber =
+              workingOrderNumber.replaceRange(match!.start, workingOrderNumber.length, nextSeq.toString().padLeft(3, '0'));
+          print('⚠️ Order number collision, retrying as $workingOrderNumber (attempt $attempt)');
+        }
+      }
+
+      final orderId = (orderResponse as Map<String, dynamic>)['id'] as String;
       print('✅ Order created: $orderId');
 
       // Step 2: Insert order loads
@@ -349,20 +401,20 @@ class OrderService {
               ? firstName 
               : 'Unknown Customer';
 
-      // Use order/customer pinned coordinates, fallback to shop/default coordinates if null
+      // Use order/customer pinned coordinates. No fake fallback — jobs
+      // without a pin are created with null coordinates and riders see the
+      // address with a "no pin" notice instead of a wrong map point.
       final pinLat = (orderResponse['delivery_latitude'] as num?)?.toDouble() ??
           (orderResponse['pickup_latitude'] as num?)?.toDouble() ??
           (customerData?['pin_latitude'] as num?)?.toDouble();
       final pinLng = (orderResponse['delivery_longitude'] as num?)?.toDouble() ??
           (orderResponse['pickup_longitude'] as num?)?.toDouble() ??
           (customerData?['pin_longitude'] as num?)?.toDouble();
-      final finalLat = pinLat ?? 14.2811;
-      final finalLng = pinLng ?? 121.4159;
 
       if (pinLat != null && pinLng != null) {
-        print('✅ Using customer pinned coordinates: ($finalLat, $finalLng)');
+        print('✅ Using pinned coordinates: ($pinLat, $pinLng)');
       } else {
-        print('⚠️ Using fallback coordinates for address: $address');
+        print('⚠️ No pin for order $orderId — creating job without coordinates');
       }
 
       // Create unassigned dispatch jobs
@@ -373,8 +425,8 @@ class OrderService {
           orderId: orderId,
           riderId: null, // NULL for unassigned
           jobType: 'pickup',
-          latitude: finalLat,
-          longitude: finalLng,
+          latitude: pinLat,
+          longitude: pinLng,
           address: address,
           landmark: landmark,
           customerName: customerName, // Pass customer name
@@ -711,10 +763,10 @@ class OrderService {
           updates['out_for_delivery_at'] = DateTime.now().toUtc().toIso8601String();
           break;
         case 'completed':
-          updates['completed_at'] = DateTime.now().toUtc().toIso8601String();
-          // Award loyalty points if linked to a loyalty card
-          await _awardLoyaltyPointsForOrder(orderId);
-          break;
+          // Delegate to the shared, idempotent completion path (row update +
+          // loyalty award). Return early — completeOrder already wrote the row.
+          await completeOrder(orderId);
+          return;
         case 'cancelled':
           break;
       }
@@ -729,6 +781,47 @@ class OrderService {
       print('❌ Error updating order status: $e');
       rethrow;
     }
+  }
+
+  /// Complete an order (status='completed' + loyalty points) from ANY path.
+  ///
+  /// Previously loyalty points were only awarded when staff completed the
+  /// order via [updateOrderStatus]; rider-completed deliveries went through
+  /// SupabaseService.syncOrderStatus() and silently skipped the award. Both
+  /// paths now funnel through this method so points are never lost.
+  ///
+  /// Idempotent: safe to call twice for the same order — the award only runs
+  /// when the order actually transitions into 'completed'.
+  Future<void> completeOrder(String orderId) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+
+    // Only proceed if the order is not already completed (idempotency guard).
+    final current = await _client
+        .from('orders')
+        .select('status')
+        .eq('id', orderId)
+        .maybeSingle();
+    switch (CompleteOrderGuards.decideAction(current?['status'] as String?)) {
+      case CompleteOrderAction.notFound:
+        throw Exception('Order $orderId not found');
+      case CompleteOrderAction.skip:
+        print('ℹ️ Order $orderId already completed — skipping duplicate completion');
+        return;
+      case CompleteOrderAction.completeAndAward:
+        break;
+    }
+
+    await _client.from('orders').update({
+      'status': 'completed',
+      'completed_at': now,
+      'updated_at': now,
+    }).eq('id', orderId);
+
+    print('✅ Order $orderId completed');
+
+    // Award loyalty points if linked to a loyalty card. Failures are logged
+    // but do not fail the completion (matches previous behavior).
+    await _awardLoyaltyPointsForOrder(orderId);
   }
 
   /// Create delivery dispatch job when order becomes ready
@@ -807,20 +900,19 @@ class OrderService {
       
       print('🔍 DEBUG: customerName = "$customerName"');
 
-      // Use order/customer pinned coordinates, fallback to default coordinates if null
+      // Use order/customer pinned coordinates. No fake fallback — riders see
+      // the address with a "no pin" notice instead of a wrong map point.
       final pinLat = (orderResponse['delivery_latitude'] as num?)?.toDouble() ??
           (orderResponse['pickup_latitude'] as num?)?.toDouble() ??
           (customerData?['pin_latitude'] as num?)?.toDouble();
       final pinLng = (orderResponse['delivery_longitude'] as num?)?.toDouble() ??
           (orderResponse['pickup_longitude'] as num?)?.toDouble() ??
           (customerData?['pin_longitude'] as num?)?.toDouble();
-      final finalLat = pinLat ?? 14.2811;
-      final finalLng = pinLng ?? 121.4159;
 
       if (pinLat != null && pinLng != null) {
-        print('✅ Using customer pinned coordinates: ($finalLat, $finalLng)');
+        print('✅ Using pinned coordinates: ($pinLat, $pinLng)');
       } else {
-        print('⚠️ Using fallback coordinates for delivery address: $finalAddress');
+        print('⚠️ No pin for order $orderId — creating delivery job without coordinates');
       }
 
       print('🔍 DEBUG: About to call createDispatchJob...');
@@ -830,8 +922,8 @@ class OrderService {
         orderId: orderId,
         riderId: null, // NULL for unassigned
         jobType: 'delivery',
-        latitude: finalLat,
-        longitude: finalLng,
+        latitude: pinLat,
+        longitude: pinLng,
         address: finalAddress,
         landmark: landmark,
         customerName: customerName,
@@ -857,7 +949,7 @@ class OrderService {
 
       if (orderRow == null) return;
 
-      final loadsCount = (orderRow['loads_count'] as num?)?.toInt() ?? 1;
+      final loadsCount = CompleteOrderGuards.loyaltyPointsFor((orderRow['loads_count'] as num?)?.toInt());
       final orderNumber = orderRow['order_number'] as String?;
       final customerId = orderRow['customer_id'] as String?;
 

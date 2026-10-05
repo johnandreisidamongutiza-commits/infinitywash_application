@@ -1,3 +1,4 @@
+import 'package:meta/meta.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
 import '../services/supabase_service.dart';
@@ -51,7 +52,7 @@ class ServiceRequestService {
       print('✅ Generated request number: $orderNumber');
 
       // Step 5: Set expiry time (24 hours from now)
-      final expiresAt = DateTime.now().add(const Duration(hours: 24));
+      final expiresAt = DateTime.now().toUtc().add(const Duration(hours: 24));
 
       // Step 6: Create service request in orders table
       final response = await _client.from('orders').insert({
@@ -490,6 +491,9 @@ class ServiceRequestService {
     try {
       print('🔄 Fetching pending service requests for staff...');
 
+      // Auto-reject requests that were never reviewed within 24 hours.
+      await _autoRejectExpiredRequests();
+
       final now = DateTime.now().toIso8601String();
       
       final response = await _client
@@ -540,7 +544,9 @@ class ServiceRequestService {
             reviewedAt: _parseLocalDateTime(orderData['reviewed_at']),
             reviewedBy: orderData['reviewed_by'] as String?,
             expiresAt: _parseLocalDateTime(orderData['expires_at']),
-            underReviewBy: null,
+            underReviewBy: isReviewLockValid(orderData)
+                ? orderData['under_review_by'] as String?
+                : null,
           );
 
           requests.add(request);
@@ -628,16 +634,15 @@ class ServiceRequestService {
         return;
       }
 
-      // Use customer's pinned coordinates, fallback to default coordinates if null
+      // Use customer's pinned coordinates. No fake fallback — riders see the
+      // address with a "no pin" notice instead of being routed somewhere wrong.
       final pinLat = (customerData?['pin_latitude'] as num?)?.toDouble();
       final pinLng = (customerData?['pin_longitude'] as num?)?.toDouble();
-      final finalLat = pinLat ?? 14.2811;
-      final finalLng = pinLng ?? 121.4159;
 
       if (pinLat != null && pinLng != null) {
-        print('✅ Using customer pinned coordinates: ($finalLat, $finalLng)');
+        print('✅ Using pinned coordinates: ($pinLat, $pinLng)');
       } else {
-        print('⚠️ Using fallback coordinates for address: $finalAddress');
+        print('⚠️ No pin for order $orderId — creating job without coordinates');
       }
 
       // Create dispatch jobs using SupabaseService
@@ -650,8 +655,8 @@ class ServiceRequestService {
           orderId: orderId,
           riderId: null, // NULL for unassigned
           jobType: 'pickup',
-          latitude: finalLat,
-          longitude: finalLng,
+          latitude: pinLat,
+          longitude: pinLng,
           address: finalAddress,
           landmark: landmark,
           customerName: customerName, // Pass customer name
@@ -718,8 +723,11 @@ class ServiceRequestService {
 
       final updates = <String, dynamic>{
         'status': newStatus,
-        'reviewed_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
+        'reviewed_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+        // Release the review lock once a decision is recorded.
+        'under_review_by': null,
+        'under_review_at': null,
       };
 
       // Only set reviewed_by if an employee record exists in employees table
@@ -763,8 +771,11 @@ class ServiceRequestService {
       final updates = <String, dynamic>{
         'status': 'rejected',
         'rejection_reason': reason,
-        'reviewed_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
+        'reviewed_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+        // Release the review lock when a decision is made.
+        'under_review_by': null,
+        'under_review_at': null,
       };
 
       // Only set reviewed_by if an employee record exists in employees table
@@ -781,6 +792,137 @@ class ServiceRequestService {
     } catch (e) {
       print('❌ Error rejecting service request: $e');
       rethrow;
+    }
+  }
+
+  // =========================================================================
+  // REVIEW LOCK (under_review_by)
+  // =========================================================================
+
+  static const Duration reviewLockTimeout = Duration(minutes: 30);
+
+  /// True if the raw row has a review lock that is still valid (held by
+  /// someone and less than [reviewLockTimeout] old). Used when parsing rows.
+  static bool isReviewLockValid(Map<String, dynamic> row) {
+    return isReviewLockValidAt(row, DateTime.now());
+  }
+
+  /// Time-injectable core of [isReviewLockValid].
+  @visibleForTesting
+  static bool isReviewLockValidAt(Map<String, dynamic> row, DateTime now) {
+    final holder = row['under_review_by'] as String?;
+    if (holder == null || holder.isEmpty) return false;
+    final at = row['under_review_at'];
+    if (at == null) return false;
+    final DateTime? when;
+    try {
+      when = at is DateTime ? at : DateTime.parse(at.toString());
+    } catch (_) {
+      return false;
+    }
+    return now.difference(when.toLocal()) < reviewLockTimeout;
+  }
+
+  /// Current user identifier for review locks (employee id when available,
+  /// otherwise the auth user id) plus a display name for the UI.
+  Future<(String, String)> _getCurrentReviewerIdentity() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return ('', 'Unknown');
+
+    try {
+      final profile = await _client
+          .from('profiles')
+          .select('id, first_name, last_name')
+          .eq('supabase_user_id', user.id)
+          .maybeSingle();
+
+      final name = [
+        profile?['first_name'] as String?,
+        profile?['last_name'] as String?,
+      ].where((p) => p != null && p.isNotEmpty).join(' ');
+
+      final employee = await _client
+          .from('employees')
+          .select('id')
+          .eq('profile_id', profile?['id'] as Object? ?? '')
+          .maybeSingle();
+
+      final id = (employee?['id'] as String?) ?? user.id;
+      return (id, name.isEmpty ? 'Staff' : name);
+    } catch (e) {
+      print('⚠️ Could not resolve reviewer identity: $e');
+      return (user.id, 'Staff');
+    }
+  }
+
+  /// Claim a request for review. Returns false if another staff member
+  /// currently holds a valid lock on it.
+  Future<bool> claimForReview(String orderId) async {
+    try {
+      final (myId, _) = await _getCurrentReviewerIdentity();
+      if (myId.isEmpty) return false;
+
+      // Read the current lock state first.
+      final row = await _client
+          .from('orders')
+          .select('under_review_by, under_review_at')
+          .eq('id', orderId)
+          .maybeSingle();
+      if (row == null) return false;
+
+      if (isReviewLockValid(row)) {
+        // Valid lock: only the holder (or re-claim by same person) succeeds.
+        return row['under_review_by'] == myId;
+      }
+
+      // No valid lock — take it.
+      await _client.from('orders').update({
+        'under_review_by': myId,
+        'under_review_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', orderId);
+      return true;
+    } catch (e) {
+      // If the columns don't exist yet (migration not applied), don't block
+      // the review flow — just proceed without locking.
+      print('⚠️ Review lock unavailable: $e');
+      return true;
+    }
+  }
+
+  /// Release the review lock (on exit without deciding).
+  Future<void> releaseReviewLock(String orderId) async {
+    try {
+      final (myId, _) = await _getCurrentReviewerIdentity();
+      await _client.from('orders').update({
+        'under_review_by': null,
+        'under_review_at': null,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', orderId).eq('under_review_by', myId);
+    } catch (e) {
+      print('⚠️ Could not release review lock: $e');
+    }
+  }
+
+  /// Auto-reject pending requests past their 24-hour expiry. Runs on every
+  /// staff list refresh so expired requests never linger as "pending".
+  Future<void> _autoRejectExpiredRequests() async {
+    try {
+      final now = DateTime.now().toUtc().toIso8601String();
+      await _client
+          .from('orders')
+          .update({
+            'status': 'rejected',
+            'rejection_reason': 'expired_no_response',
+            'reviewed_at': now,
+            'updated_at': now,
+          })
+          .eq('status', 'pending_approval')
+          .eq('source', 'mobile_app')
+          .not('expires_at', 'is', null)
+          .lt('expires_at', now);
+    } catch (e) {
+      print('⚠️ Could not auto-reject expired requests: $e');
     }
   }
 }

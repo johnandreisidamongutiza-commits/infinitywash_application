@@ -30,11 +30,28 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
   
   LatLng? _riderLocation;
   bool _isStarting = false;
-  
+  bool _takenByOther = false;
+
   @override
   void initState() {
     super.initState();
     _initializeLocation();
+    _verifyJobAvailable();
+  }
+
+  /// If this screen was opened from a stale list, another rider may have
+  /// claimed the job in the meantime. Fail fast with a clear message.
+  Future<void> _verifyJobAvailable() async {
+    final available = await _riderService.isJobStillAvailable(widget.job.id);
+    if (!available && mounted) {
+      setState(() => _takenByOther = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This job has already been taken by another rider.'),
+          backgroundColor: AppTheme.errorRed,
+        ),
+      );
+    }
   }
 
   Future<void> _initializeLocation() async {
@@ -57,7 +74,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
 
     try {
       await _riderService.startJob(widget.job.id);
-      
+
       if (mounted) {
         // Navigate to tracking screen
         Navigator.pushReplacement(
@@ -66,6 +83,19 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
             builder: (context) => RiderJobTrackingScreen(job: widget.job),
           ),
         );
+      }
+    } on JobClaimedException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Job already taken by another rider.'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+        setState(() {
+          _isStarting = false;
+          _takenByOther = true;
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -289,8 +319,56 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                     const SizedBox(height: 24),
                   ],
 
+                  // Taken by another rider — replaces the Start button
+                  if (_takenByOther)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.errorRed.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.errorRed.withValues(alpha: 0.3)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.do_not_disturb_on, color: AppTheme.errorRed),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'This job was taken by another rider.',
+                              style: TextStyle(color: AppTheme.errorRed, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // No map pin on this job — warn the rider instead of routing them somewhere wrong.
+                  if (jobLocation == null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.location_off, color: Colors.orange),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'No map pin for this job — use the address and call the customer if needed.',
+                              style: TextStyle(color: AppTheme.textDark, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                   // Start button
-                  if (widget.job.status == 'pending')
+                  if (widget.job.status == 'pending' && !_takenByOther)
                     SizedBox(
                       width: double.infinity,
                       height: 48,

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:meta/meta.dart';
+
 enum OrderStatus { pending_approval, rejected, cancelled, pending_pickup, processing, ready, out_for_delivery, completed }
 enum CollectionMethod { dropOff, riderPickup }
 enum ReturnMethod { shopPickup, delivery }
@@ -248,7 +250,9 @@ class LaundryOrder {
       'customer_phone': customerPhone,
       'delivery_address': deliveryAddress,
       'delivery_landmark': deliveryLandmark,
-      'source': channel == OrderChannel.walkIn ? 'walk_in' : 'online',
+      // Canonical values: 'walk_in' | 'mobile_app'. The legacy 'online'
+      // value is mapped back to 'mobile_app' when reading (see _channelFromString).
+      'source': channel == OrderChannel.walkIn ? 'walk_in' : 'mobile_app',
       'pickup_requested': collectionMethod == CollectionMethod.riderPickup,
       'delivery_requested': returnMethod == ReturnMethod.delivery,
       'status': _orderStatusToString(status),
@@ -283,7 +287,7 @@ class LaundryOrder {
       customerPhone: json['customer_phone'] as String?,
       deliveryAddress: (json['delivery_address'] ?? json['pickup_address']) as String?,
       deliveryLandmark: (json['delivery_landmark'] ?? json['landmark']) as String?,
-      channel: (json['source'] as String?) == 'walk_in' ? OrderChannel.walkIn : OrderChannel.online,
+      channel: _channelFromString(json['source'] as String?),
       collectionMethod: (json['pickup_requested'] as bool?) == true 
           ? CollectionMethod.riderPickup 
           : CollectionMethod.dropOff,
@@ -314,6 +318,14 @@ class LaundryOrder {
       totalAmount: (json['total_amount'] as num?)?.toDouble(),
     );
   }
+
+  // Canonical source values are 'walk_in' and 'mobile_app'; the legacy
+  // 'online' value is treated as 'mobile_app' for backward compatibility.
+  @visibleForTesting
+  static OrderChannel channelFromString(String? source) =>
+      source == 'walk_in' ? OrderChannel.walkIn : OrderChannel.online;
+
+  static OrderChannel _channelFromString(String? source) => channelFromString(source);
 
   // Helper method to convert OrderStatus enum to string for database
   static String _orderStatusToString(OrderStatus status) {

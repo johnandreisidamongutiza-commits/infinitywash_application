@@ -176,27 +176,6 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
               style: const TextStyle(fontSize: 11, color: AppTheme.accentBlue, fontStyle: FontStyle.italic),
             ),
           ],
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppTheme.lightBlue,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline, size: 16, color: AppTheme.accentBlue),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Accept/Decline functionality coming soon. For now, use the main orders management.',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textDark),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          /* TODO: Implement Accept/Decline with real database operations
           const SizedBox(height: 20),
           Row(
             children: [
@@ -216,7 +195,6 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
               ),
             ],
           ),
-          */
         ],
       ),
     );
@@ -236,15 +214,12 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
     );
   }
 
-  /* TODO: Implement approve/decline with real database operations
-  
   Future<void> _handleDeclineRequest(LaundryOrder request) async {
-    // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Decline Request?'),
-        content: Text('Are you sure you want to decline order #${request.orderNumber}?'),
+        content: Text('Are you sure you want to decline order #${request.displayNumber}?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -259,21 +234,90 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
       ),
     );
 
-    if (confirmed == true) {
-      // TODO: Call service to update order status to 'rejected'
-      // await _orderService.rejectOrder(request.id, reason: 'Staff declined');
-      _loadPendingRequests();
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _serviceRequestService.rejectServiceRequest(
+        orderId: request.id,
+        reason: 'Declined by staff',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Request ${request.displayNumber} declined')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to decline request: $e'),
+          backgroundColor: AppTheme.errorRed,
+        ),
+      );
     }
+    _loadPendingRequests();
   }
 
-  void _showApproveDialog(LaundryOrder request) {
-    // TODO: Implement full approval flow with:
-    // - Weight verification
-    // - Category selection
-    // - RFID tag assignment
-    // - Load creation
-    // - Order status update to 'processing'
-    // - Bill calculation and push notification to customer
+  Future<void> _showApproveDialog(LaundryOrder request) async {
+    // Ask for the staff's estimate of loads (used for the initial bill).
+    final estimatedLoads = await showDialog<int>(
+      context: context,
+      builder: (context) {
+        int selected = 2;
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: Text('Accept ${request.displayNumber}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Estimated loads (customer suggested ${request.estimatedLoads ?? 'not specified'}):'),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: selected,
+                  items: const [1, 2, 3, 4, 5]
+                      .map((n) => DropdownMenuItem(value: n, child: Text('$n load${n > 1 ? 's' : ''}')))
+                      .toList(),
+                  onChanged: (v) => setState(() => selected = v ?? selected),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, selected),
+                child: const Text('Accept'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (estimatedLoads == null || !mounted) return;
+
+    try {
+      // Creates the pickup dispatch job for rider-pickup requests.
+      await _serviceRequestService.approveServiceRequest(
+        orderId: request.id,
+        isRiderPickup: request.collectionMethod == CollectionMethod.riderPickup,
+        estimatedLoads: estimatedLoads,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Request ${request.displayNumber} accepted')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to accept request: $e'),
+          backgroundColor: AppTheme.errorRed,
+        ),
+      );
+    }
+    _loadPendingRequests();
   }
-  */
 }

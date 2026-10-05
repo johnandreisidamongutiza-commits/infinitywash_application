@@ -20,12 +20,59 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
   late LaundryOrder _request;
   final ServiceRequestService _serviceRequestService = ServiceRequestService();
   bool _isProcessing = false;
+  bool _lockHeldByMe = false;
+  bool _lockedByOther = false;
+  String? _lockedByName;
 
   @override
   void initState() {
     super.initState();
     _request = widget.request;
+    _claimReviewLock();
     _fetchFreshRequest();
+  }
+
+  @override
+  void dispose() {
+    // Release the review lock if we exit without deciding.
+    if (_lockHeldByMe) {
+      _serviceRequestService.releaseReviewLock(_request.id);
+    }
+    super.dispose();
+  }
+
+  /// Claim the request so other staff see "being reviewed" while we work on
+  /// it. If someone else holds a valid lock we show a warning banner (the
+  /// UI stays readable; the buttons are disabled).
+  Future<void> _claimReviewLock() async {
+    final claimed = await _serviceRequestService.claimForReview(_request.id);
+    if (!mounted) return;
+    setState(() {
+      _lockHeldByMe = claimed;
+      _lockedByOther = !claimed;
+    });
+
+    // Try to resolve the holder's name for the banner.
+    if (_lockedByOther) {
+      try {
+        final row = await SupabaseService.client
+            .from('orders')
+            .select('under_review_by')
+            .eq('id', _request.id)
+            .maybeSingle();
+        final holderId = row?['under_review_by'] as String?;
+        if (holderId != null && mounted) {
+          final emp = await SupabaseService.client
+              .from('employees')
+              .select('name')
+              .eq('id', holderId)
+              .maybeSingle();
+          setState(() => _lockedByName = emp?['name'] as String? ?? 'another staff member');
+        }
+      } catch (_) {
+        // Name lookup is cosmetic; ignore failures.
+      }
+    }
   }
 
   Future<void> _fetchFreshRequest() async {
@@ -1036,12 +1083,32 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
             ),
           ],
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            if (_lockedByOther)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lock_outline, size: 14, color: AppTheme.textDark),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Being reviewed by ${_lockedByName ?? "another staff member"}',
+                        style: const TextStyle(fontSize: 12, color: AppTheme.textDark),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Row(
+              children: [
             Expanded(
               flex: 1,
               child: OutlinedButton(
-                onPressed: _handleDecline,
+                onPressed: _lockedByOther || _isProcessing ? null : _handleDecline,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.red,
                   side: const BorderSide(color: Colors.red, width: 1.5),
@@ -1058,7 +1125,7 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
             Expanded(
               flex: 2,
               child: ElevatedButton(
-                onPressed: _handleAccept,
+                onPressed: _lockedByOther || _isProcessing ? null : _handleAccept,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.accentBlue,
                   foregroundColor: Colors.white,
@@ -1078,6 +1145,8 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
                   ],
                 ),
               ),
+            ),
+              ],
             ),
           ],
         ),

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/dispatch_job.dart';
+import 'order_service.dart';
 
 class SupabaseService {
   // Get the Supabase client instance
@@ -110,12 +111,16 @@ class SupabaseService {
   }
   
   /// Create a new dispatch job
+  ///
+  /// [latitude]/[longitude] may be null when the customer never dropped a
+  /// map pin — riders then see the address with a "no pin" notice instead of
+  /// being routed to a fake fallback location.
   Future<DispatchJob> createDispatchJob({
     required String orderId,
     String? riderId,  // Nullable to allow unassigned jobs
     required String jobType,
-    required double latitude,
-    required double longitude,
+    double? latitude,
+    double? longitude,
     String? address,
     String? landmark,
     String? customerName,  // Customer full name for display
@@ -332,11 +337,18 @@ class SupabaseService {
         completedAt: DateTime.now(),
       );
 
-      // Sync order status
-      await syncOrderStatus(
-        orderId: orderId,
-        dispatchJobStatus: actionStatus,
-      );
+      if (actionStatus == 'delivery_done') {
+        // Completing a delivery completes the ORDER — and must award loyalty
+        // points. OrderService.completeOrder() is the shared, idempotent path
+        // used by both staff and rider completions, so points are never lost.
+        await OrderService().completeOrder(orderId);
+      } else {
+        // Sync order status (pickup_done → processing, etc.)
+        await syncOrderStatus(
+          orderId: orderId,
+          dispatchJobStatus: actionStatus,
+        );
+      }
       
       print('✅ Completed action $actionStatus for job $dispatchJobId');
     } catch (e) {

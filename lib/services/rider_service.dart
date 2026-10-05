@@ -1,3 +1,4 @@
+import 'package:meta/meta.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
 import '../models/dispatch_job.dart';
@@ -5,6 +6,71 @@ import '../config/cache_config.dart';
 import 'cache/job_cache_service.dart';
 import 'supabase_service.dart';
 import 'dispatch_job_adapter.dart';
+
+/// Thrown when a rider tries to start a job that another rider has already
+/// claimed. UI should show a friendly message and refresh the job list.
+class JobClaimedException implements Exception {
+  final String message;
+  JobClaimedException([this.message = 'This job was already taken by another rider.']);
+
+  @override
+  String toString() => message;
+}
+
+/// Pure decision points extracted from [RiderService.startJob] so the
+/// double-claim guard logic can be unit tested without a Supabase backend.
+@visibleForTesting
+abstract final class StartJobGuards {
+  /// True when a fetched job's current state blocks a START attempt outright.
+  /// Mirrors the pre-checks in [RiderService.startJob]: another rider holds
+  /// the claim, or the job is already done/cancelled.
+  static bool shouldBlockStart({
+    required String? jobRiderId,
+    required String? jobStatus,
+    required String myEmployeeId,
+  }) {
+    if (jobRiderId != null && jobRiderId != myEmployeeId) return true;
+    if (jobStatus == 'pickup_done' ||
+        jobStatus == 'delivery_done' ||
+        jobStatus == 'cancelled') {
+      return true;
+    }
+    return false;
+  }
+
+  /// Whether the atomic claim UPDATE is permitted for this job state.
+  /// The service encodes this as `.or('rider_id.is.null,rider_id.eq.<me>')`
+  /// plus `.neq('status', ...)` filters — this function is its truth table.
+  static bool claimUpdateAllowed({
+    required String? jobRiderId,
+    required String? jobStatus,
+    required String myEmployeeId,
+  }) {
+    return (jobRiderId == null || jobRiderId == myEmployeeId) &&
+        jobStatus != 'pickup_done' &&
+        jobStatus != 'delivery_done' &&
+        jobStatus != 'cancelled';
+  }
+
+  /// Builds the payload the service writes in the atomic claim update.
+  static Map<String, dynamic> claimUpdatePayload({
+    required String riderEmployeeId,
+    required bool wasUnclaimed,
+    DateTime? now,
+  }) {
+    final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
+    return {
+      'rider_id': riderEmployeeId,
+      'status': 'in_progress',
+      'started_at': ts,
+      'updated_at': ts,
+      if (wasUnclaimed) 'assigned_at': ts,
+    };
+  }
+
+  /// True when the given claim response means the current rider WON the claim.
+  static bool claimWon(List<dynamic> claimedRows) => claimedRows.isNotEmpty;
+}
 
 class RiderService {
   final SupabaseClient _client = SupabaseService.client;
@@ -460,35 +526,79 @@ class RiderService {
     }
   }
 
-  /// Start a job
+  /// Start (claim) a job.
+  ///
+  /// Atomically assigns the current rider's employee ID to the job and marks
+  /// it in_progress. If another rider claimed it first, the update matches no
+  /// rows and a [JobClaimedException] is thrown — so two riders can never both
+  /// work the same job.
+  ///
+  /// Note: dispatch_jobs.rider_id references employees.id (NOT auth.users.id),
+  /// so we resolve the rider's employee record first.
   Future<void> startJob(String jobId) async {
     try {
-      // Fetch job details to get order ID and job type
+      // Fetch job details to get order ID, job type and current claim state
       final jobResponse = await _supabaseClient
           .from('dispatch_jobs')
-          .select('order_id, job_type, rider_id')
+          .select('order_id, job_type, rider_id, status')
           .eq('id', jobId)
           .single();
 
       final orderId = jobResponse['order_id'] as String;
       final jobType = jobResponse['job_type'] as String;
       final currentRiderId = jobResponse['rider_id'] as String?;
+      final status = jobResponse['status'] as String?;
 
       print('🚀 Starting job $jobId...');
       print('   Current rider_id in DB: $currentRiderId');
+      print('   Current status: $status');
       print('   Job type: $jobType');
 
-      // Don't try to assign rider_id here - it should already be set when job was created
-      // or can be NULL for unassigned jobs. We're just marking it as in_progress.
-      // Trying to update rider_id with auth.user.id will cause foreign key errors
-      // because dispatch_jobs.rider_id references employees.id, not auth.users.id
+      // Resolve the real employee ID (dispatch_jobs.rider_id -> employees.id).
+      final riderEmployeeId = await getCurrentRiderEmployeeId();
+      if (riderEmployeeId == null) {
+        throw Exception(
+          'No employee record found for your account. Ask an admin to link your rider profile.',
+        );
+      }
 
-      // Update dispatch job status to in_progress
-      await _supabaseService.updateDispatchJobStatus(
-        jobId,
-        'in_progress',
-        startedAt: DateTime.now(),
+      // Fast pre-checks for a friendly error message. The atomic guard below
+      // is what actually prevents double-claiming.
+      if (StartJobGuards.shouldBlockStart(
+        jobRiderId: currentRiderId,
+        jobStatus: status,
+        myEmployeeId: riderEmployeeId,
+      )) {
+        if (currentRiderId != null && currentRiderId != riderEmployeeId) {
+          throw JobClaimedException();
+        }
+        throw Exception('This job is no longer available (status: $status).');
+      }
+
+      // Atomic claim: the WHERE clause only matches if the job is still
+      // unclaimed (or already claimed by THIS rider). If another rider claimed
+      // it in the meantime, 0 rows are updated and we throw.
+      final claimUpdate = StartJobGuards.claimUpdatePayload(
+        riderEmployeeId: riderEmployeeId,
+        wasUnclaimed: currentRiderId == null,
       );
+
+      final claimedRows = await _supabaseClient
+          .from('dispatch_jobs')
+          .update(claimUpdate)
+          .eq('id', jobId)
+          .or('rider_id.is.null,rider_id.eq.$riderEmployeeId')
+          .neq('status', 'pickup_done')
+          .neq('status', 'delivery_done')
+          .neq('status', 'cancelled')
+          .select('id');
+
+      if (!StartJobGuards.claimWon(claimedRows)) {
+        // Someone else claimed (or completed/cancelled) the job first.
+        throw JobClaimedException();
+      }
+
+      print('✅ Job claimed by employee $riderEmployeeId: $jobId');
 
       // Sync order status (if delivery job, order becomes 'out_for_delivery')
       await _supabaseService.syncOrderStatus(
@@ -498,9 +608,44 @@ class RiderService {
       );
 
       print('✅ Job started: $jobId (type: $jobType, order: $orderId)');
+    } on JobClaimedException {
+      rethrow;
     } catch (e) {
       print('❌ Error starting job: $e');
       rethrow;
+    }
+  }
+
+  /// Check whether a job is still claimable (pending, unclaimed, not done).
+  /// Used when a rider opens a job's details so stale screens fail fast with a
+  /// clear message instead of a confusing error on Start.
+  Future<bool> isJobStillAvailable(String jobId) async {
+    try {
+      final job = await _supabaseClient
+          .from('dispatch_jobs')
+          .select('status, rider_id')
+          .eq('id', jobId)
+          .maybeSingle();
+
+      if (job == null) return false;
+
+      final status = job['status'] as String?;
+      if (status == 'pickup_done' ||
+          status == 'delivery_done' ||
+          status == 'cancelled') {
+        return false;
+      }
+
+      // Unclaimed jobs are always available; claimed jobs are only available
+      // to the rider who holds them.
+      final riderId = job['rider_id'] as String?;
+      if (riderId == null) return true;
+
+      final myEmployeeId = await getCurrentRiderEmployeeId();
+      return riderId == myEmployeeId;
+    } catch (e) {
+      print('⚠️ Could not verify job availability: $e');
+      return true; // Don't block the UI on verification failures.
     }
   }
 
@@ -640,43 +785,6 @@ class RiderService {
   // =========================================================================
   // NEW METHODS FOR DISPATCH JOBS-BASED FETCHING (TASK 1)
   // =========================================================================
-
-  /// Get current rider's employee ID (dispatch_jobs.rider_id references employees.id)
-  Future<String?> _getCurrentEmployeeId() async {
-    try {
-      final userId = _supabaseClient.auth.currentUser?.id;
-      if (userId == null) return null;
-
-      // Get user's profile
-      final profile = await _supabaseClient
-          .from('profiles')
-          .select('id')
-          .eq('id', userId)
-          .maybeSingle();
-
-      if (profile == null) {
-        print('⚠️ No profile found for user $userId');
-        return null;
-      }
-
-      // Get employee record
-      final employee = await _supabaseClient
-          .from('employees')
-          .select('id')
-          .eq('profile_id', profile['id'])
-          .maybeSingle();
-
-      if (employee == null) {
-        print('⚠️ No employee record found for profile ${profile['id']}');
-        return null;
-      }
-
-      return employee['id'] as String;
-    } catch (e) {
-      print('❌ Error getting employee ID: $e');
-      return null;
-    }
-  }
 
   /// Fetch active pickup jobs (pending or in_progress)
   /// Shows ALL unassigned jobs (for now, until rider assignment is properly implemented)
