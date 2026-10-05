@@ -1,5 +1,91 @@
 # Firebase Notification System Setup
 
+## Push Notifications (FCM) — ACTIVE
+
+The app sends real push notifications via Firebase Cloud Messaging. This is the
+primary notification path; the Firestore announcement system below is a
+separate, in-app-only feed.
+
+### Architecture
+
+```
+DB event (order status / new job / new request)
+  → Postgres trigger (pg_net, async)
+    → send-push-notification Edge Function
+      → FCM HTTP v1 API
+        → device tray (foreground: in-app banner via PushNotificationService)
+```
+
+**Files:**
+- Client: `lib/services/push_notification_service.dart` (permission, token
+  registration into `fcm_tokens`, foreground banner, tap deep-link)
+- Server: `supabase/functions/send-push-notification/index.ts` (FCM HTTP v1,
+  service-account OAuth2, batching, auto-prune of dead tokens)
+- Triggers: `supabase/migrations/20261006_push_auto_notify.sql` (+ rollback)
+- Tokens table: `supabase/migrations/20261002_fcm_push_tokens.sql`
+
+### What triggers a push
+
+| Event | Audience | Message |
+|---|---|---|
+| Order status → `ready` | that customer | "Order ready! 🧺" |
+| Order status → `out_for_delivery` | that customer | "On the way 🛵" |
+| Order status → `completed` | that customer | "Completed ✅" |
+| Order status → `rejected` | that customer | "Request declined" |
+| `dispatch_jobs` INSERT | all active riders | "New job available! 📦" |
+| `orders` INSERT (`mobile_app`, `pending_approval`) | all staff | "New service request 📋" |
+
+### Deployment checklist (one-time)
+
+1. **Apply the token table migration** (verify with
+   `select count(*) from public.fcm_tokens;` — error means not applied):
+   run `supabase/migrations/20261002_fcm_push_tokens.sql` in the SQL Editor.
+
+2. **Apply the trigger migration:** run
+   `supabase/migrations/20261006_push_auto_notify.sql` in the SQL Editor.
+
+3. **Deploy the Edge Function** (CLI: `supabase functions deploy
+   send-push-notification`, or paste the file into the dashboard's
+   Edge Functions editor).
+
+4. **Set the two Vault secrets** (SQL Editor — the triggers read these;
+   without them pushes are silent no-ops):
+   ```sql
+   select vault.create_secret(
+     'https://<PROJECT-REF>.supabase.co/functions/v1/send-push-notification',
+     'push_function_url');
+
+   select vault.create_secret(
+     '<service_role key from Project Settings → API>',
+     'push_service_role_key');
+   ```
+
+5. **Set the Firebase secret for the Edge Function** (CLI:
+   `supabase secrets set FIREBASE_SERVICE_ACCOUNT_JSON='<json>'`; dashboard:
+   Edge Functions → send-push-notification → Secrets). Create the key in
+   Firebase Console → Project Settings → Service Accounts → Generate new
+   private key.
+
+6. **Test end to end:**
+   - Sign in on a real device and accept the notification permission —
+     verify a row appears: `select user_id, platform, updated_at from
+     fcm_tokens order by updated_at desc limit 5;`
+   - Change an order's status in SQL (`update orders set status='ready'
+     where id='<id>';`) or through the staff app → tray notification
+     should arrive within a few seconds.
+   - Check Edge Function logs (dashboard → Edge Functions → Logs) if not.
+
+### Manual push (any audience, anytime)
+
+```bash
+curl -X POST 'https://<PROJECT-REF>.supabase.co/functions/v1/send-push-notification' \
+  -H "Authorization: Bearer <service_role key>" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Announcement","body":"Shop closed tomorrow","audience":"all"}'
+```
+
+---
+
 ## Overview
 
 This document explains the Firebase-based notification system for Infinity Wash. Notifications are created from your admin website and delivered in real-time to the Flutter app.
