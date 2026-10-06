@@ -658,14 +658,29 @@ class OrderService {
   /// Fetch orders with optional status filter and pagination offset.
   /// Use [offset] + [limit] to implement cursor-style pagination:
   ///   page 0 → offset=0, page 1 → offset=limit, etc.
+  ///
+  /// [paymentStatus] filters by payment state ('paid' or 'unpaid'). NOTE: the
+  /// database stores 'paid', 'pending', 'refunded' or 'failed' — there is no
+  /// 'unpaid' value — so unpaid is expressed as "not paid".
+  ///
+  /// [subFilter] narrows by how the order is collected/returned:
+  /// 'all', 'walkin' (neither pickup nor delivery) or 'rider' (either one).
+  ///
+  /// [requireLoads] restricts results to orders that have at least one load
+  /// (i.e. already checked in) using an inner join, so the filter is applied
+  /// by the database and never leaves a page short.
   Future<List<LaundryOrder>> fetchOrders({
     List<String>? statuses,
     String? assignedStaffId,
+    String? paymentStatus,
+    String? subFilter,
+    bool requireLoads = false,
     int limit = 50,
     int offset = 0,
   }) async {
     try {
-      print('📊 fetchOrders called: statuses=$statuses, limit=$limit, offset=$offset');
+      print('📊 fetchOrders called: statuses=$statuses, paymentStatus=$paymentStatus, '
+          'subFilter=$subFilter, requireLoads=$requireLoads, limit=$limit, offset=$offset');
       
       // Build base query with customer information and RFID tags
       // Use explicit column selection to avoid id collision between orders and order_loads
@@ -708,7 +723,7 @@ class OrderService {
             reviewed_at,
             reviewed_by,
             expires_at,
-            order_loads(*),
+            ${requireLoads ? 'order_loads!inner(*)' : 'order_loads(*)'},
             customers(first_name, last_name, customer_code, phone, address, landmark)
           ''');
 
@@ -720,6 +735,25 @@ class OrderService {
       // Apply staff filter if provided
       if (assignedStaffId != null) {
         query = query.eq('assigned_staff_id', assignedStaffId);
+      }
+
+      // Apply payment filter if provided. 'unpaid' means "anything not paid"
+      // because the database has no 'unpaid' value.
+      if (paymentStatus == 'paid') {
+        query = query.eq('payment_status', 'paid');
+      } else if (paymentStatus == 'unpaid') {
+        query = query.neq('payment_status', 'paid');
+      }
+
+      // Apply Walk-in / Rider filter if provided. Mirrors
+      // `_isRiderOrder` in the payment screen: rider orders are those with a
+      // rider pickup or a delivery; walk-in orders have neither.
+      if (subFilter == 'rider') {
+        query = query.or('pickup_requested.eq.true,delivery_requested.eq.true');
+      } else if (subFilter == 'walkin') {
+        query = query
+            .eq('pickup_requested', false)
+            .eq('delivery_requested', false);
       }
 
       // Apply ordering and range (for pagination), then execute.
@@ -790,6 +824,61 @@ class OrderService {
       return orders;
     } catch (e) {
       print('❌ Error fetching orders: $e');
+      rethrow;
+    }
+  }
+
+  /// Accurate count + money total for one payment bucket, used by the Payments
+  /// header so the figures cover every row and not just the loaded page.
+  ///
+  /// Selects only `total_amount` and pages through in 1000-row chunks, which
+  /// keeps the payload tiny even when there are thousands of orders.
+  Future<PaymentBucketTotals> fetchPaymentBucketTotals({
+    required String paymentStatus,
+    String? subFilter,
+    bool requireLoads = false,
+  }) async {
+    const int chunkSize = 1000;
+    var offset = 0;
+    var count = 0;
+    var total = 0.0;
+
+    try {
+      while (true) {
+        final select = requireLoads
+            ? 'total_amount, order_loads!inner(id)'
+            : 'total_amount';
+        var query = _client.from('orders').select(select);
+
+        if (paymentStatus == 'paid') {
+          query = query.eq('payment_status', 'paid');
+        } else {
+          query = query.neq('payment_status', 'paid');
+        }
+
+        if (subFilter == 'rider') {
+          query = query.or('pickup_requested.eq.true,delivery_requested.eq.true');
+        } else if (subFilter == 'walkin') {
+          query = query
+              .eq('pickup_requested', false)
+              .eq('delivery_requested', false);
+        }
+
+        final response =
+            await query.range(offset, offset + chunkSize - 1);
+
+        for (final row in response) {
+          count++;
+          total += (row['total_amount'] as num?)?.toDouble() ?? 0;
+        }
+
+        if (response.length < chunkSize) break;
+        offset += chunkSize;
+      }
+
+      return PaymentBucketTotals(count: count, total: total);
+    } catch (e) {
+      print('❌ Error fetching payment bucket totals: $e');
       rethrow;
     }
   }

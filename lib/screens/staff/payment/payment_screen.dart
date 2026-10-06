@@ -13,101 +13,296 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
+  /// Page size for both payment tabs. Matches the other list screens so the
+  /// scroll feel is consistent across the app.
+  static const int _kPageSize = 7;
+
   final OrderService _orderService = OrderService();
   bool _showPaid = false;
-  bool _isLoading = true;
   String _searchQuery = '';
   String _subFilter = 'all'; // 'all', 'walkin', 'rider'
-  List<LaundryOrder> _unpaidOrders = [];
-  List<LaundryOrder> _paidOrders = [];
+
+  // ── Unpaid tab (paginated) ──────────────────────────────────────────────
+  final List<LaundryOrder> _unpaidOrders = [];
+  int _unpaidOffset = 0;
+  bool _unpaidHasMore = true;
+  bool _unpaidLoading = false;
+  bool _unpaidLoadingMore = false;
+  bool _unpaidInitialized = false;
+  final ScrollController _unpaidScroll = ScrollController();
+
+  // ── Paid tab (paginated) ────────────────────────────────────────────────
+  final List<LaundryOrder> _paidOrders = [];
+  int _paidOffset = 0;
+  bool _paidHasMore = true;
+  bool _paidLoading = false;
+  bool _paidLoadingMore = false;
+  bool _paidInitialized = false;
+  final ScrollController _paidScroll = ScrollController();
+
+  // ── Header aggregates (cover every row, not just the loaded page) ───────
+  int _unpaidCount = 0;
+  double _unpaidTotal = 0;
+  int _paidCount = 0;
+  double _paidTotal = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadOrders();
+    // Attach scroll listeners for infinite pagination
+    _unpaidScroll.addListener(() => _onScroll(_unpaidScroll, _loadMoreUnpaid));
+    _paidScroll.addListener(() => _onScroll(_paidScroll, _loadMorePaid));
+
+    _initUnpaid();
+    _refreshTotals();
   }
 
-  Future<void> _loadOrders() async {
-    setState(() {
-      _isLoading = true;
-    });
+  @override
+  void dispose() {
+    _unpaidScroll.dispose();
+    _paidScroll.dispose();
+    super.dispose();
+  }
 
-    try {
-      final allOrders = await _orderService.fetchOrders(limit: 100);
-
-      // Only show orders that have been checked in (have loads)
-      final checkedInOrders = allOrders.where((o) => o.loads.isNotEmpty).toList();
-
-      final unpaid = checkedInOrders.where((o) => o.paymentStatus == PaymentStatus.unpaid).toList();
-      final paid = checkedInOrders.where((o) => o.paymentStatus == PaymentStatus.paid).toList();
-
-      if (!mounted) return;
-      setState(() {
-        _unpaidOrders = unpaid;
-        _paidOrders = paid;
-        _isLoading = false;
-      });
-    } catch (e) {
-      print('❌ Error loading payment orders: $e');
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(mapErrorToMessage(e)),
-          backgroundColor: Colors.red,
-        ),
-      );
+  // ─────────────────────────────────────────────────────────────────────────
+  // Scroll listener — triggers load-more when near bottom (200 px threshold)
+  // ─────────────────────────────────────────────────────────────────────────
+  void _onScroll(ScrollController ctrl, VoidCallback loadMore) {
+    if (!ctrl.hasClients) return;
+    final pos = ctrl.position;
+    if (pos.pixels >= pos.maxScrollExtent - 200) {
+      loadMore();
     }
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Tab / filter switching
+  // ─────────────────────────────────────────────────────────────────────────
+  void _selectTab(bool showPaid) {
+    if (_showPaid == showPaid) return;
+    setState(() => _showPaid = showPaid);
+    // Lazy-load the Paid tab the first time it is opened.
+    if (showPaid && !_paidInitialized) _initPaid();
+  }
+
+  void _setSubFilter(String filter) {
+    if (_subFilter == filter) return;
+    setState(() {
+      _subFilter = filter;
+      _resetUnpaidState();
+      _resetPaidState();
+    });
+    // The active tab is reloaded immediately; the other tab reloads lazily when
+    // it is next opened.
+    if (_showPaid) {
+      _initPaid();
+    } else {
+      _initUnpaid();
+    }
+    _refreshTotals();
+  }
+
+  void _resetUnpaidState() {
+    _unpaidOrders.clear();
+    _unpaidOffset = 0;
+    _unpaidHasMore = true;
+    _unpaidInitialized = false;
+  }
+
+  void _resetPaidState() {
+    _paidOrders.clear();
+    _paidOffset = 0;
+    _paidHasMore = true;
+    _paidInitialized = false;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // UNPAID TAB
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _initUnpaid() async {
+    if (_unpaidLoading) return;
+    setState(() {
+      _unpaidLoading = true;
+      _unpaidInitialized = true;
+      _unpaidOrders.clear();
+      _unpaidOffset = 0;
+      _unpaidHasMore = true;
+    });
+    await _fetchUnpaid(reset: true);
+  }
+
+  Future<void> _loadMoreUnpaid() async {
+    if (_unpaidLoadingMore || !_unpaidHasMore || !_unpaidInitialized) return;
+    setState(() => _unpaidLoadingMore = true);
+    await _fetchUnpaid(reset: false);
+  }
+
+  Future<void> _fetchUnpaid({required bool reset}) async {
+    try {
+      final page = await _orderService.fetchOrders(
+        paymentStatus: 'unpaid',
+        subFilter: _subFilter,
+        requireLoads: true,
+        limit: _kPageSize,
+        offset: _unpaidOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (reset) _unpaidOrders.clear();
+        _unpaidOrders.addAll(page);
+        _unpaidHasMore = page.length == _kPageSize;
+        _unpaidOffset += page.length;
+        _unpaidLoading = false;
+        _unpaidLoadingMore = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Error loading unpaid payments: $e');
+      if (!mounted) return;
+      setState(() {
+        _unpaidLoading = false;
+        _unpaidLoadingMore = false;
+      });
+      _showError(e);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PAID TAB
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _initPaid() async {
+    if (_paidLoading) return;
+    setState(() {
+      _paidLoading = true;
+      _paidInitialized = true;
+      _paidOrders.clear();
+      _paidOffset = 0;
+      _paidHasMore = true;
+    });
+    await _fetchPaid(reset: true);
+  }
+
+  Future<void> _loadMorePaid() async {
+    if (_paidLoadingMore || !_paidHasMore || !_paidInitialized) return;
+    setState(() => _paidLoadingMore = true);
+    await _fetchPaid(reset: false);
+  }
+
+  Future<void> _fetchPaid({required bool reset}) async {
+    try {
+      final page = await _orderService.fetchOrders(
+        paymentStatus: 'paid',
+        subFilter: _subFilter,
+        requireLoads: true,
+        limit: _kPageSize,
+        offset: _paidOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (reset) _paidOrders.clear();
+        _paidOrders.addAll(page);
+        _paidHasMore = page.length == _kPageSize;
+        _paidOffset += page.length;
+        _paidLoading = false;
+        _paidLoadingMore = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Error loading paid payments: $e');
+      if (!mounted) return;
+      setState(() {
+        _paidLoading = false;
+        _paidLoadingMore = false;
+      });
+      _showError(e);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Aggregates & refresh
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _refreshTotals() async {
+    try {
+      final results = await Future.wait([
+        _orderService.fetchPaymentBucketTotals(
+          paymentStatus: 'unpaid',
+          subFilter: _subFilter,
+          requireLoads: true,
+        ),
+        _orderService.fetchPaymentBucketTotals(
+          paymentStatus: 'paid',
+          subFilter: _subFilter,
+          requireLoads: true,
+        ),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _unpaidCount = results[0].count;
+        _unpaidTotal = results[0].total;
+        _paidCount = results[1].count;
+        _paidTotal = results[1].total;
+      });
+    } catch (e) {
+      // Totals are cosmetic — keep the last known values if the query fails.
+      debugPrint('❌ Error loading payment totals: $e');
+    }
+  }
+
+  /// Pull-to-refresh / refresh button: reloads both tabs and the header.
+  Future<void> _refreshAll() async {
+    await Future.wait([
+      _initUnpaid(),
+      if (_paidInitialized) _initPaid(),
+      _refreshTotals(),
+    ]);
+  }
+
+  void _showError(Object e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mapErrorToMessage(e)),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Active tab accessors
+  // ─────────────────────────────────────────────────────────────────────────
+  List<LaundryOrder> get _activeOrders =>
+      _showPaid ? _paidOrders : _unpaidOrders;
+
+  bool get _activeLoading => _showPaid ? _paidLoading : _unpaidLoading;
+
+  bool get _activeLoadingMore =>
+      _showPaid ? _paidLoadingMore : _unpaidLoadingMore;
+
+  bool get _activeHasMore => _showPaid ? _paidHasMore : _unpaidHasMore;
+
+  ScrollController get _activeScroll => _showPaid ? _paidScroll : _unpaidScroll;
 
   bool _isRiderOrder(LaundryOrder order) {
     return order.collectionMethod == CollectionMethod.riderPickup ||
         order.returnMethod == ReturnMethod.delivery;
   }
 
+  /// Walk-in / Rider filtering happens in the database (see
+  /// [OrderService.fetchOrders]); only free-text search is applied here, and it
+  /// covers the pages loaded so far.
   List<LaundryOrder> _getFilteredOrders() {
-    final list = _showPaid ? _paidOrders : _unpaidOrders;
-
-    // Apply sub-filter
-    List<LaundryOrder> filtered;
-    switch (_subFilter) {
-      case 'walkin':
-        filtered = list.where((o) => !_isRiderOrder(o)).toList();
-        break;
-      case 'rider':
-        filtered = list.where((o) => _isRiderOrder(o)).toList();
-        break;
-      default:
-        filtered = list;
-    }
-
-    // Apply search
-    if (_searchQuery.trim().isEmpty) return filtered;
+    final list = _activeOrders;
+    if (_searchQuery.trim().isEmpty) return list;
     final q = _searchQuery.trim().toLowerCase();
-    return filtered.where((order) {
+    return list.where((order) {
       final name = order.customerName.toLowerCase();
       final number = order.displayNumber.toLowerCase();
       return name.contains(q) || number.contains(q);
     }).toList();
   }
 
-  double _getTotalUnpaid() {
-    return _unpaidOrders.fold(0.0, (sum, o) {
-      return sum + (o.totalAmount ?? (o.basePrice > 0 ? o.basePrice : 170.0));
-    });
-  }
-
-  double _getTotalCollected() {
-    return _paidOrders.fold(0.0, (sum, o) {
-      return sum + (o.totalAmount ?? (o.basePrice > 0 ? o.basePrice : 170.0));
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final displayedOrders = _getFilteredOrders();
+    final isSearching = _searchQuery.trim().isNotEmpty;
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -127,7 +322,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           IconButton(
             icon: const Icon(Icons.refresh, color: AppTheme.accentBlue),
             tooltip: 'Refresh',
-            onPressed: _loadOrders,
+            onPressed: _refreshAll,
           ),
         ],
       ),
@@ -147,19 +342,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   children: [
                     Expanded(
                       child: _buildFilterTab(
-                        title: 'Unpaid (${_unpaidOrders.length})',
+                        title: 'Unpaid ($_unpaidCount)',
                         isSelected: !_showPaid,
                         color: AppTheme.accentBlue,
-                        onTap: () => setState(() => _showPaid = false),
+                        onTap: () => _selectTab(false),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: _buildFilterTab(
-                        title: 'Paid (${_paidOrders.length})',
+                        title: 'Paid ($_paidCount)',
                         isSelected: _showPaid,
                         color: Colors.green[700]!,
-                        onTap: () => setState(() => _showPaid = true),
+                        onTap: () => _selectTab(true),
                       ),
                     ),
                   ],
@@ -205,13 +400,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
           // Orders List
           Expanded(
-            child: _isLoading
+            child: _activeLoading && _activeOrders.isEmpty
                 ? const Center(
                     child: CircularProgressIndicator(color: AppTheme.accentBlue),
                   )
                 : displayedOrders.isEmpty
                     ? RefreshIndicator(
-                        onRefresh: _loadOrders,
+                        onRefresh: _refreshAll,
                         child: ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
                           children: [
@@ -230,9 +425,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                     ),
                                     const SizedBox(height: 16),
                                     Text(
-                                      _showPaid
-                                          ? 'No paid orders found'
-                                          : 'No unpaid orders. All caught up!',
+                                      isSearching
+                                          ? 'No matching orders'
+                                          : (_showPaid
+                                              ? 'No paid orders found'
+                                              : 'No unpaid orders. All caught up!'),
                                       style: TextStyle(
                                         color: Colors.grey[600],
                                         fontSize: 15,
@@ -255,13 +452,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: _loadOrders,
+                        onRefresh: _refreshAll,
                         child: ListView.separated(
+                          controller: _activeScroll,
                           physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.all(16),
-                          itemCount: displayedOrders.length,
+                          itemCount: isSearching
+                              ? displayedOrders.length
+                              : displayedOrders.length + 1,
                           separatorBuilder: (context, index) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) => _buildPaymentCard(displayedOrders[index]),
+                          itemBuilder: (context, index) {
+                            if (!isSearching &&
+                                index == displayedOrders.length) {
+                              return _buildPaginationFooter(
+                                _activeLoadingMore,
+                                _activeHasMore,
+                              );
+                            }
+                            return _buildPaymentCard(displayedOrders[index]);
+                          },
                         ),
                       ),
           ),
@@ -289,8 +498,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
               iconColor: Colors.amber.shade700,
               iconBg: Colors.amber.shade50,
               label: 'Unpaid',
-              value: '₱${_getTotalUnpaid().toStringAsFixed(0)}',
-              subValue: '${_unpaidOrders.length} orders',
+              value: '₱${_unpaidTotal.toStringAsFixed(0)}',
+              subValue: '$_unpaidCount orders',
             ),
           ),
           Container(
@@ -304,8 +513,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
               iconColor: Colors.green.shade700,
               iconBg: Colors.green.shade50,
               label: 'Collected',
-              value: '₱${_getTotalCollected().toStringAsFixed(0)}',
-              subValue: '${_paidOrders.length} orders',
+              value: '₱${_paidTotal.toStringAsFixed(0)}',
+              subValue: '$_paidCount orders',
             ),
           ),
         ],
@@ -395,7 +604,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Widget _buildSubFilterChip(String label, String filter) {
     final isSelected = _subFilter == filter;
     return GestureDetector(
-      onTap: () => setState(() => _subFilter = filter),
+      onTap: () => _setSubFilter(filter),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -411,6 +620,35 @@ class _PaymentScreenState extends State<PaymentScreen> {
             color: isSelected ? Colors.white : Colors.grey.shade700,
           ),
         ),
+      ),
+    );
+  }
+
+  // ─── Pagination Footer ──────────────────────────────────────────
+  /// Shows a spinner while the next page is loading, or an end-of-list label
+  /// once every page has been fetched.
+  Widget _buildPaginationFooter(bool isLoadingMore, bool hasMore) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Center(
+        child: isLoadingMore
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.accentBlue,
+                ),
+              )
+            : hasMore
+                ? const SizedBox.shrink()
+                : Text(
+                    'No more payments',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade400,
+                    ),
+                  ),
       ),
     );
   }
@@ -780,7 +1018,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
       MaterialPageRoute(builder: (context) => PaymentProcessScreen(order: order)),
     );
     if (paidSuccess == true) {
-      await _loadOrders();
+      // The order moved from Unpaid to Paid, so both tabs and the header
+      // totals need to be rebuilt.
+      await _refreshAll();
     }
   }
 

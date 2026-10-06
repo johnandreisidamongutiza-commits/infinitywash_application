@@ -1100,11 +1100,20 @@ class RiderService {
     }
   }
 
-  /// Fetch orders for Rider Payment tab (both Unpaid and Paid)
-  Future<List<LaundryOrder>> fetchRiderPaymentOrders({int limit = 100}) async {
+  /// Fetch one page of orders for the Rider Payment tab.
+  ///
+  /// [paymentStatus] filters by payment state ('paid' / 'unpaid'); the database
+  /// has no 'unpaid' value, so unpaid means "not paid". [offset] + [limit]
+  /// drive infinite-scroll pagination.
+  Future<List<LaundryOrder>> fetchRiderPaymentOrders({
+    String? paymentStatus,
+    int limit = 100,
+    int offset = 0,
+  }) async {
     try {
-      print('💳 Fetching rider payment orders...');
-      final response = await _supabaseClient
+      print('💳 Fetching rider payment orders '
+          '(paymentStatus=$paymentStatus, limit=$limit, offset=$offset)...');
+      var query = _supabaseClient
           .from('orders')
           .select('''
             id,
@@ -1147,14 +1156,50 @@ class RiderService {
             customers(first_name, last_name, customer_code, phone, address, landmark)
           ''')
           .or('delivery_requested.eq.true,pickup_requested.eq.true')
-          .not('status', 'in', '("cancelled","rejected")')
+          .not('status', 'in', '("cancelled","rejected")');
+
+      // The database stores 'paid' / 'pending' / 'refunded' / 'failed' — there
+      // is no 'unpaid' value, so unpaid is expressed as "not paid".
+      if (paymentStatus == 'paid') {
+        query = query.eq('payment_status', 'paid');
+      } else if (paymentStatus == 'unpaid') {
+        query = query.neq('payment_status', 'paid');
+      }
+
+      final response = await query
           .order('created_at', ascending: false)
-          .limit(limit);
+          .range(offset, offset + limit - 1);
 
       print('💳 Fetched ${response.length} rider payment orders');
       return _parseOrdersFromResponse(response);
     } catch (e) {
       print('❌ Error fetching rider payment orders: $e');
+      rethrow;
+    }
+  }
+
+  /// Exact count of a rider payment bucket, used for the Unpaid/Paid tab
+  /// badges. Sent as a head count so no rows are transferred.
+  ///
+  /// Keeps the same base filters as [fetchRiderPaymentOrders].
+  Future<int> fetchRiderPaymentOrderCount({
+    required String paymentStatus,
+  }) async {
+    try {
+      var query = _supabaseClient
+          .from('orders')
+          .select('id')
+          .or('delivery_requested.eq.true,pickup_requested.eq.true')
+          .not('status', 'in', '("cancelled","rejected")');
+
+      query = paymentStatus == 'paid'
+          ? query.eq('payment_status', 'paid')
+          : query.neq('payment_status', 'paid');
+
+      final response = await query.count(CountOption.exact);
+      return response.count;
+    } catch (e) {
+      print('❌ Error counting rider payment orders: $e');
       rethrow;
     }
   }

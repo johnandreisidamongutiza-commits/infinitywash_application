@@ -8,6 +8,16 @@ enum ReturnMethod { shopPickup, delivery }
 enum OrderChannel { walkIn, online }
 enum PaymentStatus { paid, unpaid }
 
+/// Lightweight count + money aggregate for one payment bucket (for example
+/// "unpaid, rider orders"). Backed by a column-light query so the Payments
+/// screen can show accurate header totals without loading every order row.
+class PaymentBucketTotals {
+  final int count;
+  final double total;
+
+  const PaymentBucketTotals({this.count = 0, this.total = 0});
+}
+
 // DEPRECATED: Load-level status tracking removed. Use order-level status only.
 // Kept for backward compatibility with unmigrated screens.
 @Deprecated('Load status tracking removed. Use order-level status instead.')

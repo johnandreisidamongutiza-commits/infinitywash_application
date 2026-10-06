@@ -17,21 +17,50 @@ class RiderPaymentScreen extends StatefulWidget {
 }
 
 class RiderPaymentScreenState extends State<RiderPaymentScreen> {
+  /// Page size for both payment tabs, matching the other list screens.
+  static const int _kPageSize = 7;
+
   final RiderService _riderService = RiderService();
   bool _showPaid = false;
-  bool _isLoading = true;
   String _searchQuery = '';
-  List<LaundryOrder> _unpaidOrders = [];
-  List<LaundryOrder> _paidOrders = [];
+
+  // ── Unpaid tab (paginated) ──────────────────────────────────────────────
+  final List<LaundryOrder> _unpaidOrders = [];
+  int _unpaidOffset = 0;
+  bool _unpaidHasMore = true;
+  bool _unpaidLoading = false;
+  bool _unpaidLoadingMore = false;
+  bool _unpaidInitialized = false;
+  final ScrollController _unpaidScroll = ScrollController();
+
+  // ── Paid tab (paginated) ────────────────────────────────────────────────
+  final List<LaundryOrder> _paidOrders = [];
+  int _paidOffset = 0;
+  bool _paidHasMore = true;
+  bool _paidLoading = false;
+  bool _paidLoadingMore = false;
+  bool _paidInitialized = false;
+  final ScrollController _paidScroll = ScrollController();
+
+  // ── Tab badges (cover every row, not just the loaded page) ──────────────
+  int _unpaidCount = 0;
+  int _paidCount = 0;
 
   @override
   void initState() {
     super.initState();
+    // Attach scroll listeners for infinite pagination
+    _unpaidScroll.addListener(() => _onScroll(_unpaidScroll, _loadMoreUnpaid));
+    _paidScroll.addListener(() => _onScroll(_paidScroll, _loadMorePaid));
+
     // Only load immediately if this screen is already the active tab (e.g. the
     // app launched directly onto the Payment tab). If it starts offstage inside
     // IndexedStack, skip the load here — didUpdateWidget will trigger it the
     // moment isActive flips true, guaranteeing setState never runs mid-layout.
-    if (widget.isActive) _loadOrders();
+    if (widget.isActive) {
+      _initUnpaid();
+      _refreshCounts();
+    }
   }
 
   @override
@@ -39,53 +68,194 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
     super.didUpdateWidget(oldWidget);
     // Reload every time the tab becomes active so fresh data is always shown.
     if (widget.isActive && !oldWidget.isActive) {
-      _loadOrders();
+      _refreshAll();
     }
+  }
+
+  @override
+  void dispose() {
+    _unpaidScroll.dispose();
+    _paidScroll.dispose();
+    super.dispose();
   }
 
   void refreshOrders() {
-    _loadOrders();
+    _refreshAll();
   }
 
-  Future<void> _loadOrders() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final allOrders = await _riderService.fetchRiderPaymentOrders(limit: 100);
-
-      final unpaid = allOrders
-          .where((o) => o.paymentStatus == PaymentStatus.unpaid)
-          .toList();
-      final paid = allOrders
-          .where((o) => o.paymentStatus == PaymentStatus.paid)
-          .toList();
-
-      if (!mounted) return;
-      setState(() {
-        _unpaidOrders = unpaid;
-        _paidOrders = paid;
-        _isLoading = false;
-      });
-    } catch (e) {
-      print('❌ Error loading rider payment orders: $e');
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(mapErrorToMessage(e)),
-          backgroundColor: Colors.red,
-        ),
-      );
+  // ─────────────────────────────────────────────────────────────────────────
+  // Scroll listener — triggers load-more when near bottom (200 px threshold)
+  // ─────────────────────────────────────────────────────────────────────────
+  void _onScroll(ScrollController ctrl, VoidCallback loadMore) {
+    if (!ctrl.hasClients) return;
+    final pos = ctrl.position;
+    if (pos.pixels >= pos.maxScrollExtent - 200) {
+      loadMore();
     }
   }
 
+  void _selectTab(bool showPaid) {
+    if (_showPaid == showPaid) return;
+    setState(() => _showPaid = showPaid);
+    // Lazy-load the Paid tab the first time it is opened.
+    if (showPaid && !_paidInitialized) _initPaid();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // UNPAID TAB
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _initUnpaid() async {
+    if (_unpaidLoading) return;
+    setState(() {
+      _unpaidLoading = true;
+      _unpaidInitialized = true;
+      _unpaidOrders.clear();
+      _unpaidOffset = 0;
+      _unpaidHasMore = true;
+    });
+    await _fetchUnpaid(reset: true);
+  }
+
+  Future<void> _loadMoreUnpaid() async {
+    if (_unpaidLoadingMore || !_unpaidHasMore || !_unpaidInitialized) return;
+    setState(() => _unpaidLoadingMore = true);
+    await _fetchUnpaid(reset: false);
+  }
+
+  Future<void> _fetchUnpaid({required bool reset}) async {
+    try {
+      final page = await _riderService.fetchRiderPaymentOrders(
+        paymentStatus: 'unpaid',
+        limit: _kPageSize,
+        offset: _unpaidOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (reset) _unpaidOrders.clear();
+        _unpaidOrders.addAll(page);
+        _unpaidHasMore = page.length == _kPageSize;
+        _unpaidOffset += page.length;
+        _unpaidLoading = false;
+        _unpaidLoadingMore = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Error loading rider unpaid orders: $e');
+      if (!mounted) return;
+      setState(() {
+        _unpaidLoading = false;
+        _unpaidLoadingMore = false;
+      });
+      _showError(e);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PAID TAB
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _initPaid() async {
+    if (_paidLoading) return;
+    setState(() {
+      _paidLoading = true;
+      _paidInitialized = true;
+      _paidOrders.clear();
+      _paidOffset = 0;
+      _paidHasMore = true;
+    });
+    await _fetchPaid(reset: true);
+  }
+
+  Future<void> _loadMorePaid() async {
+    if (_paidLoadingMore || !_paidHasMore || !_paidInitialized) return;
+    setState(() => _paidLoadingMore = true);
+    await _fetchPaid(reset: false);
+  }
+
+  Future<void> _fetchPaid({required bool reset}) async {
+    try {
+      final page = await _riderService.fetchRiderPaymentOrders(
+        paymentStatus: 'paid',
+        limit: _kPageSize,
+        offset: _paidOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (reset) _paidOrders.clear();
+        _paidOrders.addAll(page);
+        _paidHasMore = page.length == _kPageSize;
+        _paidOffset += page.length;
+        _paidLoading = false;
+        _paidLoadingMore = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Error loading rider paid orders: $e');
+      if (!mounted) return;
+      setState(() {
+        _paidLoading = false;
+        _paidLoadingMore = false;
+      });
+      _showError(e);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Counts & refresh
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _refreshCounts() async {
+    try {
+      final counts = await Future.wait([
+        _riderService.fetchRiderPaymentOrderCount(paymentStatus: 'unpaid'),
+        _riderService.fetchRiderPaymentOrderCount(paymentStatus: 'paid'),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _unpaidCount = counts[0];
+        _paidCount = counts[1];
+      });
+    } catch (e) {
+      // Badges are cosmetic — keep the last known values if the query fails.
+      debugPrint('❌ Error loading rider payment counts: $e');
+    }
+  }
+
+  /// Pull-to-refresh / refresh button / tab re-activation: reloads both tabs
+  /// and the badges.
+  Future<void> _refreshAll() async {
+    await Future.wait([
+      _initUnpaid(),
+      if (_paidInitialized) _initPaid(),
+      _refreshCounts(),
+    ]);
+  }
+
+  void _showError(Object e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mapErrorToMessage(e)),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Active tab accessors
+  // ─────────────────────────────────────────────────────────────────────────
+  List<LaundryOrder> get _activeOrders =>
+      _showPaid ? _paidOrders : _unpaidOrders;
+
+  bool get _activeLoading => _showPaid ? _paidLoading : _unpaidLoading;
+
+  bool get _activeLoadingMore =>
+      _showPaid ? _paidLoadingMore : _unpaidLoadingMore;
+
+  bool get _activeHasMore => _showPaid ? _paidHasMore : _unpaidHasMore;
+
+  ScrollController get _activeScroll => _showPaid ? _paidScroll : _unpaidScroll;
+
+  /// Only free-text search is applied here; it covers the pages loaded so far
+  /// (same convention as the other list screens).
   List<LaundryOrder> _getFilteredOrders() {
-    final list = _showPaid ? _paidOrders : _unpaidOrders;
+    final list = _activeOrders;
     if (_searchQuery.trim().isEmpty) return list;
 
     final q = _searchQuery.trim().toLowerCase();
@@ -100,6 +270,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
   @override
   Widget build(BuildContext context) {
     final displayedOrders = _getFilteredOrders();
+    final isSearching = _searchQuery.trim().isNotEmpty;
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -119,7 +290,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
           IconButton(
             icon: const Icon(Icons.refresh, color: AppTheme.accentBlue),
             tooltip: 'Refresh',
-            onPressed: _loadOrders,
+            onPressed: _refreshAll,
           ),
         ],
       ),
@@ -136,19 +307,19 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                   children: [
                     Expanded(
                       child: _buildFilterTab(
-                        title: 'Unpaid (${_unpaidOrders.length})',
+                        title: 'Unpaid ($_unpaidCount)',
                         isSelected: !_showPaid,
                         isUnpaid: true,
-                        onTap: () => setState(() => _showPaid = false),
+                        onTap: () => _selectTab(false),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: _buildFilterTab(
-                        title: 'Paid (${_paidOrders.length})',
+                        title: 'Paid ($_paidCount)',
                         isSelected: _showPaid,
                         isUnpaid: false,
-                        onTap: () => setState(() => _showPaid = true),
+                        onTap: () => _selectTab(true),
                       ),
                     ),
                   ],
@@ -183,13 +354,13 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
 
           // Orders List
           Expanded(
-            child: _isLoading
+            child: _activeLoading && _activeOrders.isEmpty
                 ? const Center(
                     child: CircularProgressIndicator(color: AppTheme.accentBlue),
                   )
                 : displayedOrders.isEmpty
                     ? RefreshIndicator(
-                        onRefresh: _loadOrders,
+                        onRefresh: _refreshAll,
                         child: ListView(
                           primary: false,
                           physics: const AlwaysScrollableScrollPhysics(),
@@ -209,9 +380,11 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                                     ),
                                     const SizedBox(height: 16),
                                     Text(
-                                      _showPaid
-                                          ? 'No paid orders found'
-                                          : 'No unpaid orders. All caught up!',
+                                      isSearching
+                                          ? 'No matching orders'
+                                          : (_showPaid
+                                              ? 'No paid orders found'
+                                              : 'No unpaid orders. All caught up!'),
                                       style: TextStyle(
                                         color: Colors.grey[600],
                                         fontSize: 15,
@@ -234,14 +407,24 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: _loadOrders,
+                        onRefresh: _refreshAll,
                         child: ListView.separated(
+                          controller: _activeScroll,
                           primary: false,
                           physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.all(16),
-                          itemCount: displayedOrders.length,
+                          itemCount: isSearching
+                              ? displayedOrders.length
+                              : displayedOrders.length + 1,
                           separatorBuilder: (context, index) => const SizedBox(height: 12),
                           itemBuilder: (context, index) {
+                            if (!isSearching &&
+                                index == displayedOrders.length) {
+                              return _buildPaginationFooter(
+                                _activeLoadingMore,
+                                _activeHasMore,
+                              );
+                            }
                             final order = displayedOrders[index];
                             return _buildOrderCard(order);
                           },
@@ -249,6 +432,35 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                       ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ─── Pagination Footer ──────────────────────────────────────────
+  /// Shows a spinner while the next page is loading, or an end-of-list label
+  /// once every page has been fetched.
+  Widget _buildPaginationFooter(bool isLoadingMore, bool hasMore) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Center(
+        child: isLoadingMore
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.accentBlue,
+                ),
+              )
+            : hasMore
+                ? const SizedBox.shrink()
+                : Text(
+                    'No more payments',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade400,
+                    ),
+                  ),
       ),
     );
   }
@@ -325,7 +537,9 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
     );
 
     if (paid == true) {
-      _loadOrders();
+      // The order moved from Unpaid to Paid, so both tabs and the badges need
+      // to be rebuilt.
+      _refreshAll();
     }
   }
 
