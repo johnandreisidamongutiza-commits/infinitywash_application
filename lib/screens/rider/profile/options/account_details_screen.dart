@@ -24,7 +24,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
   final _emailController = TextEditingController();
   final _nameController = TextEditingController();
   final _vehicleController = TextEditingController();
-  final _zonesController = TextEditingController();
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -42,7 +41,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
     _emailController.dispose();
     _nameController.dispose();
     _vehicleController.dispose();
-    _zonesController.dispose();
     super.dispose();
   }
 
@@ -59,7 +57,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
       _emailController.text = profile['email'] ?? employee['email'] ?? '';
       _nameController.text = employee['name'] ?? '';
       _vehicleController.text = employee['vehicle_details'] ?? '';
-      _zonesController.text = employee['delivery_zones'] ?? '';
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -120,7 +117,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
         name: riderName,
         phone: _phoneController.text.trim(),
         vehicleDetails: _vehicleController.text.trim(),
-        deliveryZones: _zonesController.text.trim(),
       );
 
       if (!mounted) return;
@@ -481,13 +477,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
             hint: 'e.g. Honda Wave 110 - ABC 1234',
             prefixIcon: Icons.two_wheeler_outlined,
             controller: _vehicleController,
-          ),
-          const SizedBox(height: 16),
-          CustomTextField(
-            label: 'Delivery Zones',
-            hint: 'Assigned delivery areas / zones',
-            prefixIcon: Icons.map_outlined,
-            controller: _zonesController,
           ),
         ],
       ),
