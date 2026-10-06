@@ -71,6 +71,7 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
 
   Future<void> _initializeLocation() async {
     try {
+      _gpsProvider.attachDialogContext(context);
       await _gpsProvider.initialize();
       await _gpsProvider.startTracking();
 

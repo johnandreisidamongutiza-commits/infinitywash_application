@@ -3,10 +3,12 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../services/payment_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/permission_manager.dart';
 
 /// Shared GCash payment flow for staff and customer screens.
 ///
@@ -138,6 +140,17 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
 
   Future<void> _pickImage({required ImageSource source}) async {
     if (_isPickingImage) return;
+    // Explain why the camera/photo library is needed before the OS prompt.
+    if (!mounted) return;
+    final rationaleOk = await PermissionManager.confirmRationale(
+      context,
+      source == ImageSource.camera ? AppPermission.camera : AppPermission.photos,
+    );
+    if (!rationaleOk) {
+      if (mounted) setState(() => _isPickingImage = false);
+      return;
+    }
+
     setState(() => _isPickingImage = true);
     try {
       final XFile? picked = await _imagePicker.pickImage(
@@ -147,6 +160,21 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
       );
       if (picked != null) {
         setState(() => _receiptFile = File(picked.path));
+      }
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      if (PermissionManager.isPickerPermissionCode(e.code)) {
+        await PermissionManager.showDeniedDialog(
+          context,
+          source == ImageSource.camera ? AppPermission.camera : AppPermission.photos,
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not take the receipt photo. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } catch (e) {
       if (!mounted) return;

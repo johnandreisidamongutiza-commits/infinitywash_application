@@ -63,6 +63,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
 
   Future<void> _initializeLocation() async {
     try {
+      _gpsProvider.attachDialogContext(context);
       await _gpsProvider.initialize();
       await _gpsProvider.startTracking();
       _gpsProvider.locationStream.listen((location) {

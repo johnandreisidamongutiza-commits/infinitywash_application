@@ -1,6 +1,8 @@
 import 'package:location/location.dart';
 import 'dart:async';
 
+import '../utils/permission_manager.dart';
+
 /// GPS Location Service
 /// 
 /// Handles all GPS/location functionality with proper error handling:
@@ -55,6 +57,25 @@ class LocationService {
     } catch (e) {
       print('❌ Error requesting permission: $e');
       return false;
+    }
+  }
+
+  /// Request location permission and return the full outcome so callers can
+  /// distinguish a one-time denial from a permanent one (needs Settings).
+  Future<PermissionRequestResult> requestPermissionDetailed() async {
+    try {
+      final permission = await _location.requestPermission();
+      switch (permission) {
+        case PermissionStatus.granted:
+          return const PermissionRequestResult.granted();
+        case PermissionStatus.deniedForever:
+          return const PermissionRequestResult.deniedForever();
+        default:
+          return const PermissionRequestResult.denied();
+      }
+    } catch (e) {
+      print('❌ Error requesting permission: $e');
+      return const PermissionRequestResult.denied();
     }
   }
 
