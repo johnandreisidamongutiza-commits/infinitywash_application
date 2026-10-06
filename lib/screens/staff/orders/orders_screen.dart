@@ -60,6 +60,74 @@ class OrdersScreenState extends State<OrdersScreen>
   // ── Rejected count (badge only, not paginated) ──────────────────────────
   int _rejectedCount = 0;
 
+  // ── Search state ────────────────────────────────────────────────────────
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  bool _matchesSearch(LaundryOrder order) {
+    if (_searchQuery.trim().isEmpty) return true;
+    final q = _searchQuery.trim().toLowerCase();
+
+    // 1. Customer Name & Phone
+    if (order.customerName.toLowerCase().contains(q)) return true;
+    if (order.customerPhone != null &&
+        order.customerPhone!.toLowerCase().contains(q)) {
+      return true;
+    }
+
+    // 2. Order & Request IDs
+    if (order.displayNumber.toLowerCase().contains(q)) return true;
+    if (order.orderNumber != null &&
+        order.orderNumber!.toLowerCase().contains(q)) {
+      return true;
+    }
+    if (order.id.toLowerCase().contains(q)) return true;
+
+    // 3. RFID Card Tag
+    if (order.rfidTag != null && order.rfidTag!.toLowerCase().contains(q)) {
+      return true;
+    }
+
+    // 4. Service / Category names & load descriptions
+    for (final load in order.loads) {
+      if (load.category.toLowerCase().contains(q)) return true;
+      if (load.description.toLowerCase().contains(q)) return true;
+      if (load.notes != null && load.notes!.toLowerCase().contains(q)) return true;
+    }
+
+    // 5. Status label
+    if (_statusLabel(order.status).toLowerCase().contains(q)) return true;
+
+    // 6. Customer description, notes, instructions, delivery info
+    if (order.customerDescription != null &&
+        order.customerDescription!.toLowerCase().contains(q)) {
+      return true;
+    }
+    if (order.instructions != null &&
+        order.instructions!.toLowerCase().contains(q)) {
+      return true;
+    }
+    if (order.deliveryAddress != null &&
+        order.deliveryAddress!.toLowerCase().contains(q)) {
+      return true;
+    }
+    if (order.deliveryLandmark != null &&
+        order.deliveryLandmark!.toLowerCase().contains(q)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  List<LaundryOrder> get _filteredRequests =>
+      _searchQuery.trim().isEmpty ? _requests : _requests.where(_matchesSearch).toList();
+
+  List<LaundryOrder> get _filteredActive =>
+      _searchQuery.trim().isEmpty ? _active : _active.where(_matchesSearch).toList();
+
+  List<LaundryOrder> get _filteredHistory =>
+      _searchQuery.trim().isEmpty ? _history : _history.where(_matchesSearch).toList();
+
   @override
   void initState() {
     super.initState();
@@ -101,6 +169,7 @@ class OrdersScreenState extends State<OrdersScreen>
     WidgetsBinding.instance.removeObserver(this);
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
+    _searchController.dispose();
     _requestsScroll.dispose();
     _activeScroll.dispose();
     _historyScroll.dispose();
@@ -561,7 +630,7 @@ class OrdersScreenState extends State<OrdersScreen>
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Text('Requests'),
-                        if (_requests.isNotEmpty) ...[
+                        if (_filteredRequests.isNotEmpty) ...[
                           const SizedBox(width: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -571,9 +640,11 @@ class OrdersScreenState extends State<OrdersScreen>
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              _requestsHasMore
-                                  ? '${_requests.length}+'
-                                  : '${_requests.length}',
+                              _searchQuery.isNotEmpty
+                                  ? '${_filteredRequests.length}'
+                                  : (_requestsHasMore
+                                      ? '${_requests.length}+'
+                                      : '${_requests.length}'),
                               style: GoogleFonts.lexend(
                                 color: Colors.white,
                                 fontSize: 10,
@@ -593,17 +664,24 @@ class OrdersScreenState extends State<OrdersScreen>
           ),
         ),
       ),
-      body: RefreshIndicator(
-        color: AppTheme.accentBlue,
-        onRefresh: _refreshAll,
-        child: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildRequestsTab(),
-            _buildActiveTab(),
-            _buildHistoryTab(),
-          ],
-        ),
+      body: Column(
+        children: [
+          _buildSearchBar(),
+          Expanded(
+            child: RefreshIndicator(
+              color: AppTheme.accentBlue,
+              onRefresh: _refreshAll,
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildRequestsTab(),
+                  _buildActiveTab(),
+                  _buildHistoryTab(),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
@@ -664,18 +742,36 @@ class OrdersScreenState extends State<OrdersScreen>
       );
     }
 
+    if (_searchQuery.trim().isNotEmpty && _filteredRequests.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'No matching requests',
+        subtitle: 'No requests matched "$_searchQuery".',
+        actionLabel: 'Clear Search',
+        onAction: () {
+          setState(() {
+            _searchController.clear();
+            _searchQuery = '';
+          });
+        },
+      );
+    }
+
+    final isSearching = _searchQuery.trim().isNotEmpty;
+    final displayList = _filteredRequests;
+
     return ListView.separated(
       controller: _requestsScroll,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-      itemCount: _requests.length + 1, // +1 for footer
+      itemCount: isSearching ? displayList.length : displayList.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        if (index == _requests.length) {
+        if (!isSearching && index == displayList.length) {
           return _buildPaginationFooter(
               _requestsLoadingMore, _requestsHasMore);
         }
-        return _buildRequestCard(_requests[index]);
+        return _buildRequestCard(displayList[index]);
       },
     );
   }
@@ -701,17 +797,35 @@ class OrdersScreenState extends State<OrdersScreen>
       );
     }
 
+    if (_searchQuery.trim().isNotEmpty && _filteredActive.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'No matching active orders',
+        subtitle: 'No active orders matched "$_searchQuery".',
+        actionLabel: 'Clear Search',
+        onAction: () {
+          setState(() {
+            _searchController.clear();
+            _searchQuery = '';
+          });
+        },
+      );
+    }
+
+    final isSearching = _searchQuery.trim().isNotEmpty;
+    final displayList = _filteredActive;
+
     return ListView.separated(
       controller: _activeScroll,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-      itemCount: _active.length + 1,
+      itemCount: isSearching ? displayList.length : displayList.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        if (index == _active.length) {
+        if (!isSearching && index == displayList.length) {
           return _buildPaginationFooter(_activeLoadingMore, _activeHasMore);
         }
-        return _buildOrderCard(_active[index]);
+        return _buildOrderCard(displayList[index]);
       },
     );
   }
@@ -737,17 +851,35 @@ class OrdersScreenState extends State<OrdersScreen>
       );
     }
 
+    if (_searchQuery.trim().isNotEmpty && _filteredHistory.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'No matching order history',
+        subtitle: 'No orders in history matched "$_searchQuery".',
+        actionLabel: 'Clear Search',
+        onAction: () {
+          setState(() {
+            _searchController.clear();
+            _searchQuery = '';
+          });
+        },
+      );
+    }
+
+    final isSearching = _searchQuery.trim().isNotEmpty;
+    final displayList = _filteredHistory;
+
     return ListView.separated(
       controller: _historyScroll,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-      itemCount: _history.length + 1,
+      itemCount: isSearching ? displayList.length : displayList.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        if (index == _history.length) {
+        if (!isSearching && index == displayList.length) {
           return _buildPaginationFooter(_historyLoadingMore, _historyHasMore);
         }
-        return _buildOrderCard(_history[index]);
+        return _buildOrderCard(displayList[index]);
       },
     );
   }
@@ -783,10 +915,75 @@ class OrdersScreenState extends State<OrdersScreen>
     );
   }
 
+  Widget _buildSearchBar() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.softGray,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.black.withValues(alpha: 0.06),
+            width: 1,
+          ),
+        ),
+        child: TextField(
+          controller: _searchController,
+          onChanged: (val) {
+            setState(() {
+              _searchQuery = val;
+            });
+          },
+          style: GoogleFonts.lexend(
+            fontSize: 14,
+            color: AppTheme.textDark,
+          ),
+          decoration: InputDecoration(
+            hintText: 'Search by customer, phone, order #, service...',
+            hintStyle: GoogleFonts.lexend(
+              fontSize: 13,
+              color: AppTheme.textLight.withValues(alpha: 0.7),
+            ),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              color: AppTheme.textLight,
+              size: 20,
+            ),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(
+                      Icons.cancel_rounded,
+                      color: AppTheme.textLight,
+                      size: 18,
+                    ),
+                    splashRadius: 18,
+                    onPressed: () {
+                      setState(() {
+                        _searchController.clear();
+                        _searchQuery = '';
+                      });
+                    },
+                  )
+                : null,
+            border: InputBorder.none,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmptyState({
     required IconData icon,
     required String title,
     required String subtitle,
+    String? actionLabel,
+    VoidCallback? onAction,
   }) {
     return Center(
       child: Padding(
@@ -825,6 +1022,31 @@ class OrdersScreenState extends State<OrdersScreen>
                 color: AppTheme.textLight,
               ),
             ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.clear_rounded, size: 16),
+                label: Text(
+                  actionLabel,
+                  style: GoogleFonts.lexend(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.accentBlue,
+                  side: const BorderSide(color: AppTheme.accentBlue),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
