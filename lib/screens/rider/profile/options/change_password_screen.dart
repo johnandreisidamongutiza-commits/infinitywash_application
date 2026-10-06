@@ -118,6 +118,7 @@ class _RiderChangePasswordScreenState extends State<RiderChangePasswordScreen> {
                 prefixIcon: Icons.lock_outline,
                 isPassword: true,
                 controller: _currentPasswordController,
+                validator: Validators.passwordRequired,
               ),
               const SizedBox(height: 20),
               CustomTextField(
@@ -126,6 +127,8 @@ class _RiderChangePasswordScreenState extends State<RiderChangePasswordScreen> {
                 prefixIcon: Icons.lock_outline,
                 isPassword: true,
                 controller: _newPasswordController,
+                validator: Validators.passwordField,
+                maxLength: Validators.passwordMax,
               ),
               const SizedBox(height: 20),
               CustomTextField(
@@ -134,6 +137,11 @@ class _RiderChangePasswordScreenState extends State<RiderChangePasswordScreen> {
                 prefixIcon: Icons.lock_reset_outlined,
                 isPassword: true,
                 controller: _confirmPasswordController,
+                validator: (v) => Validators.confirmPassword(
+                  v,
+                  _newPasswordController.text,
+                ),
+                maxLength: Validators.passwordMax,
               ),
               const SizedBox(height: 40),
               SizedBox(

@@ -17,6 +17,7 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   ForgotPasswordStep _currentStep = ForgotPasswordStep.identity;
+  final _identityFormKey = GlobalKey<FormState>();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
@@ -120,12 +121,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           style: AppTheme.lightTheme.textTheme.bodyMedium,
         ),
         const SizedBox(height: 40),
-        CustomTextField(
-          label: 'Email Address',
-          hint: 'Enter your email',
-          prefixIcon: Icons.email_outlined,
-          controller: _emailController,
-          keyboardType: TextInputType.emailAddress,
+        Form(
+          key: _identityFormKey,
+          child: CustomTextField(
+            label: 'Email Address',
+            hint: 'Enter your email',
+            prefixIcon: Icons.email_outlined,
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            validator: Validators.emailField,
+          ),
         ),
         const SizedBox(height: 40),
         SizedBox(
@@ -146,6 +151,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
   
   Future<void> _handleSendCode() async {
+    if (_identityFormKey.currentState?.validate() != true) return;
+
     if (_emailController.text.isEmpty) {
       _showError('Please enter your email address');
       return;
@@ -275,8 +282,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     // Collect the code from all 6 fields
     String code = _otpControllers.map((c) => c.text).join();
     
-    if (code.length != 6) {
-      _showError('Please enter the complete 6-character code');
+    // Full charset + length check (boxes already filter input per character).
+    final otpError = Validators.otpCode(code);
+    if (otpError != null) {
+      _showError(otpError);
       return;
     }
     

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
+import '../../../utils/input_formatters.dart';
 import '../../../services/loyalty_service.dart';
 
 class RfidCheckerScreen extends StatefulWidget {
@@ -376,6 +377,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                   child: TextField(
                     controller: _manualTagController,
                     textCapitalization: TextCapitalization.characters,
+                    inputFormatters: InputFormatters.uppercaseCardUid,
                     decoration: const InputDecoration(
                       hintText: 'Enter Card UID (e.g. A3F9C2)...',
                       hintStyle:
@@ -1118,6 +1120,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
             ),
             child: TextField(
               controller: _searchController,
+              inputFormatters: InputFormatters.text(maxLength: 50),
               decoration: const InputDecoration(
                 hintText: 'e.g. Juan dela Cruz / 09xxxxxxxxx',
                 hintStyle:

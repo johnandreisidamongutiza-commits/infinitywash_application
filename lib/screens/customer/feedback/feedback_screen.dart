@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/input_formatters.dart';
+import '../../../utils/validators.dart';
 
 class FeedbackScreen extends StatefulWidget {
   const FeedbackScreen({super.key});
@@ -9,8 +11,15 @@ class FeedbackScreen extends StatefulWidget {
 }
 
 class _FeedbackScreenState extends State<FeedbackScreen> {
+  final _commentController = TextEditingController();
   int _rating = 0;
   bool _isSubmitted = false;
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +58,10 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
             ),
             const SizedBox(height: 30),
             TextField(
+              controller: _commentController,
               maxLines: 5,
+              inputFormatters:
+                  InputFormatters.text(maxLength: Validators.notesMax),
               decoration: InputDecoration(
                 hintText: 'Tell us more about our service...',
                 hintStyle: TextStyle(color: AppTheme.textLight.withValues(alpha: 0.5)),

@@ -25,6 +25,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
   bool rememberMe = false;
   bool _isLoading = false;
   bool _isLoadingSavedAccounts = true;
@@ -108,6 +109,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _signIn() async {
+    if (_formKey.currentState?.validate() != true) return;
+
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
@@ -249,9 +252,11 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
 
             // Branding: mascot logo in a soft circle.
             Container(
@@ -380,6 +385,8 @@ class _LoginScreenState extends State<LoginScreen> {
               hint: 'Enter your email',
               prefixIcon: Icons.email_outlined,
               controller: _emailController,
+              validator: Validators.emailField,
+              keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: 20),
             CustomTextField(
@@ -388,6 +395,7 @@ class _LoginScreenState extends State<LoginScreen> {
               prefixIcon: Icons.lock_outline,
               isPassword: true,
               controller: _passwordController,
+              validator: Validators.passwordRequired,
             ),
             const SizedBox(height: 12),
             Row(
@@ -456,6 +464,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 24),
           ],
+          ),
         ),
       ),
     );

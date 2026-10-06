@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
+import '../utils/input_formatters.dart';
+import '../utils/validators.dart';
 
 /// Shared 3-part address input used by both customer registration and
 /// the staff walk-in order creation flow.
@@ -226,16 +228,28 @@ class AddressInputWidget extends StatelessWidget {
           controller: houseStreetController,
           textCapitalization: TextCapitalization.words,
           style: textStyle,
+          inputFormatters:
+              InputFormatters.text(maxLength: Validators.addressMax),
           decoration: _buildInputDecoration(
             hintText: houseStreetHint,
             prefixIcon: Icons.home_outlined,
             effectiveIconColor: effectiveIconColor,
           ),
-          validator: houseStreetRequired
-              ? (v) => (v == null || v.trim().isEmpty)
+          validator: (v) {
+            final value = v?.trim() ?? '';
+            if (value.isEmpty) {
+              return houseStreetRequired
                   ? 'Please enter your house/street address'
-                  : null
-              : null,
+                  : null;
+            }
+            if (value.length < 2) {
+              return 'Address must be at least 2 characters.';
+            }
+            if (value.length > Validators.addressMax) {
+              return 'Address must be at most ${Validators.addressMax} characters.';
+            }
+            return null;
+          },
         ),
 
         const SizedBox(height: 20),
@@ -302,15 +316,24 @@ class AddressInputWidget extends StatelessWidget {
             controller: customBarangayController,
             textCapitalization: TextCapitalization.words,
             style: textStyle,
+            inputFormatters:
+                InputFormatters.text(maxLength: Validators.addressMax),
             decoration: _buildInputDecoration(
               hintText: 'e.g. Pila, Laguna or other area',
               prefixIcon: Icons.edit_location_alt_outlined,
               effectiveIconColor: effectiveIconColor,
             ),
             validator: barangayRequired
-                ? (v) => (v == null || v.trim().isEmpty)
-                    ? 'Please enter your barangay / area'
-                    : null
+                ? (v) {
+                    final value = v?.trim() ?? '';
+                    if (value.isEmpty) {
+                      return 'Please enter your barangay / area';
+                    }
+                    if (value.length < 2) {
+                      return 'Barangay / area must be at least 2 characters.';
+                    }
+                    return null;
+                  }
                 : null,
           ),
         ],
@@ -327,11 +350,14 @@ class AddressInputWidget extends StatelessWidget {
             controller: landmarkController,
             textCapitalization: TextCapitalization.sentences,
             style: textStyle,
+            inputFormatters:
+                InputFormatters.text(maxLength: Validators.landmarkMax),
             decoration: _buildInputDecoration(
               hintText: landmarkHint,
               prefixIcon: Icons.assistant_navigation,
               effectiveIconColor: effectiveIconColor,
             ),
+            validator: Validators.landmark,
           ),
         ],
       ],

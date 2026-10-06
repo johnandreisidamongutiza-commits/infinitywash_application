@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../config/location_constants.dart';
 import '../../../utils/app_error.dart';
+import '../../../utils/input_formatters.dart';
+import '../../../utils/validators.dart';
 import '../../../widgets/location_picker_widget.dart';
 import '../../../widgets/address_input_widget.dart';
 import '../../../theme/app_theme.dart';
@@ -791,16 +793,33 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       }
 
       // Validation 5: All loads must have valid weight
+      // Captured before any await below so snackbar calls stay lint-clean.
+      final messenger = ScaffoldMessenger.of(context);
       for (int i = 0; i < _loads.length; i++) {
         final weight = _getLoadWeight(i);
         if (weight <= 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             SnackBar(
               content: Text('Load ${i + 1} must have a weight greater than 0.'),
               backgroundColor: Colors.orange,
             ),
           );
           return;
+        }
+
+        // Range check for kg loads (0.1–100 kg); 'pc' loads only need > 0.
+        if (LaundryIntake.unitOf(_loads[i].category) == 'kg') {
+          final weightError =
+              Validators.weightKg(_loads[i].weightController.text);
+          if (weightError != null) {
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text('Load ${i + 1}: $weightError'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+          }
         }
 
         // Warning for very high weights (possible typo)
@@ -1543,6 +1562,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                           hint: 'Juan',
                           prefixIcon: Icons.person_outline,
                           controller: _firstNameController,
+                          validator: (v) => Validators.nameField(v, 'First name'),
+                          maxLength: Validators.nameMax,
+                          textCapitalization: TextCapitalization.words,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -1552,6 +1574,11 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                           hint: 'Dela Cruz',
                           prefixIcon: Icons.badge_outlined,
                           controller: _lastNameController,
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? null
+                              : Validators.nameField(v, 'Last name'),
+                          maxLength: Validators.nameMax,
+                          textCapitalization: TextCapitalization.words,
                         ),
                       ),
                     ],
@@ -1562,6 +1589,11 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                     hint: '09XX-XXX-XXXX',
                     prefixIcon: Icons.phone_android,
                     controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: InputFormatters.phone(),
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? null
+                        : Validators.phone(v),
                   ),
                 ],
               ),
@@ -2342,6 +2374,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 child: TextField(
                   controller: _loyaltyCardController,
                   textCapitalization: TextCapitalization.characters,
+                  inputFormatters: InputFormatters.uppercaseCardUid,
                   decoration: const InputDecoration(
                     hintText: 'Enter Loyalty Card UID to auto-fill details',
                     hintStyle: TextStyle(fontSize: 12, color: AppTheme.textLight),
@@ -2464,6 +2497,8 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 child: TextField(
                   controller: load.weightController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters:
+                      InputFormatters.decimal(maxDecimals: 2, maxLength: 6),
                   onChanged: (_) => setState(() {}),
                   textAlign: TextAlign.center,
                   decoration: InputDecoration(

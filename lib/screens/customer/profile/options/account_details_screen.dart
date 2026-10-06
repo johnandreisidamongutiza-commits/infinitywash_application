@@ -5,6 +5,8 @@ import '../../../../config/location_constants.dart';
 import '../../../../services/profile_service.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../utils/app_error.dart';
+import '../../../../utils/input_formatters.dart';
+import '../../../../utils/validators.dart';
 import '../../../../widgets/address_input_widget.dart';
 import '../../../../widgets/custom_text_field.dart';
 import '../../../../widgets/location_picker_widget.dart';
@@ -438,9 +440,9 @@ class _CustomerAccountDetailsScreenState
                   hint: 'First name',
                   prefixIcon: Icons.badge_outlined,
                   controller: _firstNameController,
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Required'
-                      : null,
+                  validator: (v) => Validators.nameField(v, 'First name'),
+                  maxLength: Validators.nameMax,
+                  textCapitalization: TextCapitalization.words,
                 ),
               ),
               const SizedBox(width: 14),
@@ -450,9 +452,9 @@ class _CustomerAccountDetailsScreenState
                   hint: 'Last name',
                   prefixIcon: Icons.badge_outlined,
                   controller: _lastNameController,
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Required'
-                      : null,
+                  validator: (v) => Validators.nameField(v, 'Last name'),
+                  maxLength: Validators.nameMax,
+                  textCapitalization: TextCapitalization.words,
                 ),
               ),
             ],
@@ -464,12 +466,8 @@ class _CustomerAccountDetailsScreenState
             prefixIcon: Icons.phone_android_outlined,
             controller: _phoneController,
             keyboardType: TextInputType.phone,
-            validator: (v) {
-              if (v == null || v.trim().isEmpty) return 'Phone number required';
-              final cleaned = v.replaceAll(RegExp(r'[^0-9]'), '');
-              if (cleaned.length < 10) return 'Invalid phone number';
-              return null;
-            },
+            inputFormatters: InputFormatters.phone(),
+            validator: Validators.phone,
           ),
           const SizedBox(height: 16),
           CustomTextField(
@@ -478,6 +476,7 @@ class _CustomerAccountDetailsScreenState
             prefixIcon: Icons.email_outlined,
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
+            validator: Validators.optionalEmail,
           ),
         ],
       ),

@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/app_error.dart';
+import '../../utils/input_formatters.dart';
 import '../../utils/validators.dart';
 import '../../services/connectivity_service.dart';
 import '../../widgets/custom_text_field.dart';
@@ -347,6 +348,10 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                         hint: 'John',
                         prefixIcon: Icons.person_outline,
                         controller: _firstNameController,
+                        validator: (v) =>
+                            Validators.nameField(v, 'First name'),
+                        maxLength: Validators.nameMax,
+                        textCapitalization: TextCapitalization.words,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -356,6 +361,10 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                         hint: 'Doe',
                         prefixIcon: Icons.person_outline,
                         controller: _lastNameController,
+                        validator: (v) =>
+                            Validators.nameField(v, 'Last name'),
+                        maxLength: Validators.nameMax,
+                        textCapitalization: TextCapitalization.words,
                       ),
                     ),
                   ],
@@ -366,6 +375,9 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                   hint: '09XX-XXX-XXXX',
                   prefixIcon: Icons.phone_android_outlined,
                   controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: InputFormatters.phone(),
+                  validator: Validators.phone,
                 ),
                 const SizedBox(height: 20),
                 CustomTextField(
@@ -374,6 +386,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                   prefixIcon: Icons.email_outlined,
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  validator: Validators.emailField,
                 ),
                 const SizedBox(height: 20),
                 // ── 3-Part Address ──────────────────────────────────
@@ -396,6 +409,8 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                   prefixIcon: Icons.lock_outline,
                   isPassword: true,
                   controller: _passwordController,
+                  validator: Validators.passwordField,
+                  maxLength: Validators.passwordMax,
                 ),
                 const SizedBox(height: 20),
                 CustomTextField(
@@ -404,6 +419,11 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                   prefixIcon: Icons.lock_reset_outlined,
                   isPassword: true,
                   controller: _confirmPasswordController,
+                  validator: (v) => Validators.confirmPassword(
+                    v,
+                    _passwordController.text,
+                  ),
+                  maxLength: Validators.passwordMax,
                 ),
                 const SizedBox(height: 20),
                 Container(

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/laundry_intake.dart';
 // import '../services/loyalty_service.dart'; // Temporarily disabled
 import '../theme/app_theme.dart';
+import '../utils/input_formatters.dart';
+import '../utils/validators.dart';
 
 class OrderCheckInForm extends StatefulWidget {
   const OrderCheckInForm({
@@ -135,6 +137,12 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
       final weight = LaundryIntake.weightOf(_loads[i]);
       if (weight <= 0) {
         return 'Load ${i + 1} must have a weight greater than 0.';
+      }
+      // Range check for kg loads (0.1–100 kg); 'pc' loads only need > 0.
+      if (LaundryIntake.unitOf(_loads[i].category) == 'kg') {
+        final weightError =
+            Validators.weightKg(_loads[i].weightController.text);
+        if (weightError != null) return 'Load ${i + 1}: $weightError';
       }
       if (weight > 50) {
         final confirmed = await showDialog<bool>(
@@ -405,6 +413,8 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
                   child: TextField(
                     controller: load.weightController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters:
+                        InputFormatters.decimal(maxDecimals: 2, maxLength: 6),
                     onChanged: (_) {
                       setState(() {});
                       _notifyChanged();

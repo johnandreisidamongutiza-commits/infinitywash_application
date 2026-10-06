@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../../services/profile_service.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../utils/app_error.dart';
+import '../../../../utils/input_formatters.dart';
+import '../../../../utils/validators.dart';
 import '../../../../widgets/custom_text_field.dart';
 
 class AccountDetailsScreen extends StatefulWidget {
@@ -12,6 +14,7 @@ class AccountDetailsScreen extends StatefulWidget {
 }
 
 class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _profileService = ProfileService();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -65,6 +68,8 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   }
 
   Future<void> _saveProfile() async {
+    if (_formKey.currentState?.validate() != true) return;
+
     setState(() => _isSaving = true);
 
     try {
@@ -111,13 +116,18 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
                   CustomTextField(
                     label: 'First Name',
                     hint: 'First name',
                     prefixIcon: Icons.person_outline,
                     controller: _firstNameController,
+                    validator: (v) => Validators.nameField(v, 'First name'),
+                    maxLength: Validators.nameMax,
+                    textCapitalization: TextCapitalization.words,
                   ),
                   const SizedBox(height: 16),
                   CustomTextField(
@@ -125,6 +135,9 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
                     hint: 'Last name',
                     prefixIcon: Icons.person_outline,
                     controller: _lastNameController,
+                    validator: (v) => Validators.nameField(v, 'Last name'),
+                    maxLength: Validators.nameMax,
+                    textCapitalization: TextCapitalization.words,
                   ),
                   const SizedBox(height: 16),
                   CustomTextField(
@@ -132,6 +145,9 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
                     hint: 'Full name',
                     prefixIcon: Icons.badge_outlined,
                     controller: _nameController,
+                    validator: (v) => Validators.nameField(v, 'Employee name'),
+                    maxLength: Validators.nameMax,
+                    textCapitalization: TextCapitalization.words,
                   ),
                   const SizedBox(height: 16),
                   CustomTextField(
@@ -147,6 +163,8 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
                     prefixIcon: Icons.phone,
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
+                    inputFormatters: InputFormatters.phone(),
+                    validator: Validators.phone,
                   ),
                   const SizedBox(height: 16),
                   CustomTextField(
@@ -155,6 +173,7 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
                     prefixIcon: Icons.email_outlined,
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
+                    validator: Validators.optionalEmail,
                   ),
                   const SizedBox(height: 24),
                   SizedBox(
@@ -184,6 +203,7 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
                     ),
                   ),
                 ],
+                ),
               ),
             ),
     );

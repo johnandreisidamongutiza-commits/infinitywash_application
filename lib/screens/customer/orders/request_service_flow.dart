@@ -4,6 +4,8 @@ import 'dart:io';
 import 'dart:convert';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
+import '../../../utils/input_formatters.dart';
+import '../../../utils/validators.dart';
 import '../../../widgets/address_input_widget.dart';
 import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
@@ -1008,6 +1010,8 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             TextField(
               controller: _instructionsController,
               maxLines: 3,
+              inputFormatters:
+                  InputFormatters.text(maxLength: Validators.notesMax),
               decoration: InputDecoration(
                 hintText: 'e.g. Separate whites, delicate garments, ring doorbell twice...',
                 hintStyle: TextStyle(color: AppTheme.textLight.withValues(alpha: 0.5)),

@@ -144,7 +144,7 @@ class Validators {
     if (v.isEmpty) return 'Please enter $fieldName.';
     if (v.length < nameMin) return '$fieldName must be at least $nameMin characters.';
     if (v.length > nameMax) return '$fieldName must be at most $nameMax characters.';
-    if (!v.contains(RegExp(r"^[a-zA-Z\u00C0-\u017F' \-]+$/"))) {
+    if (!v.contains(RegExp(r"^[a-zA-Z\u00C0-\u017F' \-]+$"))) {
       return 'Please enter a valid $fieldName (letters only).';
     }
     return null;

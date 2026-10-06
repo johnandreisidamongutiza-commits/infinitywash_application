@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../utils/app_error.dart';
+import '../../../../utils/input_formatters.dart';
+import '../../../../utils/validators.dart';
 import '../../../../services/loyalty_service.dart';
 import '../../../../services/customer_service.dart';
 
@@ -56,8 +58,10 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
   Future<void> _linkCard() async {
     final code = _cardCodeController.text.trim().toUpperCase();
     
-    if (code.isEmpty) {
-      _showMessage('Please enter a card code', isError: true);
+    // Charset + length rule (6–20, letters/numbers/hyphen).
+    final codeError = Validators.cardUid(code);
+    if (codeError != null) {
+      _showMessage(codeError, isError: true);
       return;
     }
     
@@ -184,6 +188,7 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
         // Card Code Input
         TextField(
           controller: _cardCodeController,
+          inputFormatters: InputFormatters.uppercaseCardUid,
           decoration: InputDecoration(
             labelText: 'Card Code',
             hintText: 'e.g., RFID-0001',
