@@ -237,19 +237,42 @@ class ServiceRequestService {
   }
 
   /// Get service requests for a specific customer by customer ID (authenticated)
-  Future<List<LaundryOrder>> getOrdersByCustomerId(String customerId) async {
+  Future<List<LaundryOrder>> getOrdersByCustomerId(
+    String customerId, {
+    List<String>? statuses,
+    int? limit,
+    int? offset,
+  }) async {
     try {
-      print('🔄 Fetching orders for customer ID: $customerId');
+      print(
+          '🔄 Fetching orders for customer ID: $customerId (statuses: $statuses, limit: $limit, offset: $offset)');
 
-      final response = await _client
+      var query = _client
           .from('orders')
           .select('''
             *,
             customers!inner(first_name, last_name, phone, address, landmark),
             order_loads(*)
           ''')
-          .eq('customer_id', customerId)
-          .order('created_at', ascending: false);
+          .eq('customer_id', customerId);
+
+      if (statuses != null && statuses.isNotEmpty) {
+        query = query.inFilter('status', statuses);
+      }
+
+      final dynamic response;
+      if (limit != null && offset != null) {
+        response = await query
+            .order('created_at', ascending: false)
+            .range(offset, offset + limit - 1);
+      } else if (limit != null) {
+        response = await query
+            .order('created_at', ascending: false)
+            .limit(limit);
+      } else {
+        response = await query
+            .order('created_at', ascending: false);
+      }
 
       final List<LaundryOrder> orders = [];
       for (final orderData in response) {

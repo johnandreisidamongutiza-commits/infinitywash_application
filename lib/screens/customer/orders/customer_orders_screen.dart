@@ -32,9 +32,36 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   final CustomerService _customerService = CustomerService();
   final FeedbackService _feedbackService = FeedbackService();
 
-  // Loading and data state
-  bool _isLoading = false;
-  List<LaundryOrder> _customerOrders = [];
+  // Pagination page size: 7 orders per page
+  static const int _kPageSize = 7;
+
+  // ── Requests tab state ──────────────────────────────────────────────────
+  final List<LaundryOrder> _requests = [];
+  bool _requestsLoading = false;
+  bool _requestsLoadingMore = false;
+  bool _requestsHasMore = true;
+  int _requestsOffset = 0;
+  bool _requestsInitialized = false;
+  final ScrollController _requestsScroll = ScrollController();
+
+  // ── Active tab state ────────────────────────────────────────────────────
+  final List<LaundryOrder> _active = [];
+  bool _activeLoading = false;
+  bool _activeLoadingMore = false;
+  bool _activeHasMore = true;
+  int _activeOffset = 0;
+  bool _activeInitialized = false;
+  final ScrollController _activeScroll = ScrollController();
+
+  // ── History tab state ───────────────────────────────────────────────────
+  final List<LaundryOrder> _history = [];
+  bool _historyLoading = false;
+  bool _historyLoadingMore = false;
+  bool _historyHasMore = true;
+  int _historyOffset = 0;
+  bool _historyInitialized = false;
+  final ScrollController _historyScroll = ScrollController();
+
   String? _errorMessage;
 
   // Feedback cache: orderId -> hasFeedback
@@ -50,25 +77,6 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   // Filtered getters
   // ─────────────────────────────────────────────────────────────────────────
-  List<LaundryOrder> get _allRequestOrders => _customerOrders
-      .where((o) => o.status == OrderStatus.pending_approval)
-      .toList();
-
-  List<LaundryOrder> get _allActiveOrders => _customerOrders
-      .where((o) =>
-          o.status == OrderStatus.pending_pickup ||
-          o.status == OrderStatus.processing ||
-          o.status == OrderStatus.ready ||
-          o.status == OrderStatus.out_for_delivery)
-      .toList();
-
-  List<LaundryOrder> get _allHistoryOrders => _customerOrders
-      .where((o) =>
-          o.status == OrderStatus.completed ||
-          o.status == OrderStatus.rejected ||
-          o.status == OrderStatus.cancelled)
-      .toList();
-
   bool _matchesSearch(LaundryOrder order) {
     if (_searchQuery.trim().isEmpty) return true;
     final q = _searchQuery.trim().toLowerCase();
@@ -121,13 +129,13 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   }
 
   List<LaundryOrder> get _requestOrders =>
-      _allRequestOrders.where(_matchesSearch).toList();
+      _searchQuery.trim().isEmpty ? _requests : _requests.where(_matchesSearch).toList();
 
   List<LaundryOrder> get _activeOrders =>
-      _allActiveOrders.where(_matchesSearch).toList();
+      _searchQuery.trim().isEmpty ? _active : _active.where(_matchesSearch).toList();
 
   List<LaundryOrder> get _historyOrders =>
-      _allHistoryOrders.where(_matchesSearch).toList();
+      _searchQuery.trim().isEmpty ? _history : _history.where(_matchesSearch).toList();
 
   // ─────────────────────────────────────────────────────────────────────────
   // Lifecycle
@@ -136,80 +144,271 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this, initialIndex: 1);
-    _loadCustomerOrders();
+
+    // Attach scroll listeners for infinite pagination
+    _requestsScroll.addListener(() => _onScroll(_requestsScroll, _loadMoreRequests));
+    _activeScroll.addListener(() => _onScroll(_activeScroll, _loadMoreActive));
+    _historyScroll.addListener(() => _onScroll(_historyScroll, _loadMoreHistory));
+
+    // Tab-change listener: lazy-load tabs on first visit
+    _tabController.addListener(_onTabChanged);
+
+    // Initial load: Active tab eagerly (default tab), Requests in background for badge count
+    _initActive();
+    _initRequests();
+
     _startAutoRefresh();
   }
 
   @override
   void dispose() {
     _autoRefreshTimer?.cancel();
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     _searchController.dispose();
+    _requestsScroll.dispose();
+    _activeScroll.dispose();
+    _historyScroll.dispose();
     super.dispose();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Business Logic
+  // Scroll Listener & Tab Navigation
+  // ─────────────────────────────────────────────────────────────────────────
+  void _onScroll(ScrollController ctrl, VoidCallback loadMore) {
+    if (!ctrl.hasClients) return;
+    final pos = ctrl.position;
+    if (pos.pixels >= pos.maxScrollExtent - 200) {
+      loadMore();
+    }
+  }
+
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    _loadTabForIndex(_tabController.index);
+  }
+
+  void _loadTabForIndex(int index) {
+    switch (index) {
+      case 0:
+        if (!_requestsInitialized) _initRequests();
+        break;
+      case 1:
+        if (!_activeInitialized) _initActive();
+        break;
+      case 2:
+        if (!_historyInitialized) _initHistory();
+        break;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Business Logic & Pagination Fetching
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Start auto-refresh timer (60 seconds for order list)
+  /// Start auto-refresh timer (60 seconds for active tab)
   void _startAutoRefresh() {
     _autoRefreshTimer = Timer.periodic(
       const Duration(seconds: 60),
       (timer) {
-        if (mounted && !_isLoading) {
-          _loadCustomerOrders();
+        if (!mounted) return;
+        switch (_tabController.index) {
+          case 0:
+            if (!_requestsLoading && !_requestsLoadingMore) _initRequests();
+            break;
+          case 1:
+            if (!_activeLoading && !_activeLoadingMore) _initActive();
+            break;
+          case 2:
+            if (!_historyLoading && !_historyLoadingMore) _initHistory();
+            break;
         }
       },
     );
-    print('✅ Started auto-refresh timer (60s interval)');
   }
 
-  /// Load customer orders from database
+  /// Refreshes all initialized tabs (called after action/sub-screen return)
+  Future<void> _refreshAllTabs() async {
+    await Future.wait([
+      if (_requestsInitialized) _initRequests(),
+      if (_activeInitialized) _initActive(),
+      if (_historyInitialized) _initHistory(),
+    ]);
+  }
+
+  /// Backward-compatible alias for existing call sites
   Future<void> _loadCustomerOrders() async {
+    await _refreshAllTabs();
+  }
+
+  // ── Requests Tab (pending_approval) ──────────────────────────────────────
+  Future<void> _initRequests() async {
+    if (_requestsLoading) return;
     setState(() {
-      _isLoading = true;
+      _requestsLoading = true;
+      _requestsInitialized = true;
+      _requestsOffset = 0;
+      _requestsHasMore = true;
       _errorMessage = null;
     });
+    await _fetchRequests(reset: true);
+  }
 
+  Future<void> _loadMoreRequests() async {
+    if (_requestsLoadingMore || !_requestsHasMore) return;
+    setState(() => _requestsLoadingMore = true);
+    await _fetchRequests(reset: false);
+  }
+
+  Future<void> _fetchRequests({required bool reset}) async {
     try {
       final customerId =
           await _customerService.getCurrentAuthenticatedCustomerId();
-      final orders =
-          await _serviceRequestService.getOrdersByCustomerId(customerId);
-      await _loadFeedbackStatus(orders);
-
+      final page = await _serviceRequestService.getOrdersByCustomerId(
+        customerId,
+        statuses: ['pending_approval'],
+        limit: _kPageSize,
+        offset: reset ? 0 : _requestsOffset,
+      );
       if (!mounted) return;
       setState(() {
-        _customerOrders = orders;
-        _isLoading = false;
+        if (reset) _requests.clear();
+        _requests.addAll(page);
+        _requestsHasMore = page.length == _kPageSize;
+        _requestsOffset = reset ? page.length : _requestsOffset + page.length;
+        _requestsLoading = false;
+        _requestsLoadingMore = false;
       });
-      print('✅ Loaded ${orders.length} customer orders');
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _isLoading = false;
-        _errorMessage = 'Failed to load orders: ${e.toString()}';
-      });
-      print('❌ Error loading customer orders: $e');
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
+        _requestsLoading = false;
+        _requestsLoadingMore = false;
         _errorMessage = mapErrorToMessage(e);
       });
     }
   }
 
-  /// Load feedback status for orders
+  // ── Active Tab (in progress orders) ──────────────────────────────────────
+  Future<void> _initActive() async {
+    if (_activeLoading) return;
+    setState(() {
+      _activeLoading = true;
+      _activeInitialized = true;
+      _activeOffset = 0;
+      _activeHasMore = true;
+      _errorMessage = null;
+    });
+    await _fetchActive(reset: true);
+  }
+
+  Future<void> _loadMoreActive() async {
+    if (_activeLoadingMore || !_activeHasMore) return;
+    setState(() => _activeLoadingMore = true);
+    await _fetchActive(reset: false);
+  }
+
+  Future<void> _fetchActive({required bool reset}) async {
+    try {
+      final customerId =
+          await _customerService.getCurrentAuthenticatedCustomerId();
+      final page = await _serviceRequestService.getOrdersByCustomerId(
+        customerId,
+        statuses: [
+          'pending_pickup',
+          'processing',
+          'ready',
+          'out_for_delivery',
+        ],
+        limit: _kPageSize,
+        offset: reset ? 0 : _activeOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (reset) _active.clear();
+        _active.addAll(page);
+        _activeHasMore = page.length == _kPageSize;
+        _activeOffset = reset ? page.length : _activeOffset + page.length;
+        _activeLoading = false;
+        _activeLoadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _activeLoading = false;
+        _activeLoadingMore = false;
+        _errorMessage = mapErrorToMessage(e);
+      });
+    }
+  }
+
+  // ── History Tab (completed, rejected, cancelled) ─────────────────────────
+  Future<void> _initHistory() async {
+    if (_historyLoading) return;
+    setState(() {
+      _historyLoading = true;
+      _historyInitialized = true;
+      _historyOffset = 0;
+      _historyHasMore = true;
+      _errorMessage = null;
+    });
+    await _fetchHistory(reset: true);
+  }
+
+  Future<void> _loadMoreHistory() async {
+    if (_historyLoadingMore || !_historyHasMore) return;
+    setState(() => _historyLoadingMore = true);
+    await _fetchHistory(reset: false);
+  }
+
+  Future<void> _fetchHistory({required bool reset}) async {
+    try {
+      final customerId =
+          await _customerService.getCurrentAuthenticatedCustomerId();
+      final page = await _serviceRequestService.getOrdersByCustomerId(
+        customerId,
+        statuses: [
+          'completed',
+          'rejected',
+          'cancelled',
+        ],
+        limit: _kPageSize,
+        offset: reset ? 0 : _historyOffset,
+      );
+      _loadFeedbackStatus(page);
+      if (!mounted) return;
+      setState(() {
+        if (reset) _history.clear();
+        _history.addAll(page);
+        _historyHasMore = page.length == _kPageSize;
+        _historyOffset = reset ? page.length : _historyOffset + page.length;
+        _historyLoading = false;
+        _historyLoadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _historyLoading = false;
+        _historyLoadingMore = false;
+        _errorMessage = mapErrorToMessage(e);
+      });
+    }
+  }
+
+  /// Load feedback status incrementally for newly fetched completed orders
   Future<void> _loadFeedbackStatus(List<LaundryOrder> orders) async {
     final completedOrders =
         orders.where((o) => o.status == OrderStatus.completed);
     for (final order in completedOrders) {
+      if (_feedbackStatus.containsKey(order.id)) continue;
       try {
         final feedback = await _feedbackService.getFeedbackForOrder(order.id);
-        _feedbackStatus[order.id] = feedback != null;
+        if (mounted) {
+          setState(() {
+            _feedbackStatus[order.id] = feedback != null;
+          });
+        }
       } catch (e) {
-        print('⚠️ Error loading feedback for ${order.id}: $e');
         _feedbackStatus[order.id] = false;
       }
     }
@@ -510,7 +709,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
         elevation: 0,
         centerTitle: true,
         actions: [
-          if (_allActiveOrders.isNotEmpty)
+          if (_active.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: IconButton(
@@ -527,7 +726,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                         recipientName: 'InfinityWash Support',
                         recipientRole: 'Customer Support Helpdesk',
                         recipientType: ChatRecipientType.support,
-                        orderId: (_activeOrders.isNotEmpty ? _activeOrders : _allActiveOrders).first.displayNumber,
+                        orderId: (_activeOrders.isNotEmpty ? _activeOrders : _active).first.displayNumber,
                         phoneNumber: '0912-345-6789',
                       ),
                     ),
@@ -647,17 +846,17 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
               children: [
                 RefreshIndicator(
                   color: AppTheme.accentBlue,
-                  onRefresh: _loadCustomerOrders,
+                  onRefresh: _initRequests,
                   child: _buildRequestsTab(),
                 ),
                 RefreshIndicator(
                   color: AppTheme.accentBlue,
-                  onRefresh: _loadCustomerOrders,
+                  onRefresh: _initActive,
                   child: _buildActiveTab(),
                 ),
                 RefreshIndicator(
                   color: AppTheme.accentBlue,
-                  onRefresh: _loadCustomerOrders,
+                  onRefresh: _initHistory,
                   child: _buildHistoryTab(),
                 ),
               ],
@@ -674,7 +873,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
           );
           if (result == true) {
             _tabController.animateTo(0); // Switch to Requests tab
-            _loadCustomerOrders();
+            _initRequests();
           }
         },
         backgroundColor: AppTheme.accentBlue,
@@ -696,10 +895,39 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // SHARED PAGINATION FOOTER
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildPaginationFooter(bool isLoadingMore, bool hasMore) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Center(
+        child: isLoadingMore
+            ? SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.accentBlue,
+                ),
+              )
+            : hasMore
+                ? const SizedBox.shrink()
+                : Text(
+                    'No more orders',
+                    style: GoogleFonts.lexend(
+                      fontSize: 12,
+                      color: AppTheme.textLight.withValues(alpha: 0.5),
+                    ),
+                  ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // REQUESTS TAB
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildRequestsTab() {
-    if (_isLoading && _customerOrders.isEmpty) {
+    if (_requestsLoading && _requests.isEmpty) {
       return Center(
         child: CircularProgressIndicator(
           color: AppTheme.accentBlue,
@@ -708,12 +936,12 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
       );
     }
 
-    if (_errorMessage != null && _customerOrders.isEmpty) {
+    if (_errorMessage != null && _requests.isEmpty) {
       return _buildErrorState();
     }
 
     if (_requestOrders.isEmpty) {
-      if (_searchQuery.trim().isNotEmpty && _allRequestOrders.isNotEmpty) {
+      if (_searchQuery.trim().isNotEmpty && _requests.isNotEmpty) {
         return _buildEmptyState(
           icon: Icons.search_off_rounded,
           title: 'No matching requests',
@@ -735,12 +963,22 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
       );
     }
 
+    final isSearching = _searchQuery.trim().isNotEmpty;
+    final displayList = _requestOrders;
+
     return ListView.separated(
+      controller: _requestsScroll,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-      itemCount: _requestOrders.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) => _buildRequestCard(_requestOrders[index]),
+      itemCount: isSearching ? displayList.length : displayList.length + 1,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        if (!isSearching && index == displayList.length) {
+          return _buildPaginationFooter(
+              _requestsLoadingMore, _requestsHasMore);
+        }
+        return _buildRequestCard(displayList[index]);
+      },
     );
   }
 
@@ -748,7 +986,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   // ACTIVE TAB
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildActiveTab() {
-    if (_isLoading && _customerOrders.isEmpty) {
+    if (_activeLoading && _active.isEmpty) {
       return Center(
         child: CircularProgressIndicator(
           color: AppTheme.accentBlue,
@@ -757,12 +995,12 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
       );
     }
 
-    if (_errorMessage != null && _customerOrders.isEmpty) {
+    if (_errorMessage != null && _active.isEmpty) {
       return _buildErrorState();
     }
 
     if (_activeOrders.isEmpty) {
-      if (_searchQuery.trim().isNotEmpty && _allActiveOrders.isNotEmpty) {
+      if (_searchQuery.trim().isNotEmpty && _active.isNotEmpty) {
         return _buildEmptyState(
           icon: Icons.search_off_rounded,
           title: 'No matching active orders',
@@ -783,12 +1021,21 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
       );
     }
 
+    final isSearching = _searchQuery.trim().isNotEmpty;
+    final displayList = _activeOrders;
+
     return ListView.separated(
+      controller: _activeScroll,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-      itemCount: _activeOrders.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) => _buildActiveCard(_activeOrders[index]),
+      itemCount: isSearching ? displayList.length : displayList.length + 1,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        if (!isSearching && index == displayList.length) {
+          return _buildPaginationFooter(_activeLoadingMore, _activeHasMore);
+        }
+        return _buildActiveCard(displayList[index]);
+      },
     );
   }
 
@@ -796,7 +1043,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   // HISTORY TAB
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildHistoryTab() {
-    if (_isLoading && _customerOrders.isEmpty) {
+    if (_historyLoading && _history.isEmpty) {
       return Center(
         child: CircularProgressIndicator(
           color: AppTheme.accentBlue,
@@ -805,12 +1052,12 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
       );
     }
 
-    if (_errorMessage != null && _customerOrders.isEmpty) {
+    if (_errorMessage != null && _history.isEmpty) {
       return _buildErrorState();
     }
 
     if (_historyOrders.isEmpty) {
-      if (_searchQuery.trim().isNotEmpty && _allHistoryOrders.isNotEmpty) {
+      if (_searchQuery.trim().isNotEmpty && _history.isNotEmpty) {
         return _buildEmptyState(
           icon: Icons.search_off_rounded,
           title: 'No matching order history',
@@ -831,13 +1078,21 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
       );
     }
 
+    final isSearching = _searchQuery.trim().isNotEmpty;
+    final displayList = _historyOrders;
+
     return ListView.separated(
+      controller: _historyScroll,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-      itemCount: _historyOrders.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) =>
-          _buildHistoryCard(_historyOrders[index]),
+      itemCount: isSearching ? displayList.length : displayList.length + 1,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        if (!isSearching && index == displayList.length) {
+          return _buildPaginationFooter(_historyLoadingMore, _historyHasMore);
+        }
+        return _buildHistoryCard(displayList[index]);
+      },
     );
   }
 
