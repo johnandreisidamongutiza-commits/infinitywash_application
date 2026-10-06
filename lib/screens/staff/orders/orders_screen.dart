@@ -216,12 +216,10 @@ class OrdersScreenState extends State<OrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _loadRejectedCount() async {
     try {
-      final rejected = await _orderService.fetchOrders(
-        statuses: ['rejected'],
-        limit: 200,
-        offset: 0,
-      );
-      if (mounted) setState(() => _rejectedCount = rejected.length);
+      // Count in the database instead of downloading up to 200 full orders
+      // (with their loads and customer details) only to read `.length`.
+      final count = await _orderService.fetchOrderCount(statuses: ['rejected']);
+      if (mounted) setState(() => _rejectedCount = count);
     } catch (_) {}
   }
 

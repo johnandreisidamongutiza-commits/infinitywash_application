@@ -759,8 +759,12 @@ class OrderService {
       // Apply ordering and range (for pagination), then execute.
       // range(from, to) is inclusive on both ends.
       print('📊 Executing query with range($offset, ${offset + limit - 1})');
+      // Order by created_at, then by id: offset paging walks rows by position,
+      // so a secondary sort keeps page boundaries stable if two orders ever
+      // share a timestamp (otherwise rows could be skipped or repeated).
       final response = await query
           .order('created_at', ascending: false)
+          .order('id', ascending: false)
           .range(offset, offset + limit - 1);
 
       print('📊 Query returned ${response.length} orders');
@@ -824,6 +828,32 @@ class OrderService {
       return orders;
     } catch (e) {
       print('❌ Error fetching orders: $e');
+      rethrow;
+    }
+  }
+
+  /// Exact number of orders matching [statuses], computed by the database.
+  ///
+  /// Returns only a count and transfers no rows, so it stays cheap even for a
+  /// set that grows without bound (e.g. the rejected-requests badge, which
+  /// used to download up to 200 full orders just to read `.length`).
+  ///
+  /// `limit(0)` matters: `count()` alone still returns the matching rows, so
+  /// without it this would download every id it is supposed to be counting.
+  /// With it, PostgREST answers with an empty body and reports the exact total
+  /// in `Content-Range` (e.g. `range */23`), which is all we need.
+  Future<int> fetchOrderCount({List<String>? statuses}) async {
+    try {
+      var query = _client.from('orders').select('id');
+
+      if (statuses != null && statuses.isNotEmpty) {
+        query = query.inFilter('status', statuses);
+      }
+
+      final response = await query.limit(0).count(CountOption.exact);
+      return response.count;
+    } catch (e) {
+      print('❌ Error counting orders: $e');
       rethrow;
     }
   }

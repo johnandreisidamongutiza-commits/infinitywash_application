@@ -1196,7 +1196,10 @@ class RiderService {
           ? query.eq('payment_status', 'paid')
           : query.neq('payment_status', 'paid');
 
-      final response = await query.count(CountOption.exact);
+      // limit(0) keeps the response body empty: count() on its own would still
+      // return every matching row, which defeats the point of a count query.
+      // The exact total still arrives in Content-Range.
+      final response = await query.limit(0).count(CountOption.exact);
       return response.count;
     } catch (e) {
       print('❌ Error counting rider payment orders: $e');

@@ -1,0 +1,215 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="InfinityWash Use Case Diagram" id="use-case-diagram">
+    <mxGraphModel dx="1434" dy="844" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- System Boundary Box -->
+        <mxCell id="system-boundary" value="InfinityWash System" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=3;align=center;verticalAlign=top;fontSize=14;fontStyle=1;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="100" y="140" width="1200" height="820" as="geometry" />
+        </mxCell>
+        
+        <!-- ACTORS (Rectangles) - ABOVE the boundary -->
+        <!-- Customer Actor -->
+        <mxCell id="customer-actor" value="&amp;lt;&amp;lt;actor&amp;gt;&amp;gt;&#xa;Customer" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=11;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="180" y="40" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Staff Actor -->
+        <mxCell id="staff-actor" value="&amp;lt;&amp;lt;actor&amp;gt;&amp;gt;&#xa;Staff" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=11;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="460" y="40" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Rider Actor -->
+        <mxCell id="rider-actor" value="&amp;lt;&amp;lt;actor&amp;gt;&amp;gt;&#xa;Rider" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=11;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="880" y="40" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Administrator Actor -->
+        <mxCell id="admin-actor" value="&amp;lt;&amp;lt;actor&amp;gt;&amp;gt;&#xa;Administrator" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=11;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="40" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- CUSTOMER USE CASES - Row 1 -->
+        <mxCell id="place-order" value="Place Order" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="150" y="220" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="track-order" value="Track Order" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="150" y="290" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="make-payment" value="Make Payment" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="150" y="360" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="view-history" value="View History" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="150" y="430" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="rate-service" value="Rate Service" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="150" y="500" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <!-- STAFF USE CASES - Row 2 -->
+        <mxCell id="manage-orders" value="Manage Orders" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="220" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="update-status" value="Update Status" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="290" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="create-walkin" value="Create Walk-in" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="360" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="process-payment" value="Process Payment" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="430" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="staff-reports" value="Generate Reports" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="490" y="220" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <!-- RIDER USE CASES - Row 3 -->
+        <mxCell id="view-jobs" value="View Jobs" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="660" y="220" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="pickup-laundry" value="Pickup Laundry" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="660" y="290" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="deliver-laundry" value="Deliver Laundry" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="660" y="360" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="navigate-routes" value="Navigate Routes" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="660" y="430" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="collect-cod" value="Collect COD" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="830" y="220" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="rider-payment" value="View Payments" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="830" y="290" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <!-- ADMINISTRATOR USE CASES - Row 4 -->
+        <mxCell id="manage-users" value="Manage Users" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="220" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="view-analytics" value="View Analytics" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="290" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="configure-system" value="Configure Settings" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="360" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="manage-pricing" value="Manage Pricing" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="430" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="admin-reports" value="Generate Reports" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="220" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="monitor-system" value="Monitor System" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="290" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="rfid-management" value="Manage RFID" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="360" width="110" height="50" as="geometry" />
+        </mxCell>
+        
+        <!-- RELATIONSHIPS - Customer -->
+        <mxCell id="edge2" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="customer-actor" target="place-order">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge3" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="customer-actor" target="track-order">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge4" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="customer-actor" target="make-payment">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge5" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="customer-actor" target="view-history">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge6" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="customer-actor" target="rate-service">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- RELATIONSHIPS - Staff -->
+        <mxCell id="edge8" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="staff-actor" target="manage-orders">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge9" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="staff-actor" target="update-status">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge10" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="staff-actor" target="create-walkin">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge11" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="staff-actor" target="process-payment">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge12" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="staff-actor" target="staff-reports">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- RELATIONSHIPS - Rider -->
+        <mxCell id="edge14" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="rider-actor" target="view-jobs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge15" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="rider-actor" target="pickup-laundry">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge16" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="rider-actor" target="deliver-laundry">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge17" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="rider-actor" target="navigate-routes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge18" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="rider-actor" target="collect-cod">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge19" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="rider-actor" target="rider-payment">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- RELATIONSHIPS - Administrator -->
+        <mxCell id="edge21" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="admin-actor" target="manage-users">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge22" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="admin-actor" target="view-analytics">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge23" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="admin-actor" target="configure-system">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge24" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="admin-actor" target="manage-pricing">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge25" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="admin-actor" target="admin-reports">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge26" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="admin-actor" target="monitor-system">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge27" style="html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#000000;endArrow=classic;endFill=1;" edge="1" parent="1" source="admin-actor" target="rfid-management">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Include Relationship Example -->
+        <mxCell id="include1" value="&amp;lt;&amp;lt;include&amp;gt;&amp;gt;" style="html=1;dashed=1;dashPattern=8 8;strokeColor=#666666;exitX=0.5;exitY=1;entryX=0.5;entryY=0;endArrow=open;endFill=0;fontSize=9;" edge="1" parent="1" source="place-order" target="make-payment">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

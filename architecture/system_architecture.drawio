@@ -1,0 +1,486 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="InfinityWash System Architecture" id="architecture">
+    <mxGraphModel dx="1434" dy="844" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Title -->
+        <mxCell id="title" value="INFINITYWASH SYSTEM ARCHITECTURE" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;fontColor=#000000" vertex="1" parent="1">
+          <mxGeometry x="500" y="20" width="600" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- ==================== USER LAYER ==================== -->
+        <mxCell id="userlayer" value="USER LAYER" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#01579b;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=5" vertex="1" parent="1">
+          <mxGeometry x="80" y="80" width="1440" height="140" as="geometry" />
+        </mxCell>
+        
+        <!-- Customer -->
+        <mxCell id="customer" value="" style="shape=actor;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32" vertex="1" parent="1">
+          <mxGeometry x="160" y="120" width="40" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="customerlabel" value="Customer&#xa;(Mobile/Web)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4CAF50;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="130" y="185" width="100" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- Staff -->
+        <mxCell id="staff" value="" style="shape=actor;whiteSpace=wrap;html=1;fillColor=#2196F3;strokeColor=#0D47A1" vertex="1" parent="1">
+          <mxGeometry x="470" y="120" width="40" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="stafflabel" value="Staff&#xa;(Mobile/Web)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#2196F3;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="440" y="185" width="100" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- Rider -->
+        <mxCell id="rider" value="" style="shape=actor;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#4A148C" vertex="1" parent="1">
+          <mxGeometry x="780" y="120" width="40" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="riderlabel" value="Rider&#xa;(Mobile)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#9C27B0;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="750" y="185" width="100" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- Administrator -->
+        <mxCell id="admin" value="" style="shape=actor;whiteSpace=wrap;html=1;fillColor=#FF5722;strokeColor=#BF360C" vertex="1" parent="1">
+          <mxGeometry x="1090" y="120" width="40" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="adminlabel" value="Administrator&#xa;(Web)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffccbc;strokeColor=#FF5722;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1060" y="185" width="100" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- RFID Scanner User -->
+        <mxCell id="rfiduser" value="" style="shape=actor;whiteSpace=wrap;html=1;fillColor=#607D8B;strokeColor=#263238" vertex="1" parent="1">
+          <mxGeometry x="1380" y="120" width="40" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="rfiduserlabel" value="Staff&#xa;(RFID Scanner)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#cfd8dc;strokeColor=#607D8B;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1350" y="185" width="100" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- ==================== APPLICATION LAYER ==================== -->
+        <mxCell id="applayer" value="APPLICATION LAYER" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#4A148C;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=5" vertex="1" parent="1">
+          <mxGeometry x="80" y="260" width="1440" height="200" as="geometry" />
+        </mxCell>
+        
+        <!-- Flutter Mobile App -->
+        <mxCell id="mobileapp" value="Flutter Mobile App" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#7e57c2;strokeColor=#4A148C;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="120" y="300" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="mobilefeatures" value="• Customer Orders&#xa;• Staff Management&#xa;• Rider Tracking" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ede7f6;strokeColor=#7e57c2;fontSize=9;align=left;spacingLeft=5" vertex="1" parent="1">
+          <mxGeometry x="120" y="365" width="140" height="55" as="geometry" />
+        </mxCell>
+        
+        <!-- Web Application -->
+        <mxCell id="webapp" value="Web Application" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#5e35b1;strokeColor=#311B92;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="290" y="300" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="webfeatures" value="• Admin Dashboard&#xa;• Reports & Analytics&#xa;• System Config" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ede7f6;strokeColor=#5e35b1;fontSize=9;align=left;spacingLeft=5" vertex="1" parent="1">
+          <mxGeometry x="290" y="365" width="140" height="55" as="geometry" />
+        </mxCell>
+        
+        <!-- Backend API Server -->
+        <mxCell id="backend" value="Backend API Server" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#512da8;strokeColor=#311B92;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="480" y="300" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="backendfeatures" value="• REST API&#xa;• Business Logic&#xa;• Data Validation" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ede7f6;strokeColor=#512da8;fontSize=9;align=left;spacingLeft=5" vertex="1" parent="1">
+          <mxGeometry x="480" y="365" width="140" height="55" as="geometry" />
+        </mxCell>
+        
+        <!-- Authentication Service -->
+        <mxCell id="auth" value="Authentication&#xa;Service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#673AB7;strokeColor=#4A148C;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="670" y="300" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="authfeatures" value="• User Login&#xa;• JWT Tokens&#xa;• Role-based Access" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ede7f6;strokeColor=#673AB7;fontSize=9;align=left;spacingLeft=5" vertex="1" parent="1">
+          <mxGeometry x="670" y="365" width="120" height="55" as="geometry" />
+        </mxCell>
+        
+        <!-- Real-time Services -->
+        <mxCell id="realtime" value="Real-time Services" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#4A148C;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="840" y="300" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="realtimefeatures" value="• Order Updates&#xa;• Rider Tracking&#xa;• Push Notifications" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#9C27B0;fontSize=9;align=left;spacingLeft=5" vertex="1" parent="1">
+          <mxGeometry x="840" y="365" width="140" height="55" as="geometry" />
+        </mxCell>
+        
+        <!-- File Storage Service -->
+        <mxCell id="filestorage" value="File Storage&#xa;Service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#8E24AA;strokeColor=#4A148C;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="1030" y="300" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="filestoragefeatures" value="• Image Upload&#xa;• Photo Proof&#xa;• Document Storage" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#8E24AA;fontSize=9;align=left;spacingLeft=5" vertex="1" parent="1">
+          <mxGeometry x="1030" y="365" width="120" height="55" as="geometry" />
+        </mxCell>
+        
+        <!-- IoT Gateway -->
+        <mxCell id="iotgateway" value="IoT Gateway" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#7B1FA2;strokeColor=#4A148C;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="1200" y="300" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iotgatewayfeatures" value="• RFID Data&#xa;• ESP32 Bridge&#xa;• IoT Protocol" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#7B1FA2;fontSize=9;align=left;spacingLeft=5" vertex="1" parent="1">
+          <mxGeometry x="1200" y="365" width="120" height="55" as="geometry" />
+        </mxCell>
+        
+        <!-- ==================== DATA LAYER ==================== -->
+        <mxCell id="datalayer" value="DATA LAYER" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#E65100;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=5" vertex="1" parent="1">
+          <mxGeometry x="80" y="500" width="1440" height="180" as="geometry" />
+        </mxCell>
+        
+        <!-- Supabase -->
+        <mxCell id="supabase" value="Supabase (PostgreSQL)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ff6f00;strokeColor=#E65100;fontSize=12;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="120" y="540" width="600" height="50" as="geometry" />
+        </mxCell>
+        
+        <!-- Database Tables -->
+        <mxCell id="tables" value="TABLES" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ff6f00;fontSize=10;fontStyle=1;align=left;verticalAlign=top;spacingLeft=5;spacingTop=3" vertex="1" parent="1">
+          <mxGeometry x="120" y="600" width="600" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="table1" value="Customers" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#ff6f00;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="130" y="620" width="70" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="table2" value="Orders" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#ff6f00;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="210" y="620" width="70" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="table3" value="Services" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#ff6f00;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="290" y="620" width="70" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="table4" value="Dispatch Jobs" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#ff6f00;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="370" y="620" width="70" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="table5" value="Payments" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#ff6f00;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="450" y="620" width="70" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="table6" value="Employees" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#ff6f00;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="530" y="620" width="70" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="table7" value="Loyalty" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#ff6f00;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="610" y="620" width="70" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Cloud Storage -->
+        <mxCell id="cloudstorage" value="Cloud Storage" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fb8c00;strokeColor=#E65100;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="770" y="540" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="cloudstoragefeatures" value="• Customer Photos&#xa;• Laundry Images&#xa;• Proof of Delivery" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#fb8c00;fontSize=9;align=left;spacingLeft=5" vertex="1" parent="1">
+          <mxGeometry x="770" y="600" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Cache/Redis -->
+        <mxCell id="cache" value="Cache (Redis)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f57c00;strokeColor=#E65100;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="960" y="540" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="cachefeatures" value="• Session Storage&#xa;• Job Cache&#xa;• Real-time Data" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#f57c00;fontSize=9;align=left;spacingLeft=5" vertex="1" parent="1">
+          <mxGeometry x="960" y="600" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- IoT Database -->
+        <mxCell id="iotdb" value="IoT Data Store" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ef6c00;strokeColor=#E65100;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="1150" y="540" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="iotdbfeatures" value="• RFID Scans&#xa;• Device Logs&#xa;• Sensor Data" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ef6c00;fontSize=9;align=left;spacingLeft=5" vertex="1" parent="1">
+          <mxGeometry x="1150" y="600" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- ==================== IOT/HARDWARE LAYER ==================== -->
+        <mxCell id="iotlayer" value="IOT / HARDWARE LAYER" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fce4ec;strokeColor=#880E4F;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=5" vertex="1" parent="1">
+          <mxGeometry x="80" y="720" width="600" height="140" as="geometry" />
+        </mxCell>
+        
+        <!-- ESP32 -->
+        <mxCell id="esp32" value="ESP32&#xa;Microcontroller" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#c2185b;strokeColor=#880E4F;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="120" y="760" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- RFID Reader -->
+        <mxCell id="rfid" value="RFID RC522&#xa;Reader" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ad1457;strokeColor=#880E4F;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="270" y="760" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- RFID Tags -->
+        <mxCell id="rfidtags" value="RFID Tags" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d81b60;strokeColor=#880E4F;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="420" y="760" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- WiFi Module -->
+        <mxCell id="wifi" value="WiFi Module" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e91e63;strokeColor=#880E4F;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="570" y="760" width="90" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- ==================== EXTERNAL SERVICES ==================== -->
+        <mxCell id="externallayer" value="EXTERNAL SERVICES" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#1B5E20;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=5" vertex="1" parent="1">
+          <mxGeometry x="720" y="720" width="800" height="140" as="geometry" />
+        </mxCell>
+        
+        <!-- Payment Gateway -->
+        <mxCell id="payment" value="Payment Gateway" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#43a047;strokeColor=#1B5E20;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="760" y="760" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="paymentlabel" value="GCash / COD" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#43a047;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="760" y="825" width="120" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- SMS Service -->
+        <mxCell id="sms" value="SMS Service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#388e3c;strokeColor=#1B5E20;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="920" y="760" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="smslabel" value="Notifications" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#388e3c;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="920" y="825" width="120" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- Push Notifications -->
+        <mxCell id="push" value="Push Notification" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#2e7d32;strokeColor=#1B5E20;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="1080" y="760" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="pushlabel" value="Firebase FCM" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#2e7d32;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="1080" y="825" width="120" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- Maps Service -->
+        <mxCell id="maps" value="Maps Service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1b5e20;strokeColor=#1B5E20;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="1240" y="760" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="mapslabel" value="Google Maps" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#1b5e20;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="1240" y="825" width="120" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- Email Service -->
+        <mxCell id="email" value="Email Service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#558b2f;strokeColor=#1B5E20;fontSize=11;fontStyle=1;fontColor=#ffffff" vertex="1" parent="1">
+          <mxGeometry x="1400" y="760" width="100" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="emaillabel" value="SMTP" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#558b2f;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="1400" y="825" width="100" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- ==================== CONNECTIONS ==================== -->
+        
+        <!-- Users to Mobile App -->
+        <mxCell id="conn1" edge="1" parent="1" source="customerlabel" target="mobileapp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#4CAF50">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="conn2" edge="1" parent="1" source="stafflabel" target="mobileapp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#2196F3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="490" y="250" />
+              <mxPoint x="190" y="250" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn3" edge="1" parent="1" source="riderlabel" target="mobileapp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#9C27B0">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="800" y="250" />
+              <mxPoint x="190" y="250" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Admin to Web App -->
+        <mxCell id="conn4" edge="1" parent="1" source="adminlabel" target="webapp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#FF5722">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1110" y="250" />
+              <mxPoint x="360" y="250" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- RFID User to IoT Gateway -->
+        <mxCell id="conn5" edge="1" parent="1" source="rfiduserlabel" target="iotgateway" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#607D8B">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1400" y="250" />
+              <mxPoint x="1260" y="250" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Mobile/Web to Backend -->
+        <mxCell id="conn6" edge="1" parent="1" source="mobileapp" target="backend" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#7e57c2;dashed=1;dashPattern=5 5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="190" y="480" />
+              <mxPoint x="550" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn7" edge="1" parent="1" source="webapp" target="backend" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#5e35b1;dashed=1;dashPattern=5 5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="360" y="480" />
+              <mxPoint x="550" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Backend to Auth -->
+        <mxCell id="conn8" edge="1" parent="1" source="backend" target="auth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#512da8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Backend to Real-time -->
+        <mxCell id="conn9" edge="1" parent="1" source="backend" target="realtime" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#512da8">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="550" y="470" />
+              <mxPoint x="910" y="470" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Backend to File Storage -->
+        <mxCell id="conn10" edge="1" parent="1" source="backend" target="filestorage" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#512da8">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="550" y="470" />
+              <mxPoint x="1090" y="470" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- IoT Gateway to Backend -->
+        <mxCell id="conn11" edge="1" parent="1" source="iotgateway" target="backend" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#7B1FA2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1260" y="480" />
+              <mxPoint x="550" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Backend to Database -->
+        <mxCell id="conn12" edge="1" parent="1" source="backend" target="supabase" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=3;strokeColor=#512da8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Backend to Cache -->
+        <mxCell id="conn13" edge="1" parent="1" source="backend" target="cache" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#512da8;dashed=1;dashPattern=5 5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="550" y="490" />
+              <mxPoint x="1030" y="490" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- File Storage to Cloud Storage -->
+        <mxCell id="conn14" edge="1" parent="1" source="filestorage" target="cloudstorage" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#8E24AA">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1090" y="490" />
+              <mxPoint x="840" y="490" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- IoT Gateway to IoT Database -->
+        <mxCell id="conn15" edge="1" parent="1" source="iotgateway" target="iotdb" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#7B1FA2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1260" y="490" />
+              <mxPoint x="1220" y="490" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- ESP32 to IoT Gateway -->
+        <mxCell id="conn16" edge="1" parent="1" source="esp32" target="iotgateway" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#c2185b">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="180" y="690" />
+              <mxPoint x="1260" y="690" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- RFID to ESP32 -->
+        <mxCell id="conn17" edge="1" parent="1" source="rfid" target="esp32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#ad1457">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- RFID Tags to RFID Reader -->
+        <mxCell id="conn18" edge="1" parent="1" source="rfidtags" target="rfid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#d81b60">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- WiFi to ESP32 -->
+        <mxCell id="conn19" edge="1" parent="1" source="wifi" target="esp32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#e91e63;dashed=1;dashPattern=5 5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="615" y="830" />
+              <mxPoint x="180" y="830" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Backend to External Services -->
+        <mxCell id="conn20" edge="1" parent="1" source="backend" target="payment" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#43a047;dashed=1;dashPattern=5 5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="550" y="680" />
+              <mxPoint x="820" y="680" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn21" edge="1" parent="1" source="realtime" target="sms" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#388e3c;dashed=1;dashPattern=5 5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="910" y="680" />
+              <mxPoint x="980" y="680" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn22" edge="1" parent="1" source="realtime" target="push" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#2e7d32;dashed=1;dashPattern=5 5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="910" y="680" />
+              <mxPoint x="1140" y="680" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn23" edge="1" parent="1" source="backend" target="maps" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#1b5e20;dashed=1;dashPattern=5 5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="550" y="680" />
+              <mxPoint x="1300" y="680" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Legend -->
+        <mxCell id="legend" value="LEGEND" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=5;spacingTop=3" vertex="1" parent="1">
+          <mxGeometry x="80" y="900" width="500" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="leg1" value="" style="line;strokeWidth=2;strokeColor=#7e57c2" vertex="1" parent="1">
+          <mxGeometry x="100" y="930" width="60" height="10" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1label" value="API Request/Response" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="170" y="925" width="120" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="leg2" value="" style="line;strokeWidth=2;strokeColor=#43a047;dashed=1;dashPattern=5 5" vertex="1" parent="1">
+          <mxGeometry x="100" y="950" width="60" height="10" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2label" value="External Service Call" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="170" y="945" width="120" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="leg3" value="" style="line;strokeWidth=3;strokeColor=#512da8" vertex="1" parent="1">
+          <mxGeometry x="310" y="930" width="60" height="10" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3label" value="Database Connection" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="380" y="925" width="120" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="leg4" value="" style="line;strokeWidth=2;strokeColor=#c2185b" vertex="1" parent="1">
+          <mxGeometry x="310" y="950" width="60" height="10" as="geometry" />
+        </mxCell>
+        <mxCell id="leg4label" value="IoT Data Flow" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="380" y="945" width="120" height="20" as="geometry" />
+        </mxCell>
+        
+        <!-- Notes -->
+        <mxCell id="notes" value="NOTES:&#xa;• All connections use HTTPS/SSL encryption&#xa;• Backend implements RESTful API architecture&#xa;• Real-time updates use WebSocket connections&#xa;• RFID data transmitted via WiFi to IoT Gateway&#xa;• Authentication uses JWT tokens with role-based access control" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#F9A825;fontSize=9;align=left;verticalAlign=top;spacingLeft=5;spacingTop=5" vertex="1" parent="1">
+          <mxGeometry x="620" y="900" width="900" height="80" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

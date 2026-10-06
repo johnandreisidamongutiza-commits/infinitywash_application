@@ -71,15 +71,12 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     try {
       setState(() => _isRefreshing = true);
 
-      final orders = await _orderService.fetchOrders(
-        statuses: null,
-        limit: 100,
-      );
-
-      final updated = orders.cast<LaundryOrder?>().firstWhere(
-        (o) => o?.id == widget.order.id,
-        orElse: () => _latestOrder,
-      );
+      // Fetch this one order by id. This previously pulled up to 100 orders
+      // belonging to *any* customer, every 30 seconds, and scanned them in Dart
+      // for the matching row: wasteful, and it dragged other customers' details
+      // into the client. Falls back to the order already on screen on failure.
+      final updated =
+          await _orderService.getOrderById(widget.order.id) ?? _latestOrder;
 
       if (mounted && updated != null) {
         // Check if total amount or status changed

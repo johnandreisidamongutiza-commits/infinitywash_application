@@ -6,6 +6,10 @@ import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
 
+/// Rejected requests accumulate forever, so they are loaded a page at a time.
+/// Matches the page size used by the Orders screen next door.
+const int _kRejectedPageSize = 8;
+
 class RejectedRequestsScreen extends StatefulWidget {
   const RejectedRequestsScreen({super.key});
 
@@ -15,39 +19,111 @@ class RejectedRequestsScreen extends StatefulWidget {
 
 class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
   final OrderService _orderService = OrderService();
-  List<LaundryOrder> _rejectedOrders = [];
+  final ScrollController _scrollController = ScrollController();
+  // Only ever mutated (cleared / appended to) while paging; never reassigned.
+  final List<LaundryOrder> _rejectedOrders = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _offset = 0;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadRejectedOrders();
   }
 
-  Future<void> _loadRejectedOrders() async {
-    setState(() => _isLoading = true);
-    try {
-      final orders = await _orderService.fetchOrders(
-        statuses: ['rejected'],
-        limit: 50,
-      );
-      if (mounted) {
-        setState(() {
-          _rejectedOrders = orders;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(mapErrorToMessage(e)),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 200) {
+      _loadMoreRejected();
     }
+  }
+
+  Future<void> _loadMoreRejected() async {
+    if (_isLoading || _isLoadingMore || !_hasMore) return;
+    setState(() => _isLoadingMore = true);
+    await _fetchRejected(reset: false);
+  }
+
+  /// Loads the first page. Also used by pull-to-refresh, which is why it
+  /// returns a Future that completes only once the request has finished.
+  Future<void> _loadRejectedOrders() async {
+    setState(() {
+      _isLoading = true;
+      _hasMore = true;
+    });
+    await _fetchRejected(reset: true);
+  }
+
+  Future<void> _fetchRejected({required bool reset}) async {
+    try {
+      final page = await _orderService.fetchOrders(
+        statuses: ['rejected'],
+        limit: _kRejectedPageSize,
+        offset: reset ? 0 : _offset,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (reset) {
+          _rejectedOrders.clear();
+        }
+        _rejectedOrders.addAll(page);
+        _offset = _rejectedOrders.length;
+        // A short page means we reached the end of the list.
+        _hasMore = page.length == _kRejectedPageSize;
+        _isLoading = false;
+        _isLoadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isLoadingMore = false;
+        // Let the user retry the page that failed rather than losing the list.
+        if (!reset) _hasMore = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(mapErrorToMessage(e)),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildPaginationFooter() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Center(
+        child: _isLoadingMore
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.accentBlue,
+                ),
+              )
+            : _hasMore
+                ? const SizedBox.shrink()
+                : Text(
+                    'No more rejected requests',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textLight.withValues(alpha: 0.5),
+                    ),
+                  ),
+      ),
+    );
   }
 
   String _formatReason(String? reason) {
@@ -145,11 +221,16 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
                     ),
                   )
                 : ListView.separated(
+                    controller: _scrollController,
                     padding: const EdgeInsets.all(16),
                     physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: _rejectedOrders.length,
+                    // +1 for the pagination footer.
+                    itemCount: _rejectedOrders.length + 1,
                     separatorBuilder: (context, index) => const SizedBox(height: 14),
                     itemBuilder: (context, index) {
+                      if (index == _rejectedOrders.length) {
+                        return _buildPaginationFooter();
+                      }
                       return _buildRejectedCard(_rejectedOrders[index]);
                     },
                   ),
