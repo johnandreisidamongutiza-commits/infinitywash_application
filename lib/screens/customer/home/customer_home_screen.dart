@@ -10,6 +10,7 @@ import '../orders/request_service_flow.dart';
 import '../delivery/delivery_tracking_screen.dart';
 import '../orders/customer_orders_screen.dart';
 import '../notifications/customer_notifications_screen.dart';
+import '../orders/customer_order_details_screen.dart';
 import '../../../widgets/legal_consent_banner.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
@@ -59,7 +60,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final orders = await _serviceRequestService.getOrdersByCustomerId(customerId);
       
       setState(() {
-        _recentOrders = orders.take(3).toList(); // Show last 3 orders
+        _recentOrders = orders; // Full list for active order detection; recent activity uses .take(3)
         _loadingRecentOrders = false;
       });
       print('✅ Loaded ${orders.length} recent orders for home screen');
@@ -201,61 +202,271 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
+  // ── Active order helpers ──────────────────────────────────────────
+
+  /// Find the most relevant active order from loaded orders.
+  /// Priority: in-progress statuses first, then pending requests.
+  LaundryOrder? get _activeOrder {
+    // Priority 1: actively in-progress orders
+    const inProgressStatuses = [
+      OrderStatus.processing,
+      OrderStatus.out_for_delivery,
+      OrderStatus.ready,
+      OrderStatus.pending_pickup,
+    ];
+    for (final order in _recentOrders) {
+      if (inProgressStatuses.contains(order.status)) return order;
+    }
+    // Priority 2: pending approval requests
+    for (final order in _recentOrders) {
+      if (order.status == OrderStatus.pending_approval) return order;
+    }
+    return null;
+  }
+
+  /// Status-specific display title for the active order card.
+  String _activeStatusTitle(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending_approval:
+        return 'Request Pending';
+      case OrderStatus.pending_pickup:
+        return 'Waiting for Pickup';
+      case OrderStatus.processing:
+        return 'Washing & Drying...';
+      case OrderStatus.ready:
+        return 'Ready for Pickup';
+      case OrderStatus.out_for_delivery:
+        return 'Out for Delivery';
+      default:
+        return 'Processing...';
+    }
+  }
+
+  /// Status-specific icon for the active order card.
+  IconData _activeStatusIcon(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending_approval:
+        return Icons.schedule_rounded;
+      case OrderStatus.pending_pickup:
+        return Icons.local_shipping_outlined;
+      case OrderStatus.processing:
+        return Icons.local_laundry_service;
+      case OrderStatus.ready:
+        return Icons.check_circle_outline_rounded;
+      case OrderStatus.out_for_delivery:
+        return Icons.delivery_dining_rounded;
+      default:
+        return Icons.local_laundry_service;
+    }
+  }
+
+  /// Progress fraction (0.0 – 1.0) mapped to order status.
+  double _activeStatusProgress(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending_approval:
+        return 0.15;
+      case OrderStatus.pending_pickup:
+        return 0.35;
+      case OrderStatus.processing:
+        return 0.60;
+      case OrderStatus.ready:
+        return 0.80;
+      case OrderStatus.out_for_delivery:
+        return 0.92;
+      default:
+        return 0.5;
+    }
+  }
+
+  /// Human-friendly subtitle describing what is happening.
+  String _activeStatusSubtitle(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending_approval:
+        return 'Your laundry request is awaiting staff review.';
+      case OrderStatus.pending_pickup:
+        return 'A rider has been assigned to collect your laundry.';
+      case OrderStatus.processing:
+        return 'Your laundry is currently being washed and dried.';
+      case OrderStatus.ready:
+        return 'Your laundry is clean, folded, and ready!';
+      case OrderStatus.out_for_delivery:
+        return 'Your rider is on the way with your clean laundry.';
+      default:
+        return 'Your order is being processed.';
+    }
+  }
+
   Widget _buildStatusCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppTheme.accentBlue,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.accentBlue.withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
+    final activeOrder = _activeOrder;
+
+    return GestureDetector(
+      onTap: () async {
+        if (activeOrder != null) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CustomerOrderDetailsScreen(order: activeOrder),
+            ),
+          );
+          _loadRecentOrders();
+        } else {
+          // No active order — navigate to request flow
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
+          );
+          if (result == true) _loadRecentOrders();
+        }
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: AppTheme.accentBlue,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.accentBlue.withValues(alpha: 0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: activeOrder != null
+            ? _buildActiveOrderContent(activeOrder)
+            : _buildNoActiveOrderContent(),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Active Order Status',
-            style: TextStyle(color: Colors.white70, fontSize: 14),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Processing...',
-                style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+    );
+  }
+
+  /// Content when there IS an active order.
+  Widget _buildActiveOrderContent(LaundryOrder order) {
+    final status = order.status;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Active Order',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            Text(
+              order.displayNumber,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(
+              child: Text(
+                _activeStatusTitle(status),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
                 ),
-                child: const Icon(Icons.local_laundry_service, color: Colors.white),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(_activeStatusIcon(status), color: Colors.white),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        LinearProgressIndicator(
+          value: _activeStatusProgress(status),
+          backgroundColor: Colors.white.withValues(alpha: 0.2),
+          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+          minHeight: 8,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          _activeStatusSubtitle(status),
+          style: const TextStyle(color: Colors.white, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  /// Content when there are NO active orders.
+  Widget _buildNoActiveOrderContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Active Order Status',
+          style: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Flexible(
+              child: Text(
+                'All Caught Up!',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_circle_outline, color: Colors.white),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'No active orders right now. Ready for fresh laundry?',
+          style: TextStyle(color: Colors.white, fontSize: 12),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add_rounded, color: Colors.white, size: 18),
+              SizedBox(width: 6),
+              Text(
+                'Request Laundry Service',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          LinearProgressIndicator(
-            value: 0.6,
-            backgroundColor: Colors.white.withValues(alpha: 0.2),
-            valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-            minHeight: 8,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Your laundry is being dried. Almost ready!',
-            style: TextStyle(color: Colors.white, fontSize: 12),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
