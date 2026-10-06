@@ -21,7 +21,8 @@ class StaffHomeScreen extends StatefulWidget {
 class _StaffHomeScreenState extends State<StaffHomeScreen> {
   final OrderService _orderService = OrderService();
   final NotificationService _notificationService = NotificationService();
-  List<LaundryOrder> _allOrders = [];
+  TodayQueueCounts _queueCounts = const TodayQueueCounts();
+  List<LaundryOrder> _processingOrdersList = [];
   int _unreadNotificationCount = 0;
   bool _isLoading = true;
   String? _error;
@@ -69,38 +70,38 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
     });
 
     try {
-      final orders = await _orderService.fetchOrders(
-        statuses: ['pending_approval', 'pending_pickup', 'processing', 'ready', 'out_for_delivery'],
-        limit: 50,
-      );
-      
+      final results = await Future.wait([
+        _orderService.getTodayQueueCounts(),
+        _orderService.fetchOrders(
+          statuses: ['processing', 'ready'],
+          limit: 10,
+        ),
+      ]);
+
+      if (!mounted) return;
       setState(() {
-        _allOrders = orders;
+        _queueCounts = results[0] as TodayQueueCounts;
+        _processingOrdersList = results[1] as List<LaundryOrder>;
         _isLoading = false;
       });
-      
-      print('✅ Loaded ${orders.length} orders');
+
+      print('✅ Loaded accurate queue counts: '
+          'requests=${_queueCounts.requests}, '
+          'processing=${_queueCounts.processing}, '
+          'outForDelivery=${_queueCounts.outForDelivery}, '
+          'completedToday=${_queueCounts.completedToday}');
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = mapErrorToMessage(e);
         _isLoading = false;
       });
-      
-      print('❌ Error loading orders: $e');
+
+      print('❌ Error loading staff home data: $e');
     }
   }
 
-  List<LaundryOrder> get _pendingRequests => 
-      _allOrders.where((o) => o.status == OrderStatus.pending_approval).toList();
-  
-  List<LaundryOrder> get _processingOrders => 
-      _allOrders.where((o) => o.status == OrderStatus.processing || o.status == OrderStatus.ready).toList();
-  
-  List<LaundryOrder> get _outForDeliveryOrders => 
-      _allOrders.where((o) => o.status == OrderStatus.out_for_delivery).toList();
-  
-  List<LaundryOrder> get _completedOrders => 
-      _allOrders.where((o) => o.status == OrderStatus.completed).toList();
+  List<LaundryOrder> get _processingOrders => _processingOrdersList;
 
   @override
   Widget build(BuildContext context) {
@@ -133,7 +134,6 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final pendingCount = _pendingRequests.length;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -221,15 +221,16 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   }
 
   Widget _buildServiceRequestsButton(BuildContext context) {
-    final pendingCount = _pendingRequests.length;
+    final pendingCount = _queueCounts.requests;
     if (pendingCount == 0) return const SizedBox.shrink();
 
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        await Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => const OrdersScreen(initialTab: 0)),
         );
+        if (mounted) _loadOrders();
       },
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -256,10 +257,10 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   }
 
   Widget _buildTodayQueue() {
-    final requestCount = _pendingRequests.length;
-    final processingCount = _processingOrders.length;
-    final outForDeliveryCount = _outForDeliveryOrders.length;
-    final completedCount = _completedOrders.length;
+    final requestCount = _queueCounts.requests;
+    final processingCount = _queueCounts.processing;
+    final outForDeliveryCount = _queueCounts.outForDelivery;
+    final completedCount = _queueCounts.completedToday;
 
     if (_isLoading) {
       return Container(
@@ -279,9 +280,9 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
           children: [
             const Icon(Icons.error_outline, color: Colors.red, size: 48),
             const SizedBox(height: 12),
-            Text(
+            const Text(
               'Error loading orders',
-              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
@@ -305,16 +306,102 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Today\'s Queue', style: AppTheme.lightTheme.textTheme.titleMedium),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Today\'s Queue', style: AppTheme.lightTheme.textTheme.titleMedium),
+              InkWell(
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const OrdersScreen()),
+                  );
+                  if (mounted) _loadOrders();
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  child: Text(
+                    'View All',
+                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                      color: AppTheme.accentBlue,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: _buildQueueCard(requestCount.toString(), 'Requests', Icons.online_prediction, AppTheme.lightBlue, AppTheme.accentBlue)),
-              Expanded(child: _buildQueueCard(processingCount.toString(), 'Processing', Icons.sync, AppTheme.teamMemberOrange, AppTheme.teamMemberIconOrange)),
-              Expanded(child: _buildQueueCard(outForDeliveryCount.toString(), 'Out for Delivery', Icons.local_shipping_outlined, const Color(0xFFE8F5E9), Colors.green)),
-              Expanded(child: _buildQueueCard(completedCount.toString(), 'Completed', Icons.verified_outlined, const Color(0xFFE3F2FD), const Color(0xFF1565C0))),
+              Expanded(
+                child: _buildQueueCard(
+                  requestCount.toString(),
+                  'Requests',
+                  Icons.online_prediction,
+                  AppTheme.lightBlue,
+                  AppTheme.accentBlue,
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const OrdersScreen(initialTab: 0)),
+                    );
+                    if (mounted) _loadOrders();
+                  },
+                ),
+              ),
+              Expanded(
+                child: _buildQueueCard(
+                  processingCount.toString(),
+                  'Processing',
+                  Icons.sync,
+                  AppTheme.teamMemberOrange,
+                  AppTheme.teamMemberIconOrange,
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const OrdersScreen(initialTab: 1)),
+                    );
+                    if (mounted) _loadOrders();
+                  },
+                ),
+              ),
+              Expanded(
+                child: _buildQueueCard(
+                  outForDeliveryCount.toString(),
+                  'Out for Delivery',
+                  Icons.local_shipping_outlined,
+                  const Color(0xFFE8F5E9),
+                  Colors.green,
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const OrdersScreen(initialTab: 1)),
+                    );
+                    if (mounted) _loadOrders();
+                  },
+                ),
+              ),
+              Expanded(
+                child: _buildQueueCard(
+                  completedCount.toString(),
+                  'Completed',
+                  Icons.verified_outlined,
+                  const Color(0xFFE3F2FD),
+                  const Color(0xFF1565C0),
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const OrdersScreen(initialTab: 2)),
+                    );
+                    if (mounted) _loadOrders();
+                  },
+                ),
+              ),
             ],
           ),
         ],
@@ -322,8 +409,15 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
     );
   }
 
-  Widget _buildQueueCard(String count, String label, IconData icon, Color bgColor, Color iconColor) {
-    return Column(
+  Widget _buildQueueCard(
+    String count,
+    String label,
+    IconData icon,
+    Color bgColor,
+    Color iconColor, {
+    VoidCallback? onTap,
+  }) {
+    final cardContent = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
@@ -354,6 +448,20 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
           ),
         ),
       ],
+    );
+
+    if (onTap == null) return cardContent;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: cardContent,
+        ),
+      ),
     );
   }
 

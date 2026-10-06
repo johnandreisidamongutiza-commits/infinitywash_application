@@ -1,4 +1,4 @@
-import 'package:meta/meta.dart';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
 import '../utils/app_error.dart';
@@ -28,6 +28,21 @@ abstract final class CompleteOrderGuards {
 
   /// Loads-to-points mapping used for the award (minimum of 1 point).
   static int loyaltyPointsFor(int? loadsCount) => loadsCount == null || loadsCount < 1 ? 1 : loadsCount;
+}
+
+/// Holds accurate order counts for Today's Queue in staff dashboard.
+class TodayQueueCounts {
+  final int requests;
+  final int processing;
+  final int outForDelivery;
+  final int completedToday;
+
+  const TodayQueueCounts({
+    this.requests = 0,
+    this.processing = 0,
+    this.outForDelivery = 0,
+    this.completedToday = 0,
+  });
 }
 
 class OrderService {
@@ -571,6 +586,70 @@ class OrderService {
       print('✅ Checked in order $orderId with ${loads.length} loads${loyaltyCardUid != null ? ' and Loyalty Card $loyaltyCardUid' : ''}');
     } catch (e) {
       print('❌ Error checking in order: $e');
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
+    }
+  }
+
+  /// Get accurate queue counts for the staff dashboard Today's Queue.
+  Future<TodayQueueCounts> getTodayQueueCounts() async {
+    try {
+      final now = DateTime.now();
+      final todayMidnightLocal = DateTime(now.year, now.month, now.day);
+      final todayMidnightUtcString =
+          todayMidnightLocal.toUtc().toIso8601String();
+
+      final results = await Future.wait([
+        // 0: Requests awaiting review (status: pending_approval)
+        _client
+            .from('orders')
+            .select('id')
+            .eq('status', 'pending_approval'),
+        // 1: Processing orders (in-shop pipeline: pending_pickup, processing, ready)
+        _client
+            .from('orders')
+            .select('id')
+            .inFilter('status', ['pending_pickup', 'processing', 'ready']),
+        // 2: Out for delivery orders
+        _client
+            .from('orders')
+            .select('id')
+            .eq('status', 'out_for_delivery'),
+        // 3: Completed orders today
+        _client
+            .from('orders')
+            .select('id, completed_at, updated_at')
+            .eq('status', 'completed')
+            .or('completed_at.gte.$todayMidnightUtcString,updated_at.gte.$todayMidnightUtcString'),
+      ]);
+
+      final requestsCount = (results[0] as List).length;
+      final processingCount = (results[1] as List).length;
+      final outForDeliveryCount = (results[2] as List).length;
+
+      final completedRows = results[3] as List;
+      final completedTodayCount = completedRows.where((row) {
+        final completedAtStr = row['completed_at'] as String?;
+        final updatedAtStr = row['updated_at'] as String?;
+        final dateStr = completedAtStr ?? updatedAtStr;
+        if (dateStr == null) return false;
+        final date = DateTime.tryParse(dateStr)?.toLocal();
+        if (date == null) return false;
+        return date.isAfter(todayMidnightLocal) ||
+            date.isAtSameMomentAs(todayMidnightLocal);
+      }).length;
+
+      print(
+          '📊 TodayQueueCounts: requests=$requestsCount, processing=$processingCount, outForDelivery=$outForDeliveryCount, completedToday=$completedTodayCount');
+
+      return TodayQueueCounts(
+        requests: requestsCount,
+        processing: processingCount,
+        outForDelivery: outForDeliveryCount,
+        completedToday: completedTodayCount,
+      );
+    } catch (e) {
+      print('❌ Error fetching today queue counts: $e');
       if (e is AppError) rethrow;
       throw mapError(e, stackTrace: StackTrace.current);
     }
