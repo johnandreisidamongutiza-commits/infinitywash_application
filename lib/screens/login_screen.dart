@@ -386,16 +386,24 @@ class _LoginScreenState extends State<LoginScreen> {
               validator: Validators.passwordRequired,
             ),
             const SizedBox(height: 12),
-            Row(
+            // Wrap, not Row: once the system font is enlarged the two controls
+            // no longer fit side by side and have to stack, not overflow.
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Checkbox(
-                  value: rememberMe,
-                  onChanged: (value) => setState(() => rememberMe = value!),
-                  activeColor: AppTheme.accentBlue,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Checkbox(
+                      value: rememberMe,
+                      onChanged: (value) => setState(() => rememberMe = value!),
+                      activeColor: AppTheme.accentBlue,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    ),
+                    const Text('Remember me'),
+                  ],
                 ),
-                const Text('Remember me'),
-                const Spacer(),
                 TextButton(
                   onPressed: () {
                     Navigator.push(
@@ -429,8 +437,11 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            // Wrap so the prompt and its action stack instead of overflowing
+            // when the text gets wider than the row.
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text(
                   "Don't have an account? ",

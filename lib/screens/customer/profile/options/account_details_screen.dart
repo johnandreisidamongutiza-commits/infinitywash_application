@@ -373,12 +373,14 @@ class _CustomerAccountDetailsScreenState
                       const Icon(Icons.verified_user_rounded,
                           size: 13, color: AppTheme.accentBlue),
                       const SizedBox(width: 4),
-                      Text(
-                        'Verified Customer',
-                        style: GoogleFonts.lexend(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.accentBlue,
+                      Flexible(
+                        child: Text(
+                          'Verified Customer',
+                          style: GoogleFonts.lexend(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.accentBlue,
+                          ),
                         ),
                       ),
                     ],
@@ -402,12 +404,15 @@ class _CustomerAccountDetailsScreenState
         children: [
           Icon(icon, size: 18, color: AppTheme.accentBlue),
           const SizedBox(width: 8),
-          Text(
-            title,
-            style: GoogleFonts.lexend(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textDark,
+          // Expanded so a long section title wraps instead of overflowing.
+          Expanded(
+            child: Text(
+              title,
+              style: GoogleFonts.lexend(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textDark,
+              ),
             ),
           ),
         ],
@@ -694,19 +699,24 @@ class _CustomerAccountDetailsScreenState
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.check_rounded, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Save Information',
-                    style: GoogleFonts.lexend(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+            // scaleDown keeps the label intact (and on one line) inside the
+            // button when the system font is enlarged.
+            : FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.check_rounded, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Save Information',
+                      style: GoogleFonts.lexend(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
       ),
     );

@@ -361,12 +361,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 const SizedBox(height: 12),
                 // Sub-filter chips (All / Walk-in / Rider)
-                Row(
+                // Wrap: the chips stack onto a second line rather than
+                // overflowing when the text grows.
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     _buildSubFilterChip('All', 'all'),
-                    const SizedBox(width: 8),
                     _buildSubFilterChip('Walk-in', 'walkin'),
-                    const SizedBox(width: 8),
                     _buildSubFilterChip('Rider', 'rider'),
                   ],
                 ),
@@ -410,8 +412,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         child: ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
                           children: [
-                            SizedBox(
-                              height: MediaQuery.of(context).size.height * 0.35,
+                            // ConstrainedBox, not SizedBox: a fixed height clips
+                            // the empty state once the system font grows.
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                minHeight:
+                                    MediaQuery.of(context).size.height * 0.35,
+                              ),
                               child: Center(
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,

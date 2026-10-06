@@ -367,59 +367,9 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
       decoration: AppStyles.cardDecoration,
       child: Column(
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: AppTheme.accentBlue.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.route_outlined, color: AppTheme.accentBlue, size: 18),
-              ),
-              const SizedBox(width: 10),
-              Text('Today\'s Route', style: AppTheme.lightTheme.textTheme.titleMedium),
-              const SizedBox(width: 8),
-              if (allJobs.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryBlue.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${allJobs.length} active',
-                    style: const TextStyle(
-                      color: AppTheme.primaryBlue,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              const Spacer(),
-              TextButton(
-                onPressed: () => widget.onSelectTab?.call(1),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Row(
-                  children: [
-                    Text(
-                      'View Map',
-                      style: TextStyle(
-                        color: AppTheme.accentBlue,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                    SizedBox(width: 2),
-                    Icon(Icons.chevron_right, size: 16, color: AppTheme.accentBlue),
-                  ],
-                ),
-              ),
-            ],
+          RouteSectionHeader(
+            activeCount: allJobs.length,
+            onViewMap: () => widget.onSelectTab?.call(1),
           ),
           const SizedBox(height: 16),
 
@@ -856,5 +806,88 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     }
 
     return markers;
+  }
+}
+
+/// Header row of the "Today's Route" card: icon, title, active-count chip and
+/// the "View Map" action.
+///
+/// This is a public widget so the layout guard in
+/// test/responsive_layout_test.dart can sweep the DATA-bearing state (chip
+/// present). The full-screen sweep only ever sees the empty state, because
+/// jobs are fetched from the network - and the row with the chip overflowed
+/// the card's right edge by ~22px on a real device.
+class RouteSectionHeader extends StatelessWidget {
+  const RouteSectionHeader({super.key, this.activeCount = 0, this.onViewMap});
+
+  /// Number of active jobs; 0 hides the count chip.
+  final int activeCount;
+
+  final VoidCallback? onViewMap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: AppTheme.accentBlue.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.route_outlined, color: AppTheme.accentBlue, size: 18),
+        ),
+        const SizedBox(width: 8),
+        // Expanded (not an intrinsic Text): the chip and the button keep their
+        // own width, so this title absorbs ALL the slack and the row can never
+        // spill past the card again. Truncates with an ellipsis only when the
+        // card is genuinely too narrow (small phones, large system font).
+        Expanded(
+          child: Text(
+            'Today\'s Route',
+            style: AppTheme.lightTheme.textTheme.titleMedium,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (activeCount > 0) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '$activeCount active',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppTheme.primaryBlue,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(width: 6),
+        TextButton(
+          onPressed: onViewMap,
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Text(
+            'View Map',
+            style: TextStyle(
+              color: AppTheme.accentBlue,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

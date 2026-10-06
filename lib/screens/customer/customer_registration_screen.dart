@@ -452,8 +452,11 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                       : const Text('Register'),
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                // Wrap so the prompt and its action stack instead of
+                // overflowing when the text gets wider than the row.
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     const Text('Already have an account? '),
                     GestureDetector(

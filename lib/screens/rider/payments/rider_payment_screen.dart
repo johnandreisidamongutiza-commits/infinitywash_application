@@ -365,8 +365,13 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                           primary: false,
                           physics: const AlwaysScrollableScrollPhysics(),
                           children: [
-                            SizedBox(
-                              height: MediaQuery.of(context).size.height * 0.45,
+                            // ConstrainedBox, not SizedBox: a fixed height clips
+                            // the empty state once the system font grows.
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                minHeight:
+                                    MediaQuery.of(context).size.height * 0.45,
+                              ),
                               child: Center(
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,

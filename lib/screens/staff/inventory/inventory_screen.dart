@@ -60,7 +60,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(supply.name, style: AppTheme.lightTheme.textTheme.titleMedium),
+              Expanded(
+                child: Text(supply.name, style: AppTheme.lightTheme.textTheme.titleMedium),
+              ),
               if (supply.isLow)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -81,7 +83,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${supply.currentAmount} ${supply.unit} / ${supply.maxAmount} ${supply.unit}', style: AppTheme.lightTheme.textTheme.bodyMedium),
+              Expanded(
+                child: Text('${supply.currentAmount} ${supply.unit} / ${supply.maxAmount} ${supply.unit}', style: AppTheme.lightTheme.textTheme.bodyMedium),
+              ),
               TextButton(
                 onPressed: () {
                   Navigator.push(

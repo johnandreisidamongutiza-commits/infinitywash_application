@@ -984,7 +984,9 @@ class OrdersScreenState extends State<OrdersScreen>
     VoidCallback? onAction,
   }) {
     return Center(
-      child: Padding(
+      // SingleChildScrollView rather than Padding: on a short window (or with a
+      // large system font) the content scrolls instead of overflowing.
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(40),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

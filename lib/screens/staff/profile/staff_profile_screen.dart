@@ -185,8 +185,15 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
           children: [
             Icon(icon, color: AppTheme.textDark),
             const SizedBox(width: 16),
-            Text(label, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 16)),
-            const Spacer(),
+            // Expanded: a long label (or a large system font) wraps instead of
+            // overflowing the row.
+            Expanded(
+              child: Text(
+                label,
+                style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 16),
+              ),
+            ),
+            const SizedBox(width: 12),
             const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
           ],
         ),
