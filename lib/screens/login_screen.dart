@@ -279,19 +279,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-
-            // Brand name.
-            const Text(
-              'INFINITY WASH',
-              style: TextStyle(
-                color: AppTheme.primaryBlue,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
             // Welcome heading.
             Text(
