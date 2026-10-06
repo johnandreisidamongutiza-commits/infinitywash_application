@@ -34,6 +34,8 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
     _loadOrders();
     _loadUnreadCount();
     _startAutoRefresh();
+    // One-time backlog cleanup: purge laundry photos from completed/cancelled orders to reclaim storage
+    _orderService.purgeCompletedOrdersPhotos();
   }
 
   @override

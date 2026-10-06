@@ -843,7 +843,7 @@ class OrderService {
   /// Update order status
   Future<void> updateOrderStatus(String orderId, String status) async {
     try {
-      final updates = {
+      final updates = <String, dynamic>{
         'status': status,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
@@ -868,6 +868,7 @@ class OrderService {
           await completeOrder(orderId);
           return;
         case 'cancelled':
+          updates['laundry_photo_urls'] = [];
           break;
       }
 
@@ -918,13 +919,44 @@ class OrderService {
       'status': 'completed',
       'completed_at': now,
       'updated_at': now,
+      'laundry_photo_urls': [], // Purge customer laundry photos to reclaim storage once order is completed
     }).eq('id', orderId);
 
-    print('✅ Order $orderId completed');
+    print('✅ Order $orderId completed (laundry photos purged to save storage)');
 
     // Award loyalty points if linked to a loyalty card. Failures are logged
     // but do not fail the completion (matches previous behavior).
     await _awardLoyaltyPointsForOrder(orderId);
+  }
+
+  /// Cleanup helper to purge customer laundry photos from completed or cancelled
+  /// orders in Supabase, reclaiming database storage.
+  Future<void> purgeCompletedOrdersPhotos() async {
+    try {
+      final rows = await _client
+          .from('orders')
+          .select('id, laundry_photo_urls')
+          .inFilter('status', ['completed', 'cancelled'])
+          .limit(100);
+
+      final idsToClear = <String>[];
+      for (final row in rows) {
+        final photos = row['laundry_photo_urls'];
+        if (photos != null && photos is List && photos.isNotEmpty) {
+          idsToClear.add(row['id'] as String);
+        }
+      }
+
+      if (idsToClear.isNotEmpty) {
+        await _client
+            .from('orders')
+            .update({'laundry_photo_urls': []})
+            .inFilter('id', idsToClear);
+        print('🧹 Purged photos for ${idsToClear.length} completed/cancelled order(s) to free storage.');
+      }
+    } catch (e) {
+      print('⚠️ Notice: Could not purge completed order photos: $e');
+    }
   }
 
   /// Create delivery dispatch job when order becomes ready

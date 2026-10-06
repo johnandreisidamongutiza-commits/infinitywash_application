@@ -1388,7 +1388,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             const SizedBox(height: 10),
             ..._currentOrder.loads.map((load) => _buildLoadCard(load)),
           ],
-          if (_currentOrder.laundryPhotoUrls != null && _currentOrder.laundryPhotoUrls!.isNotEmpty) ...[
+          if (_currentStatus != OrderStatus.completed &&
+              _currentStatus != OrderStatus.cancelled &&
+              _currentOrder.laundryPhotoUrls != null &&
+              _currentOrder.laundryPhotoUrls!.isNotEmpty) ...[
             const SizedBox(height: 16),
             const Text(
               'Customer Laundry Photos',
