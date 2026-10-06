@@ -675,18 +675,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
     }
   }
 
-  int _progressStepIndex(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.processing:
-      case OrderStatus.ready:
-      case OrderStatus.out_for_delivery:
-        return 1;
-      case OrderStatus.completed:
-        return 2;
-      default:
-        return 0;
-    }
-  }
+
 
   // ─────────────────────────────────────────────────────────────────────────
   // BUILD
@@ -1595,7 +1584,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                         const SizedBox(height: 14),
 
                         // ── Compact progress tracker ──
-                        _buildCompactProgressTracker(order.status),
+                        _buildCompactProgressTracker(order),
 
                         // ── Payment banner (GCash unpaid) ──
                         if (needsPayment &&
@@ -2286,40 +2275,185 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
     );
   }
 
-  Widget _buildCompactProgressTracker(OrderStatus status) {
-    final steps = [
-      {'label': 'Booked', 'icon': Icons.check_circle},
-      {'label': 'Processing', 'icon': Icons.sync},
-      {'label': 'Done', 'icon': Icons.check_circle},
-    ];
+  List<_MilestoneStep> _calculateCompactMilestones(LaundryOrder order) {
+    final isWalkIn = order.channel == OrderChannel.walkIn;
+    final isDelivery = order.returnMethod == ReturnMethod.delivery;
+    final status = order.status;
+    final isDone = status == OrderStatus.completed;
 
-    final currentStepIndex = _progressStepIndex(status);
+    if (isWalkIn) {
+      if (!isDelivery) {
+        // Walk-in + Shop Pickup
+        return [
+          const _MilestoneStep(
+            label: 'Placed',
+            icon: Icons.storefront_outlined,
+            isCompleted: true,
+            isActive: false,
+          ),
+          _MilestoneStep(
+            label: 'Washing',
+            icon: Icons.local_laundry_service_outlined,
+            isCompleted: status == OrderStatus.ready || isDone,
+            isActive: status == OrderStatus.processing,
+          ),
+          _MilestoneStep(
+            label: 'Ready',
+            icon: Icons.shopping_bag_outlined,
+            isCompleted: isDone,
+            isActive: status == OrderStatus.ready,
+          ),
+          _MilestoneStep(
+            label: 'Claimed',
+            icon: Icons.check_circle_outline,
+            isCompleted: isDone,
+            isActive: isDone,
+          ),
+        ];
+      } else {
+        // Walk-in + Home Delivery
+        return [
+          const _MilestoneStep(
+            label: 'Placed',
+            icon: Icons.storefront_outlined,
+            isCompleted: true,
+            isActive: false,
+          ),
+          _MilestoneStep(
+            label: 'Washing',
+            icon: Icons.local_laundry_service_outlined,
+            isCompleted: status == OrderStatus.ready ||
+                status == OrderStatus.out_for_delivery ||
+                isDone,
+            isActive: status == OrderStatus.processing,
+          ),
+          _MilestoneStep(
+            label: 'Ready',
+            icon: Icons.inventory_2_outlined,
+            isCompleted: status == OrderStatus.out_for_delivery || isDone,
+            isActive: status == OrderStatus.ready,
+          ),
+          _MilestoneStep(
+            label: 'Delivery',
+            icon: Icons.local_shipping_outlined,
+            isCompleted: isDone,
+            isActive: status == OrderStatus.out_for_delivery || isDone,
+          ),
+        ];
+      }
+    } else {
+      // Online Order Requests (Starts with Rider Pickup)
+      final requestAccepted = status != OrderStatus.pending_approval &&
+          status != OrderStatus.rejected &&
+          status != OrderStatus.cancelled;
 
-    return SizedBox(
-      height: 50,
-      width: double.infinity,
+      final pickupDone =
+          requestAccepted && status != OrderStatus.pending_pickup;
+      final washingDone = pickupDone &&
+          !order.needsCheckIn &&
+          (status == OrderStatus.ready ||
+              status == OrderStatus.out_for_delivery ||
+              isDone);
+
+      if (isDelivery) {
+        // Online Request + Delivery (Door to Door)
+        return [
+          _MilestoneStep(
+            label: 'Submitted',
+            icon: Icons.phone_android_outlined,
+            isCompleted: requestAccepted,
+            isActive: status == OrderStatus.pending_approval,
+          ),
+          _MilestoneStep(
+            label: 'Pickup',
+            icon: Icons.two_wheeler_outlined,
+            isCompleted: pickupDone,
+            isActive: status == OrderStatus.pending_pickup,
+          ),
+          _MilestoneStep(
+            label: 'Washing',
+            icon: Icons.local_laundry_service_outlined,
+            isCompleted: washingDone,
+            isActive: status == OrderStatus.processing,
+          ),
+          _MilestoneStep(
+            label: 'Delivery',
+            icon: Icons.local_shipping_outlined,
+            isCompleted: isDone,
+            isActive: status == OrderStatus.ready ||
+                status == OrderStatus.out_for_delivery ||
+                isDone,
+          ),
+        ];
+      } else {
+        // Online Request + Shop Pickup
+        return [
+          _MilestoneStep(
+            label: 'Submitted',
+            icon: Icons.phone_android_outlined,
+            isCompleted: requestAccepted,
+            isActive: status == OrderStatus.pending_approval,
+          ),
+          _MilestoneStep(
+            label: 'Pickup',
+            icon: Icons.two_wheeler_outlined,
+            isCompleted: pickupDone,
+            isActive: status == OrderStatus.pending_pickup,
+          ),
+          _MilestoneStep(
+            label: 'Washing',
+            icon: Icons.local_laundry_service_outlined,
+            isCompleted: washingDone,
+            isActive: status == OrderStatus.processing,
+          ),
+          _MilestoneStep(
+            label: 'Ready',
+            icon: Icons.shopping_bag_outlined,
+            isCompleted: isDone,
+            isActive: status == OrderStatus.ready || isDone,
+          ),
+        ];
+      }
+    }
+  }
+
+  Widget _buildCompactProgressTracker(LaundryOrder order) {
+    final steps = _calculateCompactMilestones(order);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          for (int i = 0; i < steps.length; i++) ...[
-            _buildCompactProgressStep(
-              label: steps[i]['label'] as String,
-              icon: steps[i]['icon'] as IconData,
-              isActive: i <= currentStepIndex,
-              isCurrent: i == currentStepIndex,
+        children: List.generate(steps.length, (index) {
+          final step = steps[index];
+          final isLast = index == steps.length - 1;
+          final nextStep = isLast ? null : steps[index + 1];
+          final isNextActiveOrDone = nextStep != null &&
+              (nextStep.isCompleted || nextStep.isActive);
+
+          return Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildCompactProgressStep(
+                    label: step.label,
+                    icon: step.icon,
+                    isCompleted: step.isCompleted,
+                    isActive: step.isActive,
+                  ),
+                ),
+                if (!isLast)
+                  Container(
+                    width: 18,
+                    height: 2,
+                    margin: const EdgeInsets.only(bottom: 18),
+                    color: isNextActiveOrDone
+                        ? AppTheme.accentBlue
+                        : const Color(0xFFE2E8F0),
+                  ),
+              ],
             ),
-            if (i < steps.length - 1)
-              Container(
-                width: 40,
-                height: 2,
-                margin:
-                    const EdgeInsets.only(bottom: 14, left: 8, right: 8),
-                color: i < currentStepIndex
-                    ? AppTheme.accentBlue
-                    : AppTheme.borderGray,
-              ),
-          ],
-        ],
+          );
+        }),
       ),
     );
   }
@@ -2327,36 +2461,75 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   Widget _buildCompactProgressStep({
     required String label,
     required IconData icon,
+    required bool isCompleted,
     required bool isActive,
-    required bool isCurrent,
   }) {
+    Widget node;
+    if (isActive) {
+      node = Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppTheme.accentBlue, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.accentBlue.withValues(alpha: 0.25),
+              blurRadius: 6,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Center(
+          child: Icon(icon, size: 14, color: AppTheme.accentBlue),
+        ),
+      );
+    } else if (isCompleted) {
+      node = Container(
+        width: 26,
+        height: 26,
+        decoration: const BoxDecoration(
+          color: AppTheme.accentBlue,
+          shape: BoxShape.circle,
+        ),
+        child: const Center(
+          child: Icon(Icons.check, size: 14, color: Colors.white),
+        ),
+      );
+    } else {
+      node = Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+        ),
+        child: Center(
+          child: Icon(icon, size: 12, color: const Color(0xFF94A3B8)),
+        ),
+      );
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: isActive ? AppTheme.accentBlue : Colors.transparent,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isActive ? AppTheme.accentBlue : AppTheme.borderGray,
-              width: 2,
-            ),
-          ),
-          child: Icon(
-            icon,
-            size: 16,
-            color: isActive ? Colors.white : AppTheme.textLight,
-          ),
-        ),
+        SizedBox(height: 30, child: Center(child: node)),
         const SizedBox(height: 4),
         Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
           style: GoogleFonts.lexend(
-            fontSize: 9,
-            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-            color: isActive ? AppTheme.accentBlue : AppTheme.textLight,
+            fontSize: 9.5,
+            fontWeight: isActive
+                ? FontWeight.bold
+                : (isCompleted ? FontWeight.w600 : FontWeight.normal),
+            color: isActive
+                ? AppTheme.accentBlue
+                : (isCompleted ? AppTheme.textDark : const Color(0xFF94A3B8)),
           ),
         ),
       ],
@@ -2535,4 +2708,18 @@ class _CustomerRequestPhotoViewerState
       }
     }
   }
+}
+
+class _MilestoneStep {
+  final String label;
+  final IconData icon;
+  final bool isCompleted;
+  final bool isActive;
+
+  const _MilestoneStep({
+    required this.label,
+    required this.icon,
+    required this.isCompleted,
+    required this.isActive,
+  });
 }

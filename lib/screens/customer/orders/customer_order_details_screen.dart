@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
@@ -8,6 +7,7 @@ import '../../../services/feedback_service.dart';
 import '../../../services/customer_service.dart';
 import '../../../services/order_service.dart';
 import '../../../widgets/star_rating.dart';
+import '../../../widgets/order_timeline_view.dart';
 import 'request_service_flow.dart';
 import '../chats/customer_chat_detail_screen.dart';
 
@@ -283,7 +283,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
               
               _buildHeader(order),
               const SizedBox(height: 24),
-              _buildTimeline(order),
+              OrderTimelineView(order: order),
               const SizedBox(height: 24),
               _buildServiceDetails(order),
               const SizedBox(height: 24),
@@ -354,118 +354,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     );
   }
 
-  Widget _buildTimeline(LaundryOrder order) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: AppStyles.cardDecoration,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Order Timeline',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textDark,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildTimelineItem(
-            'Requested',
-            order.createdAt,
-            Icons.schedule,
-            isCompleted: true,
-          ),
-          if (order.status == OrderStatus.processing ||
-              order.status == OrderStatus.ready ||
-              order.status == OrderStatus.out_for_delivery ||
-              order.status == OrderStatus.completed)
-            _buildTimelineItem(
-              'Processing',
-              order.createdAt,
-              Icons.local_laundry_service,
-              isCompleted: true,
-            ),
-          if (order.status == OrderStatus.ready ||
-              order.status == OrderStatus.out_for_delivery ||
-              order.status == OrderStatus.completed)
-            _buildTimelineItem(
-              'Ready',
-              order.createdAt,
-              Icons.check_circle,
-              isCompleted: true,
-            ),
-          if (order.status == OrderStatus.completed)
-            _buildTimelineItem(
-              'Completed',
-              order.createdAt,
-              Icons.done_all,
-              isCompleted: true,
-              isLast: true,
-            ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildTimelineItem(
-    String label,
-    DateTime time,
-    IconData icon, {
-    required bool isCompleted,
-    bool isLast = false,
-  }) {
-    return Row(
-      children: [
-        Column(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: isCompleted ? AppTheme.accentBlue : Colors.grey[300],
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                color: Colors.white,
-                size: 16,
-              ),
-            ),
-            if (!isLast)
-              Container(
-                width: 2,
-                height: 32,
-                color: isCompleted ? AppTheme.accentBlue : Colors.grey[300],
-              ),
-          ],
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: isCompleted ? AppTheme.textDark : AppTheme.textLight,
-                ),
-              ),
-              Text(
-                _formatDateTime(time),
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.textLight,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildServiceDetails(LaundryOrder order) {
     return Container(

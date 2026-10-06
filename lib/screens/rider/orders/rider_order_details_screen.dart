@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
+import '../../../widgets/order_timeline_view.dart';
 import '../../../services/mock_data_service.dart';
 import '../route/rider_route_screen.dart';
 
@@ -105,9 +106,7 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
 
                   // Order Status Section
                   if (!_isScanning) ...[
-                    Text('Order Status', style: AppTheme.lightTheme.textTheme.titleMedium),
-                    const SizedBox(height: 12),
-                    _buildOrderStatusCard(),
+                    OrderTimelineView(order: widget.order),
                     const SizedBox(height: 32),
                   ],
 
@@ -577,90 +576,7 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
     );
   }
 
-  Widget _buildOrderStatusCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: AppStyles.cardDecoration,
-      child: Column(
-        children: [
-          _buildStatusStep(
-            widget.isPickup ? 'Pending Pickup' : 'Pending Delivery',
-            Icons.pending,
-            true,
-            isLast: false,
-          ),
-          _buildConnector(true),
-          _buildStatusStep(
-            'In Transit',
-            Icons.local_shipping_outlined,
-            false,
-            isLast: false,
-          ),
-          _buildConnector(false),
-          _buildStatusStep(
-            widget.isPickup ? 'Picked Up' : 'Delivered',
-            Icons.check_circle_outline,
-            false,
-            isLast: true,
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildStatusStep(String label, IconData icon, bool isActive, {required bool isLast}) {
-    Color color = isActive ? AppTheme.accentBlue : AppTheme.textLight.withValues(alpha: 0.3);
-    return Row(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-            border: Border.all(color: color, width: 2),
-          ),
-          child: Icon(icon, color: color, size: 20),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isActive ? AppTheme.textDark : AppTheme.textLight,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-              fontSize: 14,
-            ),
-          ),
-        ),
-        if (isActive)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.accentBlue.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'Current',
-              style: TextStyle(
-                color: AppTheme.accentBlue,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildConnector(bool isActive) {
-    return Container(
-      margin: const EdgeInsets.only(left: 19, top: 4, bottom: 4),
-      height: 24,
-      width: 2,
-      color: isActive ? AppTheme.accentBlue : AppTheme.borderGray,
-    );
-  }
 
   void _showContactOptions(BuildContext context, String phoneNumber, String customerName, String orderNumber) {
     showModalBottomSheet(

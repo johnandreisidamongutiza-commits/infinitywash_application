@@ -5,6 +5,7 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
+import '../../../widgets/order_timeline_view.dart';
 import 'check_in_request_screen.dart';
 
 class OrderStatusScreen extends StatefulWidget {
@@ -492,178 +493,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Horizontal Stepper Calculations
-  // ─────────────────────────────────────────────────────────────────────────
-  List<_HorizontalStep> _calculateSteps() {
-    final channel = _currentOrder.channel;
-    final collection = _currentOrder.collectionMethod;
-    final returnM = _currentOrder.returnMethod;
-    final status = _currentStatus;
-    final needsCheckIn = _currentOrder.needsCheckIn;
-    final isDone = status == OrderStatus.completed;
 
-    final steps = <_HorizontalStep>[];
-
-    // Case 1: Walk-in + Shop Pickup
-    if (channel == OrderChannel.walkIn && collection == CollectionMethod.dropOff && returnM == ReturnMethod.shopPickup) {
-      steps.add(_HorizontalStep(
-        label: 'Placed',
-        icon: Icons.storefront_outlined,
-        isCompleted: true,
-        isActive: false,
-      ));
-      steps.add(_HorizontalStep(
-        label: 'Washing',
-        icon: Icons.local_laundry_service_outlined,
-        isCompleted: status == OrderStatus.ready || isDone,
-        isActive: status == OrderStatus.processing,
-      ));
-      steps.add(_HorizontalStep(
-        label: 'Ready',
-        icon: Icons.shopping_bag_outlined,
-        isCompleted: isDone,
-        isActive: status == OrderStatus.ready,
-      ));
-      steps.add(_HorizontalStep(
-        label: 'Done',
-        icon: Icons.check_circle_outline,
-        isCompleted: isDone,
-        isActive: isDone,
-      ));
-    }
-    // Case 2: Walk-in + Home Delivery
-    else if (channel == OrderChannel.walkIn && collection == CollectionMethod.dropOff && returnM == ReturnMethod.delivery) {
-      steps.add(_HorizontalStep(
-        label: 'Placed',
-        icon: Icons.storefront_outlined,
-        isCompleted: true,
-        isActive: false,
-      ));
-      steps.add(_HorizontalStep(
-        label: 'Washing',
-        icon: Icons.local_laundry_service_outlined,
-        isCompleted: status == OrderStatus.ready || status == OrderStatus.out_for_delivery || isDone,
-        isActive: status == OrderStatus.processing,
-      ));
-      steps.add(_HorizontalStep(
-        label: 'Ready',
-        icon: Icons.inventory_2_outlined,
-        isCompleted: status == OrderStatus.out_for_delivery || isDone,
-        isActive: status == OrderStatus.ready,
-      ));
-      steps.add(_HorizontalStep(
-        label: 'Transit',
-        icon: Icons.local_shipping_outlined,
-        isCompleted: isDone,
-        isActive: status == OrderStatus.out_for_delivery,
-      ));
-      steps.add(_HorizontalStep(
-        label: 'Done',
-        icon: Icons.check_circle_outline,
-        isCompleted: isDone,
-        isActive: isDone,
-      ));
-    }
-    // Case 3 & 4: Online with Rider Pickup (Shop Pickup or Delivery)
-    else if (collection == CollectionMethod.riderPickup) {
-      steps.add(_HorizontalStep(
-        label: 'Pickup',
-        icon: Icons.two_wheeler_outlined,
-        isCompleted: status != OrderStatus.pending_pickup && status != OrderStatus.pending_approval,
-        isActive: status == OrderStatus.pending_pickup,
-      ));
-      steps.add(_HorizontalStep(
-        label: 'Check-in',
-        icon: Icons.scale_outlined,
-        isCompleted: !needsCheckIn && status != OrderStatus.pending_pickup,
-        isActive: needsCheckIn && status == OrderStatus.processing,
-      ));
-      steps.add(_HorizontalStep(
-        label: 'Washing',
-        icon: Icons.local_laundry_service_outlined,
-        isCompleted: (!needsCheckIn && (status == OrderStatus.ready || status == OrderStatus.out_for_delivery || isDone)),
-        isActive: !needsCheckIn && status == OrderStatus.processing,
-      ));
-      if (returnM == ReturnMethod.delivery) {
-        steps.add(_HorizontalStep(
-          label: 'Ready',
-          icon: Icons.inventory_2_outlined,
-          isCompleted: status == OrderStatus.out_for_delivery || isDone,
-          isActive: status == OrderStatus.ready,
-        ));
-        steps.add(_HorizontalStep(
-          label: 'Transit',
-          icon: Icons.local_shipping_outlined,
-          isCompleted: isDone,
-          isActive: status == OrderStatus.out_for_delivery,
-        ));
-      } else {
-        steps.add(_HorizontalStep(
-          label: 'Ready',
-          icon: Icons.shopping_bag_outlined,
-          isCompleted: isDone,
-          isActive: status == OrderStatus.ready,
-        ));
-      }
-      steps.add(_HorizontalStep(
-        label: 'Done',
-        icon: Icons.check_circle_outline,
-        isCompleted: isDone,
-        isActive: isDone,
-      ));
-    }
-    // Case 5 & 6: Online with Drop-off (Delivery or Shop Pickup)
-    else {
-      steps.add(_HorizontalStep(
-        label: 'Drop-off',
-        icon: Icons.storefront_outlined,
-        isCompleted: !needsCheckIn,
-        isActive: needsCheckIn,
-      ));
-      steps.add(_HorizontalStep(
-        label: 'Check-in',
-        icon: Icons.scale_outlined,
-        isCompleted: !needsCheckIn,
-        isActive: needsCheckIn,
-      ));
-      steps.add(_HorizontalStep(
-        label: 'Washing',
-        icon: Icons.local_laundry_service_outlined,
-        isCompleted: (!needsCheckIn && (status == OrderStatus.ready || status == OrderStatus.out_for_delivery || isDone)),
-        isActive: !needsCheckIn && status == OrderStatus.processing,
-      ));
-      if (returnM == ReturnMethod.delivery) {
-        steps.add(_HorizontalStep(
-          label: 'Ready',
-          icon: Icons.inventory_2_outlined,
-          isCompleted: status == OrderStatus.out_for_delivery || isDone,
-          isActive: status == OrderStatus.ready,
-        ));
-        steps.add(_HorizontalStep(
-          label: 'Transit',
-          icon: Icons.local_shipping_outlined,
-          isCompleted: isDone,
-          isActive: status == OrderStatus.out_for_delivery,
-        ));
-      } else {
-        steps.add(_HorizontalStep(
-          label: 'Ready',
-          icon: Icons.shopping_bag_outlined,
-          isCompleted: isDone,
-          isActive: status == OrderStatus.ready,
-        ));
-      }
-      steps.add(_HorizontalStep(
-        label: 'Done',
-        icon: Icons.check_circle_outline,
-        isCompleted: isDone,
-        isActive: isDone,
-      ));
-    }
-
-    return steps;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -713,7 +543,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 children: [
                   _buildTagsRow(),
                   const SizedBox(height: 12),
-                  _buildHorizontalStepperCard(),
+                  OrderTimelineView(order: _currentOrder),
                   const SizedBox(height: 14),
                   _buildPhaseStatusBanner(),
                   const SizedBox(height: 14),
@@ -817,122 +647,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
-  Widget _buildHorizontalStepperCard() {
-    final steps = _calculateSteps();
 
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-        border: Border.all(color: const Color(0xFFEDF2F7)),
-      ),
-      child: Row(
-        children: List.generate(steps.length, (index) {
-          final step = steps[index];
-          final isLast = index == steps.length - 1;
-
-          return Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Node circle
-                      _buildStepNode(step),
-                      const SizedBox(height: 6),
-                      // Step text label
-                      Text(
-                        step.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: step.isActive
-                              ? FontWeight.bold
-                              : (step.isCompleted ? FontWeight.w600 : FontWeight.normal),
-                          color: step.isActive
-                              ? AppTheme.accentBlue
-                              : (step.isCompleted ? const Color(0xFF334155) : const Color(0xFF94A3B8)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (!isLast)
-                  Container(
-                    width: 14,
-                    height: 2,
-                    margin: const EdgeInsets.only(bottom: 18),
-                    color: (steps[index + 1].isCompleted || steps[index + 1].isActive)
-                        ? AppTheme.accentBlue
-                        : const Color(0xFFE2E8F0),
-                  ),
-              ],
-            ),
-          );
-        }),
-      ),
-    );
-  }
-
-  Widget _buildStepNode(_HorizontalStep step) {
-    if (step.isActive) {
-      return Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(color: AppTheme.accentBlue, width: 2.5),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.accentBlue.withValues(alpha: 0.28),
-              blurRadius: 10,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: Center(
-          child: Icon(step.icon, size: 18, color: AppTheme.accentBlue),
-        ),
-      );
-    } else if (step.isCompleted) {
-      return Container(
-        width: 32,
-        height: 32,
-        decoration: const BoxDecoration(
-          color: AppTheme.accentBlue,
-          shape: BoxShape.circle,
-        ),
-        child: const Center(
-          child: Icon(Icons.check, size: 16, color: Colors.white),
-        ),
-      );
-    } else {
-      return Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-        ),
-        child: Center(
-          child: Icon(step.icon, size: 15, color: const Color(0xFF94A3B8)),
-        ),
-      );
-    }
-  }
 
   Widget _buildPhaseStatusBanner() {
     IconData icon;
@@ -1692,16 +1407,4 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 }
 
-class _HorizontalStep {
-  final String label;
-  final IconData icon;
-  final bool isCompleted;
-  final bool isActive;
 
-  _HorizontalStep({
-    required this.label,
-    required this.icon,
-    required this.isCompleted,
-    required this.isActive,
-  });
-}
