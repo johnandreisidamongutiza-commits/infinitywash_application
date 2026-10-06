@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../utils/input_formatters.dart';
+import '../../../utils/permission_manager.dart';
 import '../../../utils/validators.dart';
 import '../../../widgets/address_input_widget.dart';
 import '../../../models/order.dart';
@@ -120,6 +122,12 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
       return;
     }
 
+    // Explain why the camera is needed before the OS prompt appears.
+    if (!mounted) return;
+    if (!await PermissionManager.confirmRationale(context, AppPermission.camera)) {
+      return;
+    }
+
     try {
       final XFile? photo = await _imagePicker.pickImage(
         source: ImageSource.camera,
@@ -132,6 +140,15 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
         setState(() {
           _laundryPhotos.add(File(photo.path));
         });
+      }
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      if (PermissionManager.isPickerPermissionCode(e.code)) {
+        await PermissionManager.showDeniedDialog(context, AppPermission.camera);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error taking photo. Please try again.')),
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -149,6 +166,12 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
       return;
     }
 
+    // Explain why the photo library is needed before the OS prompt appears.
+    if (!mounted) return;
+    if (!await PermissionManager.confirmRationale(context, AppPermission.photos)) {
+      return;
+    }
+
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.gallery,
@@ -161,6 +184,15 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
         setState(() {
           _laundryPhotos.add(File(image.path));
         });
+      }
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      if (PermissionManager.isPickerPermissionCode(e.code)) {
+        await PermissionManager.showDeniedDialog(context, AppPermission.photos);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error selecting photo. Please try again.')),
+        );
       }
     } catch (e) {
       if (!mounted) return;

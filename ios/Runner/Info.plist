@@ -67,6 +67,10 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<!-- Location permissions for delivery tracking (Phase 5) -->
+	<key>NSCameraUsageDescription</key>
+	<string>InfinityWash uses your camera to photograph your laundry for pickup and your GCash receipt as proof of payment. Photos are attached only to your order.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>InfinityWash uses your photo library so you can attach laundry photos and payment receipts to your order. Your photos are never shared outside the app.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Infinity Wash needs access to your location to show your position on the map and track delivery routes.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

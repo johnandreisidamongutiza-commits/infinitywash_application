@@ -57,6 +57,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
 
   Future<void> _initializeLocation() async {
     try {
+      _gpsProvider.attachDialogContext(context);
       await _gpsProvider.initialize();
       _gpsProvider.locationStream.listen((location) {
         if (mounted && location.latitude != null && location.longitude != null) {

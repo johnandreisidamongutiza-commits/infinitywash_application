@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:location/location.dart';
 import 'package:latlong2/latlong.dart';
 import '../utils/app_error.dart';
+import '../utils/permission_manager.dart';
 import '../services/location_service.dart';
 
 /// Provider for managing GPS location state
@@ -26,6 +28,11 @@ class GpsProvider with ChangeNotifier {
   /// Stream of location updates
   Stream<LocationData> get locationStream => _locationService.locationStream;
 
+  /// BuildContext used to show the purpose-explanation and denial dialogs.
+  /// Optional: when null, permission requests fall back to a bare OS prompt.
+  BuildContext? _uiContext;
+  void attachDialogContext(BuildContext context) => _uiContext = context;
+
   /// Initialize GPS service and check permissions
   Future<void> initialize() async {
     try {
@@ -39,15 +46,24 @@ class GpsProvider with ChangeNotifier {
         return;
       }
 
-      // Check and request permission
+      // Check and request permission — with a purpose explanation before
+      // the OS dialog and denial guidance (incl. Settings deep link) after.
       _hasPermission = await _locationService.hasPermission();
-      if (!_hasPermission) {
+      if (!_hasPermission && _uiContext != null) {
+        _hasPermission = await PermissionManager.ensure(
+          _uiContext!,
+          AppPermission.location,
+          check: () => _locationService.hasPermission(),
+          request: _locationService.requestPermissionDetailed,
+        );
+      } else if (!_hasPermission) {
+        // No UI context available: fall back to a bare OS request.
         _hasPermission = await _locationService.requestPermission();
-        if (!_hasPermission) {
-          _errorMessage = 'Location permission denied. Please enable it in app settings.';
-          notifyListeners();
-          return;
-        }
+      }
+      if (!_hasPermission) {
+        _errorMessage = 'Location permission denied. Please enable it in app settings.';
+        notifyListeners();
+        return;
       }
 
       // Get initial location

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme/app_theme.dart';
+import '../utils/permission_manager.dart';
 import '../widgets/top_notification.dart';
 import 'supabase_service.dart';
 
@@ -60,7 +61,39 @@ class PushNotificationService {
   String? _registeredUserId;
 
   /// Check / request permission and return the granted status.
+  ///
+  /// Shows the app's purpose explanation (why order updates need
+  /// notifications) BEFORE the OS prompt — the request fires right after a
+  /// user-initiated sign-in, using the global navigator context. On denial,
+  /// guidance with a Settings deep link is shown.
   Future<bool> _ensurePermission() async {
+    // Already answered before? Never re-nag: denied users re-enable from
+    // Settings, authorized users need no prompt at all.
+    final existing = await _messaging.getNotificationSettings();
+    switch (existing.authorizationStatus) {
+      case AuthorizationStatus.authorized:
+      case AuthorizationStatus.provisional:
+        return true;
+      case AuthorizationStatus.denied:
+        return false;
+      case AuthorizationStatus.notDetermined:
+        break; // first time — show the purpose explanation below
+    }
+
+    final context = infinityWashNavigatorKey.currentContext;
+    final hasContext = context != null && context.mounted;
+
+    if (hasContext) {
+      final proceed = await PermissionManager.confirmRationale(
+        context,
+        AppPermission.notifications,
+      );
+      if (!proceed) {
+        debugPrint('🔔 Push permission postponed by user; skipping registration');
+        return false;
+      }
+    }
+
     final settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
@@ -71,6 +104,13 @@ class PushNotificationService {
     final granted =
         settings.authorizationStatus == AuthorizationStatus.authorized ||
             settings.authorizationStatus == AuthorizationStatus.provisional;
+
+    if (!granted && hasContext && context.mounted) {
+      await PermissionManager.showDeniedDialog(
+        context,
+        AppPermission.notifications,
+      );
+    }
 
     return granted;
   }
