@@ -7,7 +7,7 @@ These Terms of Service ("Terms") are the agreement between you and Infinity Wash
 
 ## 1. Acceptance and eligibility
 
-You must be at least 18 years old to create an account, or have the permission and supervision of a parent or legal guardian. You confirm that the details you give us — your name, mobile number, email and delivery address — are accurate and belong to you. We may refuse or cancel an account where we cannot verify them.
+You must be at least 13 years old to create an account, or have the permission and supervision of a parent or legal guardian. You confirm that the details you give us — your name, mobile number, email and delivery address — are accurate and belong to you. We may refuse or cancel an account where we cannot verify them.
 
 ## 2. Our services
 

@@ -5,7 +5,7 @@ import '../config/legal_documents.dart';
 import '../screens/shared/legal_document_screen.dart';
 import '../theme/app_theme.dart';
 
-/// "I confirm I am at least 18 years old and I have read and agree to
+/// "I confirm I am at least 13 years old and I have read and agree to
 /// the Terms of Service and the Privacy Policy", with each document
 /// name tappable.
 ///
@@ -74,7 +74,7 @@ class _LegalConsentCheckboxState extends State<LegalConsentCheckbox> {
 
     final spans = <InlineSpan>[
       const TextSpan(
-          text: 'I confirm I am at least 18 years old and I have read and '
+          text: 'I confirm I am at least 13 years old and I have read and '
               'agree to the '),
     ];
 

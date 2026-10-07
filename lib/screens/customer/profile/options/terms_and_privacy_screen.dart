@@ -208,8 +208,12 @@ class _CustomerTermsAndPrivacyScreenState
   }
 
   Widget _buildHistoryRow(LegalAcceptanceRecord record) {
+    LegalDocument? currentDoc;
+    try {
+      currentDoc = legalDocumentByKey(record.documentKey);
+    } catch (_) {}
     final isCurrent =
-        record.documentVersion == legalDocumentByKey(record.documentKey).version;
+        currentDoc != null && record.documentVersion == currentDoc.version;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

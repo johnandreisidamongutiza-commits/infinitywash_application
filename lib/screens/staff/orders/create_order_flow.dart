@@ -320,12 +320,39 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         (_selectedBarangay != 'Other / Outside Sta. Cruz' ||
             _customBarangayController.text.trim().isNotEmpty);
     return _loads.isNotEmpty &&
+        _loads.length <= LaundryIntake.maxLoadsLimit &&
         _loads.every((load) => _getLoadWeight(_loads.indexOf(load)) > 0) &&
         (_selectedReturn != ReturnMethod.delivery || 
          (_houseStreetController.text.trim().isNotEmpty && brgyValid));
   }
 
   void _addLoad() {
+    if (_loads.length >= LaundryIntake.maxLoadsLimit) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+              SizedBox(width: 8),
+              Text('Load Limit Reached', style: TextStyle(fontSize: 17)),
+            ],
+          ),
+          content: const Text(
+            'Only 25 split loads limit per order.',
+            style: TextStyle(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     setState(() {
       _loads.add(LoadDraft());
     });
@@ -350,6 +377,34 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
     final int suggestedLoads = (weight / limit).ceil();
     final double weightPerLoad = weight / suggestedLoads;
+    final int resultingTotalLoads = (_loads.length - 1) + suggestedLoads;
+
+    if (resultingTotalLoads > LaundryIntake.maxLoadsLimit) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+              SizedBox(width: 8),
+              Text('Split Limit Exceeded', style: TextStyle(fontSize: 17)),
+            ],
+          ),
+          content: Text(
+            'Only 25 split loads limit. This order will lead to $resultingTotalLoads loads if split.',
+            style: const TextStyle(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
 
     showDialog(
       context: context,
@@ -403,6 +458,32 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
+              if ((_loads.length - 1 + suggestedLoads) > LaundryIntake.maxLoadsLimit) {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    title: const Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+                        SizedBox(width: 8),
+                        Text('Split Limit Exceeded', style: TextStyle(fontSize: 17)),
+                      ],
+                    ),
+                    content: const Text(
+                      'Only 25 split loads limit per order.',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                );
+                return;
+              }
               setState(() {
                 // Update current load with first split
                 _loads[loadIndex].weightController.text = weightPerLoad.toStringAsFixed(1);
@@ -787,6 +868,33 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           const SnackBar(
             content: Text('Please add at least one load.'),
             backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      if (_loads.length > LaundryIntake.maxLoadsLimit) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+                SizedBox(width: 8),
+                Text('Load Limit Exceeded', style: TextStyle(fontSize: 17)),
+              ],
+            ),
+            content: Text(
+              'Only 25 split loads limit. This order currently has ${_loads.length} loads.',
+              style: const TextStyle(fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
           ),
         );
         return;

@@ -100,6 +100,32 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
   void _notifyChanged() => widget.onChanged?.call();
 
   void _addLoad() {
+    if (_loads.length >= LaundryIntake.maxLoadsLimit) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+              SizedBox(width: 8),
+              Text('Load Limit Reached', style: TextStyle(fontSize: 17)),
+            ],
+          ),
+          content: const Text(
+            'Only 25 split loads limit per order.',
+            style: TextStyle(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     setState(() => _loads.add(LoadDraft()));
     _notifyChanged();
   }
@@ -129,10 +155,37 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
 
   bool get isComplete =>
       _loads.isNotEmpty &&
+      _loads.length <= LaundryIntake.maxLoadsLimit &&
       _loads.every((load) => LaundryIntake.weightOf(load) > 0);
 
   Future<String?> validate() async {
     if (_loads.isEmpty) return 'Please add at least one load.';
+    if (_loads.length > LaundryIntake.maxLoadsLimit) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+              SizedBox(width: 8),
+              Text('Load Limit Exceeded', style: TextStyle(fontSize: 17)),
+            ],
+          ),
+          content: Text(
+            'Only 25 split loads limit. This order currently has ${_loads.length} loads.',
+            style: const TextStyle(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return 'Only 25 split loads limit per order.';
+    }
     for (int i = 0; i < _loads.length; i++) {
       final weight = LaundryIntake.weightOf(_loads[i]);
       if (weight <= 0) {
@@ -181,6 +234,34 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
 
     final suggestedLoads = (weight / limit).ceil();
     final weightPerLoad = weight / suggestedLoads;
+    final resultingTotalLoads = (_loads.length - 1) + suggestedLoads;
+
+    if (resultingTotalLoads > LaundryIntake.maxLoadsLimit) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+              SizedBox(width: 8),
+              Text('Split Limit Exceeded', style: TextStyle(fontSize: 17)),
+            ],
+          ),
+          content: Text(
+            'Only 25 split loads limit. This order will lead to $resultingTotalLoads loads if split.',
+            style: const TextStyle(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
 
     showDialog(
       context: context,
@@ -202,6 +283,32 @@ class OrderCheckInFormState extends State<OrderCheckInForm> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
+              if ((_loads.length - 1 + suggestedLoads) > LaundryIntake.maxLoadsLimit) {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    title: const Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+                        SizedBox(width: 8),
+                        Text('Split Limit Exceeded', style: TextStyle(fontSize: 17)),
+                      ],
+                    ),
+                    content: const Text(
+                      'Only 25 split loads limit per order.',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                );
+                return;
+              }
               setState(() {
                 load.weightController.text = weightPerLoad.toStringAsFixed(1);
                 for (int i = 1; i < suggestedLoads; i++) {

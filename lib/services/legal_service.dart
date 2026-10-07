@@ -141,6 +141,13 @@ class LegalService {
         );
       }
       return out;
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST205') {
+        print('⚠️ LegalService: table $_table does not exist in Supabase (PGRST205).');
+        return {};
+      }
+      print('❌ LegalService: failed to read acceptances for $userId: $e');
+      rethrow;
     } catch (e) {
       print('❌ LegalService: failed to read acceptances for $userId: $e');
       rethrow;
@@ -163,6 +170,13 @@ class LegalService {
             ),
           )
           .toList();
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST205') {
+        print('⚠️ LegalService: table $_table does not exist in Supabase (PGRST205).');
+        return [];
+      }
+      print('❌ LegalService: failed to read acceptance history: $e');
+      rethrow;
     } catch (e) {
       print('❌ LegalService: failed to read acceptance history: $e');
       rethrow;

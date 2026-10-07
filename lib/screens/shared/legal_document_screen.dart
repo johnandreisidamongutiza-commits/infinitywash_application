@@ -89,7 +89,10 @@ class _LegalDocumentScreenState extends State<LegalDocumentScreen> {
   Future<void> _loadDocument() async {
     try {
       final loaded = await _legalService.load(widget.document);
-      if (mounted) setState(() => _loaded = loaded);
+      if (mounted) {
+        setState(() => _loaded = loaded);
+        WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _error = 'Could not load this document. Please try again.');

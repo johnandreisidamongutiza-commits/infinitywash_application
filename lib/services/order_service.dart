@@ -172,6 +172,12 @@ class OrderService {
           type: AppErrorType.validation,
         );
       }
+      if (loads.length > 25) {
+        throw const AppError(
+          'Only 25 split loads limit per order.',
+          type: AppErrorType.validation,
+        );
+      }
       if (subtotal < 0 || totalAmount < 0) {
         throw const AppError(
           'Order amounts cannot be negative. Please review the prices.',
@@ -487,6 +493,12 @@ class OrderService {
       if (loads.isEmpty) {
         throw const AppError(
           'Add at least one load before checking in.',
+          type: AppErrorType.validation,
+        );
+      }
+      if (loads.length > 25) {
+        throw const AppError(
+          'Only 25 split loads limit per order.',
           type: AppErrorType.validation,
         );
       }

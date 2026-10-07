@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -84,14 +85,26 @@ class PaymentService {
     }
   }
 
+  /// Generates a standard RFC 4122 v4 UUID string.
+  static String _generateUuidV4() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}';
+  }
+
   /// Uploads the receipt, records the GCash payment with status
-  /// 'pending' (for review on the admin website) and marks the order
-  /// as paid. Returns the generated transaction number.
+  /// 'pending' (for review on the admin website), creates a submission in
+  /// `gcash_receipt_submissions`, and marks the order as paid.
+  /// Returns the generated transaction number.
   Future<String> submitGcashPayment({
     required String orderId,
     required double amount,
     required File receiptFile,
     String? assignedStaffId,
+    String source = 'mobile_app',
   }) async {
     final now = DateTime.now().toUtc().toIso8601String();
 
@@ -117,9 +130,80 @@ class PaymentService {
     if (assignedStaffId != null) {
       paymentData['processed_by'] = assignedStaffId;
     }
-    await _client.from('payments').insert(paymentData);
 
-    // Step 4: Mark the order paid immediately (app-side "PAID")
+    String? paymentId;
+    try {
+      final paymentResponse = await _client
+          .from('payments')
+          .insert(paymentData)
+          .select('id')
+          .maybeSingle();
+      paymentId = paymentResponse?['id'] as String?;
+    } catch (_) {
+      // Fallback in case select is restricted by RLS
+      await _client.from('payments').insert(paymentData);
+    }
+
+    // Step 4: Record in gcash_receipt_submissions for admin OCR queue
+    try {
+      int? imageSizeBytes;
+      try {
+        imageSizeBytes = await receiptFile.length();
+      } catch (_) {}
+
+      // Fetch order_number to link on the submission row
+      String? orderNumber;
+      try {
+        final orderRow = await _client
+            .from('orders')
+            .select('order_number')
+            .eq('id', orderId)
+            .maybeSingle();
+        orderNumber = orderRow?['order_number'] as String?;
+      } catch (_) {}
+
+      // Fetch profile id of the current logged-in user
+      String? submittedByProfileId;
+      final currentAuthUser = _client.auth.currentUser;
+      if (currentAuthUser != null) {
+        try {
+          final profileRow = await _client
+              .from('profiles')
+              .select('id')
+              .eq('supabase_user_id', currentAuthUser.id)
+              .maybeSingle();
+          submittedByProfileId = profileRow?['id'] as String?;
+        } catch (_) {}
+      }
+
+      final submissionId = _generateUuidV4();
+      final submissionData = <String, dynamic>{
+        'id': submissionId,
+        'order_id': orderId,
+        'order_number': orderNumber,
+        'receipt_image_url': receiptUrl,
+        'image_size_bytes': imageSizeBytes,
+        'ocr_raw_text': null,
+        'ocr_reference_number': null,
+        'ocr_amount': null,
+        'ocr_success': false,
+        'ocr_error': null,
+        'match_status': 'no_match',
+        'match_detail': null,
+        'status': 'pending_review',
+        'source': source,
+        'submitted_by': submittedByProfileId,
+        'payment_id': paymentId,
+        'created_at': now,
+      };
+
+      await _client.from('gcash_receipt_submissions').insert(submissionData);
+      print('✅ Receipt linked to gcash_receipt_submissions: $submissionId');
+    } catch (e) {
+      print('⚠️ Warning: Failed to insert into gcash_receipt_submissions: $e');
+    }
+
+    // Step 5: Mark the order paid immediately (app-side "PAID")
     await _client.from('orders').update({
       'payment_status': 'paid',
       'payment_method': 'gcash',

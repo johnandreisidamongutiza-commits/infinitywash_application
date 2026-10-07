@@ -39,6 +39,7 @@ class CheckInFormResult {
 }
 
 class LaundryIntake {
+  static const int maxLoadsLimit = 25;
   static const double basePricePerLoad = 170.0;
   static const double addonPrice = 20.0;
 

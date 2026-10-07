@@ -91,7 +91,7 @@ To exercise any of these, contact us using the details below. We respond within 
 
 ## 11. Children
 
-The app is not directed at children under 18. We do not knowingly collect their personal information. If you believe a child has created an account, contact us and we will remove it.
+The app is not directed at children under 13. We do not knowingly collect their personal information. If you believe a child under 13 has created an account without parental consent, contact us and we will remove it.
 
 ## 12. Changes to this policy
 
