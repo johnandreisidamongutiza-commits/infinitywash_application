@@ -1636,6 +1636,9 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: AppTheme.accentBlue,
                                       foregroundColor: Colors.white,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 14),
                                       elevation: 0,
@@ -2173,6 +2176,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.accentBlue,
                       foregroundColor: Colors.white,
+                      minimumSize: Size.zero,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 24, vertical: 12),
                       shape: RoundedRectangleBorder(
