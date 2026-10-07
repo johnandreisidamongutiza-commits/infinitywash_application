@@ -415,7 +415,7 @@ class OrderService {
           .from('orders')
           .select('''
             *,
-            customers!inner(first_name, last_name)
+            customers!inner(first_name, last_name, pin_latitude, pin_longitude)
           ''')
           .eq('id', orderId)
           .single();
@@ -1089,7 +1089,7 @@ class OrderService {
           .from('orders')
           .select('''
             *,
-            customers!inner(first_name, last_name, address, landmark)
+            customers!inner(first_name, last_name, address, landmark, pin_latitude, pin_longitude)
           ''')
           .eq('id', orderId)
           .single();

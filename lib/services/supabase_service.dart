@@ -29,9 +29,10 @@ class SupabaseService {
           .eq('rider_id', riderId)
           .order('created_at', ascending: true);
 
-      return (response as List)
+      final jobs = (response as List)
           .map((json) => DispatchJob.fromJson(json as Map<String, dynamic>))
           .toList();
+      return await _enrichJobsWithCoordinates(jobs);
     } catch (e) {
       print('❌ Error fetching rider jobs: $e');
       rethrow;
@@ -49,7 +50,8 @@ class SupabaseService {
           .maybeSingle();
 
       if (response != null) {
-        return DispatchJob.fromJson(response);
+        final job = DispatchJob.fromJson(response);
+        return await _enrichJobCoordinates(job);
       }
       return null;
     } catch (e) {
@@ -69,7 +71,8 @@ class SupabaseService {
           .maybeSingle();
 
       if (response != null) {
-        return DispatchJob.fromJson(response);
+        final job = DispatchJob.fromJson(response);
+        return await _enrichJobCoordinates(job);
       }
       return null;
     } catch (e) {
@@ -356,4 +359,115 @@ class SupabaseService {
       rethrow;
     }
   }
+
+  /// Enrich a single dispatch job with coordinates if missing
+  Future<DispatchJob> _enrichJobCoordinates(DispatchJob job) async {
+    if (job.latitude != null && job.longitude != null) return job;
+    try {
+      final orderRes = await client
+          .from('orders')
+          .select('customers(pin_latitude, pin_longitude, first_name, last_name)')
+          .eq('id', job.orderId)
+          .maybeSingle();
+      if (orderRes != null) {
+        final cust = orderRes['customers'] as Map<String, dynamic>?;
+        final lat = (cust?['pin_latitude'] as num?)?.toDouble();
+        final lng = (cust?['pin_longitude'] as num?)?.toDouble();
+        final first = cust?['first_name'] as String? ?? '';
+        final last = cust?['last_name'] as String? ?? '';
+        final fullName = last.isNotEmpty ? '$first $last'.trim() : first;
+        if (lat != null && lng != null) {
+          client
+              .from('dispatch_jobs')
+              .update({'latitude': lat, 'longitude': lng})
+              .eq('id', job.id)
+              .then((_) => print('✅ Auto-healed coordinates for dispatch job ${job.id}'))
+              .catchError((_) {});
+          return job.copyWith(
+            latitude: lat,
+            longitude: lng,
+            customerName: (job.customerName == null || job.customerName!.trim().isEmpty) && fullName.isNotEmpty
+                ? fullName
+                : job.customerName,
+          );
+        }
+      }
+    } catch (e) {
+      print('⚠️ Notice: Could not enrich single job coordinates: $e');
+    }
+    return job;
+  }
+
+  /// Enrich a list of dispatch jobs with coordinates if missing
+  Future<List<DispatchJob>> _enrichJobsWithCoordinates(List<DispatchJob> jobs) async {
+    final jobsNeedingCoords = jobs.where((j) => j.latitude == null || j.longitude == null).toList();
+    if (jobsNeedingCoords.isEmpty) return jobs;
+
+    try {
+      final orderIds = jobsNeedingCoords.map((j) => j.orderId).toSet().toList();
+      final ordersResponse = await client
+          .from('orders')
+          .select('''
+            id,
+            customers (
+              first_name,
+              last_name,
+              pin_latitude,
+              pin_longitude
+            )
+          ''')
+          .inFilter('id', orderIds);
+
+      final Map<String, Map<String, double>> coordsByOrderId = {};
+      final Map<String, String> namesByOrderId = {};
+
+      for (final order in (ordersResponse as List)) {
+        final orderId = order['id'] as String;
+        final customer = order['customers'] as Map<String, dynamic>?;
+        final lat = (customer?['pin_latitude'] as num?)?.toDouble();
+        final lng = (customer?['pin_longitude'] as num?)?.toDouble();
+        if (lat != null && lng != null) {
+          coordsByOrderId[orderId] = {'lat': lat, 'lng': lng};
+        }
+        final first = customer?['first_name'] as String? ?? '';
+        final last = customer?['last_name'] as String? ?? '';
+        final fullName = last.isNotEmpty ? '$first $last'.trim() : first;
+        if (fullName.isNotEmpty) {
+          namesByOrderId[orderId] = fullName;
+        }
+      }
+
+      final enriched = <DispatchJob>[];
+      for (final job in jobs) {
+        if (job.latitude == null || job.longitude == null) {
+          final coords = coordsByOrderId[job.orderId];
+          final resolvedName = (job.customerName == null || job.customerName!.trim().isEmpty)
+              ? namesByOrderId[job.orderId]
+              : job.customerName;
+
+          if (coords != null) {
+            final lat = coords['lat']!;
+            final lng = coords['lng']!;
+            client
+                .from('dispatch_jobs')
+                .update({'latitude': lat, 'longitude': lng})
+                .eq('id', job.id)
+                .catchError((_) {});
+            enriched.add(job.copyWith(
+              latitude: lat,
+              longitude: lng,
+              customerName: resolvedName ?? job.customerName,
+            ));
+            continue;
+          }
+        }
+        enriched.add(job);
+      }
+      return enriched;
+    } catch (e) {
+      print('⚠️ Notice: Could not enrich jobs coordinates: $e');
+      return jobs;
+    }
+  }
+
 }

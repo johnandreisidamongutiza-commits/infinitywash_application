@@ -90,6 +90,30 @@ class DispatchJob {
 
   /// Create from Supabase JSON
   factory DispatchJob.fromJson(Map<String, dynamic> json) {
+    // Check top-level coordinates
+    double? lat = json['latitude'] != null ? (json['latitude'] as num).toDouble() : null;
+    double? lng = json['longitude'] != null ? (json['longitude'] as num).toDouble() : null;
+
+    // Fallback: check joined order -> customer coordinates if top-level coordinates are null
+    final orderData = json['orders'] as Map<String, dynamic>?;
+    final customerData = orderData?['customers'] as Map<String, dynamic>?;
+    if (lat == null || lng == null) {
+      lat ??= (customerData?['pin_latitude'] as num?)?.toDouble();
+      lng ??= (customerData?['pin_longitude'] as num?)?.toDouble();
+    }
+
+    // Fallback customer name if missing on dispatch job
+    String? custName = json['customer_name'] as String?;
+    if (custName == null || custName.trim().isEmpty) {
+      final first = customerData?['first_name'] as String? ?? '';
+      final last = customerData?['last_name'] as String? ?? '';
+      if (last.isNotEmpty) {
+        custName = ' '.trim();
+      } else if (first.isNotEmpty) {
+        custName = first;
+      }
+    }
+
     return DispatchJob(
       id: json['id'] as String,
       orderId: json['order_id'] as String,
@@ -99,9 +123,9 @@ class DispatchJob {
       status: json['status'] as String,
       address: json['address'] as String?,
       landmark: json['landmark'] as String?,
-      customerName: json['customer_name'] as String?,
-      latitude: json['latitude'] != null ? (json['latitude'] as num).toDouble() : null,
-      longitude: json['longitude'] != null ? (json['longitude'] as num).toDouble() : null,
+      customerName: custName,
+      latitude: lat,
+      longitude: lng,
       scheduledAt: json['scheduled_at'] != null
           ? DateTime.parse(json['scheduled_at'] as String).toLocal()
           : null,

@@ -5,6 +5,7 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/dispatch_job.dart';
 import '../../../services/rider_service.dart';
+import '../../../services/supabase_service.dart';
 import '../../../config/location_constants.dart';
 import '../../../state/gps_provider.dart';
 import '../../../widgets/cached_tile_provider.dart';
@@ -30,6 +31,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
   final GpsProvider _gpsProvider = GpsProvider();
   
   LatLng? _riderLocation;
+  LatLng? _resolvedJobLocation;
   bool _isStarting = false;
   bool _takenByOther = false;
 
@@ -38,6 +40,28 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     super.initState();
     _initializeLocation();
     _verifyJobAvailable();
+    _resolveJobCoordinatesIfNeeded();
+  }
+
+  Future<void> _resolveJobCoordinatesIfNeeded() async {
+    if (widget.job.latitude != null && widget.job.longitude != null) return;
+    try {
+      final orderRes = await SupabaseService.client
+          .from('orders')
+          .select('customers(pin_latitude, pin_longitude)')
+          .eq('id', widget.job.orderId)
+          .maybeSingle();
+      if (orderRes != null && mounted) {
+        final cust = orderRes['customers'] as Map<String, dynamic>?;
+        final lat = (cust?['pin_latitude'] as num?)?.toDouble();
+        final lng = (cust?['pin_longitude'] as num?)?.toDouble();
+        if (lat != null && lng != null) {
+          setState(() {
+            _resolvedJobLocation = LatLng(lat, lng);
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   /// If this screen was opened from a stale list, another rider may have
@@ -116,7 +140,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
   Widget build(BuildContext context) {
     final jobLocation = widget.job.latitude != null && widget.job.longitude != null
         ? LatLng(widget.job.latitude!, widget.job.longitude!)
-        : null;
+        : _resolvedJobLocation;
 
     return Scaffold(
       backgroundColor: Colors.white,

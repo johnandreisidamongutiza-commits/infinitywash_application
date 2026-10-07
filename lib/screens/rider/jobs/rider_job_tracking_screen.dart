@@ -58,6 +58,8 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
     // Cache job location once
     if (widget.job.latitude != null && widget.job.longitude != null) {
       _cachedJobLocation = LatLng(widget.job.latitude!, widget.job.longitude!);
+    } else {
+      _resolveJobCoordinatesIfNeeded();
     }
     _initializeLocation();
     
@@ -636,4 +638,28 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
     _gpsProvider.stopTracking();
     super.dispose();
   }
+
+  Future<void> _resolveJobCoordinatesIfNeeded() async {
+    try {
+      final orderRes = await SupabaseService.client
+          .from('orders')
+          .select('customers(pin_latitude, pin_longitude)')
+          .eq('id', widget.job.orderId)
+          .maybeSingle();
+      if (orderRes != null && mounted) {
+        final cust = orderRes['customers'] as Map<String, dynamic>?;
+        final lat = (cust?['pin_latitude'] as num?)?.toDouble();
+        final lng = (cust?['pin_longitude'] as num?)?.toDouble();
+        if (lat != null && lng != null) {
+          setState(() {
+            _cachedJobLocation = LatLng(lat, lng);
+          });
+          if (_riderLocation != null) {
+            _calculateRoute();
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
 }
