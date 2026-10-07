@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../theme/app_theme.dart';
@@ -12,7 +13,7 @@ import '../../../widgets/cached_tile_provider.dart';
 import 'rider_job_tracking_screen.dart';
 
 /// Details screen for a specific dispatch job
-/// Shows job information, location on map, and action buttons
+/// Shows job information, location on map, and action buttons with a modern card-based theme
 class RiderJobDetailsScreen extends StatefulWidget {
   final DispatchJob job;
 
@@ -29,38 +30,51 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
   final MapController _mapController = MapController();
   final RiderService _riderService = RiderService();
   final GpsProvider _gpsProvider = GpsProvider();
-  
+
   LatLng? _riderLocation;
   LatLng? _resolvedJobLocation;
   bool _isStarting = false;
   bool _isSkipping = false;
   bool _takenByOther = false;
 
+  // Extra order metadata fetched from Supabase
+  String? _customerPhone;
+  String? _customerNotes;
+  String? _paymentStatus;
+  double? _totalAmount;
+
   @override
   void initState() {
     super.initState();
     _initializeLocation();
     _verifyJobAvailable();
-    _resolveJobCoordinatesIfNeeded();
+    _loadOrderDetails();
   }
 
-  Future<void> _resolveJobCoordinatesIfNeeded() async {
-    if (widget.job.latitude != null && widget.job.longitude != null) return;
+  Future<void> _loadOrderDetails() async {
     try {
       final orderRes = await SupabaseService.client
           .from('orders')
-          .select('customers(pin_latitude, pin_longitude)')
+          .select('customers(pin_latitude, pin_longitude, phone_number), customer_notes, payment_status, total_amount')
           .eq('id', widget.job.orderId)
           .maybeSingle();
+
       if (orderRes != null && mounted) {
         final cust = orderRes['customers'] as Map<String, dynamic>?;
         final lat = (cust?['pin_latitude'] as num?)?.toDouble();
         final lng = (cust?['pin_longitude'] as num?)?.toDouble();
-        if (lat != null && lng != null) {
-          setState(() {
-            _resolvedJobLocation = LatLng(lat, lng);
-          });
-        }
+
+        setState(() {
+          if (widget.job.latitude == null || widget.job.longitude == null) {
+            if (lat != null && lng != null) {
+              _resolvedJobLocation = LatLng(lat, lng);
+            }
+          }
+          _customerPhone = cust?['phone_number'] as String?;
+          _customerNotes = orderRes['customer_notes'] as String?;
+          _paymentStatus = orderRes['payment_status'] as String?;
+          _totalAmount = (orderRes['total_amount'] as num?)?.toDouble();
+        });
       }
     } catch (_) {}
   }
@@ -92,7 +106,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
         }
       });
     } catch (e) {
-      print('❌ Error initializing GPS: $e');
+      debugPrint('❌ Error initializing GPS: $e');
     }
   }
 
@@ -103,7 +117,6 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
       await _riderService.startJob(widget.job.id);
 
       if (mounted) {
-        // Navigate to tracking screen
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -137,337 +150,450 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     }
   }
 
+  void _copyToClipboard(String text, String message) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text(message),
+          ],
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showContactSheet(String phone, String name) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.borderGray,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Contact $name',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: const BoxDecoration(
+                  color: AppTheme.lightBlue,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.phone, color: AppTheme.accentBlue),
+              ),
+              title: const Text('Phone Number', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              subtitle: Text(phone, style: const TextStyle(fontSize: 13, color: AppTheme.textLight)),
+              trailing: IconButton(
+                icon: const Icon(Icons.copy, size: 18, color: AppTheme.accentBlue),
+                tooltip: 'Copy Phone',
+                onPressed: () {
+                  Navigator.pop(context);
+                  _copyToClipboard(phone, 'Phone number copied');
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getInitials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts[0].isEmpty) return '?';
+    if (parts.length == 1) return parts[0][0].toUpperCase();
+    return (parts[0][0] + parts.last[0]).toUpperCase();
+  }
+
+  String _calculateDistance(LatLng from, LatLng to) {
+    final distance = const Distance().as(LengthUnit.Kilometer, from, to);
+    if (distance < 1) {
+      return '${(distance * 1000).toStringAsFixed(0)}m away';
+    }
+    return '${distance.toStringAsFixed(1)}km away';
+  }
+
+  String _formatStatus(String status) {
+    return status.split('_').map((word) {
+      if (word.isEmpty) return '';
+      return word[0].toUpperCase() + word.substring(1);
+    }).join(' ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final jobLocation = widget.job.latitude != null && widget.job.longitude != null
         ? LatLng(widget.job.latitude!, widget.job.longitude!)
         : _resolvedJobLocation;
 
+    final isPickup = widget.job.jobType == 'pickup';
+    final customerName = widget.job.customerName ?? 'Customer';
+    final address = widget.job.address ?? '';
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.softGray,
       appBar: AppBar(
-        title: Text(widget.job.jobNumber ?? 'Job Details'),
+        title: Column(
+          children: [
+            const Text(
+              'Job Details',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
+              ),
+            ),
+            if (widget.job.jobNumber != null)
+              Text(
+                widget.job.jobNumber!,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.textLight,
+                ),
+              ),
+          ],
+        ),
         backgroundColor: Colors.white,
-        elevation: 0,
+        elevation: 0.5,
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, size: 19, color: AppTheme.textDark),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Map preview
-            if (jobLocation != null)
-              SizedBox(
-                height: 250,
-                child: FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: jobLocation,
-                    initialZoom: 14.0,
-                    minZoom: 12.0, // Restrict zoom out to keep within delivery area
-                    maxZoom: 18.0,
-                    // Restrict map bounds to 10km around shop
-                    cameraConstraint: CameraConstraint.contain(
-                      bounds: LatLngBounds(
-                        // Southwest corner (10km south and west of shop)
-                        LatLng(
-                          LocationConstants.shopLocation.latitude - 0.09, // ~10km south
-                          LocationConstants.shopLocation.longitude - 0.09, // ~10km west
-                        ),
-                        // Northeast corner (10km north and east of shop)
-                        LatLng(
-                          LocationConstants.shopLocation.latitude + 0.09, // ~10km north
-                          LocationConstants.shopLocation.longitude + 0.09, // ~10km east
-                        ),
-                      ),
+            // 1. Map preview card
+            _buildMapSection(jobLocation, isPickup),
+
+            // 2. Customer Information Card
+            _buildCustomerCard(customerName),
+
+            // 3. Location & Landmark Card
+            _buildLocationCard(address, jobLocation),
+
+            // 4. Job & Order Info Card
+            _buildOrderInfoCard(isPickup),
+          ],
+        ),
+      ),
+      bottomNavigationBar: _buildBottomActions(),
+    );
+  }
+
+  /// 1. Map section with framed rounded card and floating badges
+  Widget _buildMapSection(LatLng? jobLocation, bool isPickup) {
+    if (jobLocation == null) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.amber.shade50,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.amber.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.location_off_outlined, color: Colors.amber.shade800, size: 24),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'No map pin for this job — use the address and landmark details below.',
+                style: TextStyle(fontSize: 13, color: AppTheme.textDark, height: 1.3),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final statusColor = widget.job.status == 'in_progress'
+        ? Colors.green.shade600
+        : (widget.job.status == 'pending' ? AppTheme.accentBlue : AppTheme.textDark);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      height: 220,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(19),
+        child: Stack(
+          children: [
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: jobLocation,
+                initialZoom: 14.5,
+                minZoom: 12.0,
+                maxZoom: 18.0,
+                cameraConstraint: CameraConstraint.contain(
+                  bounds: LatLngBounds(
+                    LatLng(
+                      LocationConstants.shopLocation.latitude - 0.09,
+                      LocationConstants.shopLocation.longitude - 0.09,
                     ),
-                    // Keep map centered on delivery area when user interacts
-                    interactionOptions: const InteractionOptions(
-                      flags: InteractiveFlag.all,
+                    LatLng(
+                      LocationConstants.shopLocation.latitude + 0.09,
+                      LocationConstants.shopLocation.longitude + 0.09,
                     ),
                   ),
+                ),
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+                ),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.infinitywash.app',
+                  tileProvider: CachedTileProvider(),
+                ),
+                CircleLayer(
+                  circles: [
+                    CircleMarker(
+                      point: LocationConstants.shopLocation,
+                      radius: LocationConstants.deliveryRadiusMeters,
+                      useRadiusInMeter: true,
+                      color: AppTheme.accentBlue.withValues(alpha: 0.08),
+                      borderColor: AppTheme.accentBlue.withValues(alpha: 0.25),
+                      borderStrokeWidth: 1.5,
+                    ),
+                    CircleMarker(
+                      point: jobLocation,
+                      radius: LocationConstants.customerMeetingRadiusMeters,
+                      useRadiusInMeter: true,
+                      color: Colors.green.withValues(alpha: 0.2),
+                      borderColor: Colors.green.shade700,
+                      borderStrokeWidth: 1.5,
+                    ),
+                  ],
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: jobLocation,
+                      width: 40,
+                      height: 40,
+                      child: Icon(
+                        Icons.location_on,
+                        color: isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
+                        size: 38,
+                      ),
+                    ),
+                    if (_riderLocation != null)
+                      Marker(
+                        point: _riderLocation!,
+                        width: 28,
+                        height: 28,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade600,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.2),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.navigation,
+                            color: Colors.white,
+                            size: 14,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+
+            // Top-left: Job Type badge
+            Positioned(
+              top: 12,
+              left: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.infinitywash.app',
-                      tileProvider: CachedTileProvider(), // Use cached tiles
+                    Icon(
+                      isPickup ? Icons.shopping_bag_outlined : Icons.local_shipping_outlined,
+                      size: 13,
+                      color: Colors.white,
                     ),
-                    // Shop delivery radius circle & customer meetup radius circle
-                    CircleLayer(
-                      circles: [
-                        CircleMarker(
-                          point: LocationConstants.shopLocation,
-                          radius: LocationConstants.deliveryRadiusMeters,
-                          useRadiusInMeter: true,
-                          color: AppTheme.accentBlue.withValues(alpha: 0.1),
-                          borderColor: AppTheme.accentBlue.withValues(alpha: 0.3),
-                          borderStrokeWidth: 2,
-                        ),
-                        // 20-meter customer meetup zone
-                        CircleMarker(
-                          point: jobLocation,
-                          radius: LocationConstants.customerMeetingRadiusMeters,
-                          useRadiusInMeter: true,
-                          color: Colors.green.withValues(alpha: 0.22),
-                          borderColor: Colors.green.shade700,
-                          borderStrokeWidth: 2,
-                        ),
-                      ],
-                    ),
-                    MarkerLayer(
-                      markers: [
-                        // Job marker
-                        Marker(
-                          point: jobLocation,
-                          width: 40,
-                          height: 40,
-                          child: Icon(
-                            Icons.location_on,
-                            color: widget.job.jobType == 'pickup'
-                                ? AppTheme.errorRed
-                                : AppTheme.teamMemberIconOrange,
-                            size: 40,
-                          ),
-                        ),
-                        // Rider marker
-                        if (_riderLocation != null)
-                          Marker(
-                            point: _riderLocation!,
-                            width: 30,
-                            height: 30,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.green,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                              ),
-                              child: const Icon(
-                                Icons.navigation,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                            ),
-                          ),
-                      ],
+                    const SizedBox(width: 5),
+                    Text(
+                      isPickup ? 'PICKUP' : 'DELIVERY',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ],
                 ),
               ),
+            ),
 
-            // Job details
-            Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Job type badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: widget.job.jobType == 'pickup'
-                          ? AppTheme.errorRed.withValues(alpha: 0.1)
-                          : AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+            // Top-right: Status chip
+            Positioned(
+              top: 12,
+              right: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.95),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
                     ),
-                    child: Text(
-                      widget.job.jobType == 'pickup' ? 'PICKUP' : 'DELIVERY',
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      _formatStatus(widget.job.status),
                       style: TextStyle(
-                        color: widget.job.jobType == 'pickup'
-                            ? AppTheme.errorRed
-                            : AppTheme.teamMemberIconOrange,
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.bold,
+                        color: statusColor,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Customer name (most important info)
-                  _buildInfoRow(
-                    icon: Icons.person_outline,
-                    label: 'Customer',
-                    value: widget.job.customerName ?? 'Unknown Customer',
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Job number
-                  if (widget.job.jobNumber != null) ...[
-                    _buildInfoRow(
-                      icon: Icons.confirmation_number,
-                      label: 'Job Number',
-                      value: widget.job.jobNumber!,
-                    ),
-                    const SizedBox(height: 16),
                   ],
+                ),
+              ),
+            ),
 
-                  // Status
-                  _buildInfoRow(
-                    icon: Icons.info_outline,
-                    label: 'Status',
-                    value: _formatStatus(widget.job.status),
+            // Bottom-right: Distance indicator
+            if (_riderLocation != null)
+              Positioned(
+                bottom: 12,
+                right: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.88),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  const SizedBox(height: 16),
-
-                  // Address
-                  _buildInfoRow(
-                    icon: Icons.location_on_outlined,
-                    label: 'Address',
-                    value: widget.job.address ?? 'No address provided',
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.straighten, size: 12, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text(
+                        _calculateDistance(_riderLocation!, jobLocation),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
+                ),
+              ),
 
-                  // Landmark
-                  if (widget.job.landmark != null) ...[
-                    _buildInfoRow(
-                      icon: Icons.place_outlined,
-                      label: 'Landmark',
-                      value: widget.job.landmark!,
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Distance
-                  if (_riderLocation != null && jobLocation != null) ...[
-                    _buildInfoRow(
-                      icon: Icons.straighten,
-                      label: 'Distance',
-                      value: _calculateDistance(_riderLocation!, jobLocation),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Coordinates
-                  if (widget.job.latitude != null && widget.job.longitude != null) ...[
-                    _buildInfoRow(
-                      icon: Icons.gps_fixed,
-                      label: 'Coordinates',
-                      value: '${widget.job.latitude!.toStringAsFixed(6)}, ${widget.job.longitude!.toStringAsFixed(6)}',
-                    ),
-                    const SizedBox(height: 24),
-                  ],
-
-                  // Taken by another rider — replaces the Start button
-                  if (_takenByOther)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: AppTheme.errorRed.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppTheme.errorRed.withValues(alpha: 0.3)),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.do_not_disturb_on, color: AppTheme.errorRed),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'This job was taken by another rider.',
-                              style: TextStyle(color: AppTheme.errorRed, fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  // No map pin on this job — warn the rider instead of routing them somewhere wrong.
-                  if (jobLocation == null)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.location_off, color: Colors.orange),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'No map pin for this job — use the address and call the customer if needed.',
-                              style: TextStyle(color: AppTheme.textDark, fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  // Start button
-                  if (widget.job.status == 'pending' && !_takenByOther)
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: _isStarting ? null : _startJob,
-                        child: _isStarting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : const Text('Start Job'),
-                      ),
-                    ),
-
-                  // Already in progress
-                  if (widget.job.status == 'in_progress')
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => RiderJobTrackingScreen(job: widget.job),
-                            ),
-                          );
-                        },
-                        child: const Text('Continue Tracking'),
-                      ),
-                    ),
-
-                  // Skip button — available for pending and in_progress jobs
-                  if ((widget.job.status == 'pending' || widget.job.status == 'in_progress') && !_takenByOther) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: OutlinedButton(
-                        onPressed: _isSkipping ? null : _showSkipBottomSheet,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.orange.shade700,
-                          side: BorderSide(color: Colors.orange.shade300),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+            // Bottom-left: Recenter button
+            Positioned(
+              bottom: 12,
+              left: 12,
+              child: Material(
+                color: Colors.white.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(16),
+                elevation: 2,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => _mapController.move(jobLocation, 15.0),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.my_location, size: 13, color: AppTheme.accentBlue),
+                        SizedBox(width: 4),
+                        Text(
+                          'Center',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
                           ),
                         ),
-                        child: _isSkipping
-                            ? SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.orange.shade700,
-                                ),
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.skip_next, size: 20, color: Colors.orange.shade700),
-                                  const SizedBox(width: 8),
-                                  const Text('Skip Order'),
-                                ],
-                              ),
-                      ),
+                      ],
                     ),
-                  ],
-                ],
+                  ),
+                ),
               ),
             ),
           ],
@@ -476,56 +602,523 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     );
   }
 
-  Widget _buildInfoRow({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 20, color: AppTheme.textLight),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.textLight,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
+  /// 2. Customer Information Card
+  Widget _buildCustomerCard(String customerName) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.all(16),
+      decoration: AppStyles.cardDecoration,
+      child: Row(
+        children: [
+          // Initials Avatar
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppTheme.lightBlue,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.25)),
+            ),
+            child: Center(
+              child: Text(
+                _getInitials(customerName),
                 style: const TextStyle(
                   fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.accentBlue,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'CUSTOMER',
+                  style: TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 0.8,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textLight,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  customerName,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                if (_customerPhone != null && _customerPhone!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    _customerPhone!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textLight,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (_customerPhone != null && _customerPhone!.isNotEmpty)
+            IconButton(
+              onPressed: () => _showContactSheet(_customerPhone!, customerName),
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: AppTheme.lightBlue,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.phone, size: 18, color: AppTheme.accentBlue),
+              ),
+              tooltip: 'Contact Customer',
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 3. Location & Landmark Card
+  Widget _buildLocationCard(String address, LatLng? jobLocation) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.all(16),
+      decoration: AppStyles.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightBlue,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.location_on, size: 18, color: AppTheme.accentBlue),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Address & Destination',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
                   color: AppTheme.textDark,
-                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              if (address.isNotEmpty)
+                InkWell(
+                  onTap: () => _copyToClipboard(address, 'Address copied to clipboard'),
+                  borderRadius: BorderRadius.circular(6),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    child: Row(
+                      children: [
+                        Icon(Icons.copy, size: 12, color: AppTheme.accentBlue),
+                        SizedBox(width: 4),
+                        Text(
+                          'Copy',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.accentBlue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            address.isNotEmpty ? address : 'No address specified',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textDark,
+              height: 1.35,
+            ),
+          ),
+
+          // Highlighted Landmark tag
+          if (widget.job.landmark != null && widget.job.landmark!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.shade200),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.flag_rounded, size: 14, color: Colors.amber.shade900),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Landmark: ${widget.job.landmark!}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.amber.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Coordinates pill
+          if (widget.job.latitude != null && widget.job.longitude != null) ...[
+            const SizedBox(height: 10),
+            InkWell(
+              onTap: () => _copyToClipboard(
+                '${widget.job.latitude}, ${widget.job.longitude}',
+                'Coordinates copied',
+              ),
+              borderRadius: BorderRadius.circular(6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.gps_fixed, size: 12, color: AppTheme.textLight),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${widget.job.latitude!.toStringAsFixed(6)}, ${widget.job.longitude!.toStringAsFixed(6)}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.textLight,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 4. Job & Order Info Card
+  Widget _buildOrderInfoCard(bool isPickup) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.all(16),
+      decoration: AppStyles.cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightBlue,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.receipt_long, size: 18, color: AppTheme.accentBlue),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Job Information',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 14),
+          _buildInfoRowItem('Job Number', widget.job.jobNumber ?? 'N/A'),
+          const Divider(height: 18, color: AppTheme.borderGray),
+          _buildInfoRowItem(
+            'Job Type',
+            isPickup ? 'Pickup from customer' : 'Delivery to customer',
+          ),
+          const Divider(height: 18, color: AppTheme.borderGray),
+          _buildInfoRowItem('Status', _formatStatus(widget.job.status)),
+          if (_paymentStatus != null) ...[
+            const Divider(height: 18, color: AppTheme.borderGray),
+            _buildPaymentStatusRow(_paymentStatus!, _totalAmount),
+          ],
+          if (_customerNotes != null && _customerNotes!.isNotEmpty) ...[
+            const Divider(height: 18, color: AppTheme.borderGray),
+            const Text(
+              'Customer Instructions',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppTheme.textLight,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.softGray,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+              ),
+              child: Text(
+                _customerNotes!,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textDark,
+                  fontStyle: FontStyle.italic,
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRowItem(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: AppTheme.textLight,
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textDark,
           ),
         ),
       ],
     );
   }
 
-  String _formatStatus(String status) {
-    return status.split('_').map((word) {
-      return word[0].toUpperCase() + word.substring(1);
-    }).join(' ');
+  Widget _buildPaymentStatusRow(String status, double? total) {
+    final isPaid = status.toLowerCase() == 'paid';
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text(
+          'Payment Status',
+          style: TextStyle(
+            fontSize: 13,
+            color: AppTheme.textLight,
+          ),
+        ),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: isPaid ? Colors.green.shade50 : Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: isPaid ? Colors.green.shade200 : Colors.amber.shade300,
+                ),
+              ),
+              child: Text(
+                isPaid ? 'PAID' : 'PENDING',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: isPaid ? Colors.green.shade700 : Colors.amber.shade900,
+                ),
+              ),
+            ),
+            if (total != null) ...[
+              const SizedBox(width: 6),
+              Text(
+                '₱${total.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
   }
 
-  String _calculateDistance(LatLng from, LatLng to) {
-    final distance = const Distance().as(LengthUnit.Kilometer, from, to);
-    if (distance < 1) {
-      return '${(distance * 1000).toStringAsFixed(0)}m';
-    }
-    return '${distance.toStringAsFixed(2)}km';
+  /// Fixed Bottom Action Bar
+  Widget _buildBottomActions() {
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -3),
+          ),
+        ],
+        border: Border(
+          top: BorderSide(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_takenByOther)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.errorRed.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.errorRed.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.do_not_disturb_on, color: AppTheme.errorRed, size: 18),
+                  SizedBox(width: 8),
+                  Text(
+                    'Job already taken by another rider',
+                    style: TextStyle(
+                      color: AppTheme.errorRed,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            // Primary action: Start Job or Continue Tracking
+            if (widget.job.status == 'pending')
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isStarting ? null : _startJob,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.accentBlue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _isStarting
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.play_arrow_rounded, size: 22),
+                            SizedBox(width: 8),
+                            Text(
+                              'Start Job',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                ),
+              )
+            else if (widget.job.status == 'in_progress')
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => RiderJobTrackingScreen(job: widget.job),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade600,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.navigation_rounded, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Continue Tracking',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Secondary action: Skip Order
+            if ((widget.job.status == 'pending' || widget.job.status == 'in_progress') && !_takenByOther) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: OutlinedButton(
+                  onPressed: _isSkipping ? null : _showSkipBottomSheet,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.orange.shade800,
+                    side: BorderSide(color: Colors.orange.shade300),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: _isSkipping
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade800),
+                          ),
+                        )
+                      : const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.skip_next, size: 18),
+                            SizedBox(width: 6),
+                            Text(
+                              'Skip Order',
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
   }
 
   void _showSkipBottomSheet() {
@@ -555,48 +1148,58 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Handle bar
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.borderGray,
-                  borderRadius: BorderRadius.circular(2),
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppTheme.borderGray,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
-              // Title
               Row(
                 children: [
-                  Icon(Icons.skip_next, color: Colors.orange.shade700, size: 24),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Skip Order',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textDark,
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.skip_next, color: Colors.orange.shade700, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Skip This Order?',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        Text(
+                          'This will release the job so another rider can take it.',
+                          style: TextStyle(fontSize: 13, color: AppTheme.textLight),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'This order will be released and made available for other riders.',
-                style: TextStyle(fontSize: 13, color: AppTheme.textLight),
-              ),
               const SizedBox(height: 20),
-              // Reason chips
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Reason (optional)',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textDark,
-                  ),
+              const Text(
+                'Reason for skipping (optional):',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
                 ),
               ),
               const SizedBox(height: 10),
@@ -630,7 +1233,6 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                 }).toList(),
               ),
               const SizedBox(height: 24),
-              // Action buttons
               Row(
                 children: [
                   Expanded(
@@ -696,7 +1298,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
             duration: const Duration(seconds: 3),
           ),
         );
-        Navigator.pop(context); // Go back to home / job list
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
