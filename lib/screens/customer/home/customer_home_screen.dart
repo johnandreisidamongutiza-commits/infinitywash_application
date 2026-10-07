@@ -572,10 +572,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         // Loading state
         if (_loadingRecentOrders)
           Container(
-            padding: const EdgeInsets.all(40),
+            width: double.infinity,
+            padding: const EdgeInsets.all(36),
             decoration: AppStyles.cardDecoration,
             child: const Center(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 12),
@@ -602,20 +604,38 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               },
               borderRadius: BorderRadius.circular(20),
               child: Container(
-                padding: const EdgeInsets.all(20),
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
                 decoration: AppStyles.cardDecoration,
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Icon(Icons.local_laundry_service_outlined, size: 48, color: AppTheme.textLight.withValues(alpha: 0.5)),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.lightBlue.withValues(alpha: 0.7),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.local_laundry_service_outlined,
+                        size: 36,
+                        color: AppTheme.accentBlue,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     const Text(
                       'No recent orders',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textLight),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: AppTheme.textDark,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     const Text(
                       'Tap to request your first laundry service',
-                      style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                      style: TextStyle(fontSize: 13, color: AppTheme.textLight),
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -654,6 +674,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           },
           borderRadius: BorderRadius.circular(20),
           child: Container(
+            width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: AppStyles.cardDecoration,
             child: Column(
