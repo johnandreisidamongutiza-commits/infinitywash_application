@@ -1211,6 +1211,70 @@ class RiderService {
     }
   }
 
+  /// Skip (release) a job so it becomes available for other riders.
+  ///
+  /// Resets the dispatch job to `pending` with `rider_id = NULL` and clears
+  /// claim timestamps. If the job was a delivery that moved the order to
+  /// `out_for_delivery`, the order is reverted to `ready`.
+  Future<void> skipJob(String jobId, {String? reason}) async {
+    try {
+      // Fetch current job state
+      final jobResponse = await _supabaseClient
+          .from('dispatch_jobs')
+          .select('order_id, job_type, status, rider_id, notes')
+          .eq('id', jobId)
+          .single();
+
+      final orderId = jobResponse['order_id'] as String;
+      final jobType = jobResponse['job_type'] as String;
+      final currentStatus = jobResponse['status'] as String?;
+      final existingNotes = jobResponse['notes'] as String? ?? '';
+
+      print('⏭️ Skipping job $jobId...');
+      print('   Job type: $jobType');
+      print('   Current status: $currentStatus');
+      if (reason != null) print('   Reason: $reason');
+
+      // Build notes with skip reason
+      final skipNote = reason != null && reason.isNotEmpty
+          ? 'Skipped: $reason'
+          : 'Skipped by rider';
+      final updatedNotes = existingNotes.isNotEmpty
+          ? '$existingNotes\n$skipNote'
+          : skipNote;
+
+      // Release the job: set rider_id to NULL and revert to pending
+      final now = DateTime.now().toUtc().toIso8601String();
+      await _supabaseClient
+          .from('dispatch_jobs')
+          .update({
+            'rider_id': null,
+            'status': 'pending',
+            'started_at': null,
+            'assigned_at': null,
+            'notes': updatedNotes,
+            'updated_at': now,
+          })
+          .eq('id', jobId);
+
+      // If this was a delivery job that was in_progress, the order may have
+      // been moved to 'out_for_delivery'. Revert it back to 'ready'.
+      if (jobType == 'delivery' && currentStatus == 'in_progress') {
+        await _supabaseClient.from('orders').update({
+          'status': 'ready',
+          'out_for_delivery_at': null,
+          'updated_at': now,
+        }).eq('id', orderId);
+        print('   ↩️ Reverted order $orderId status to ready');
+      }
+
+      print('✅ Job $jobId skipped and released for other riders');
+    } catch (e) {
+      print('❌ Error skipping job: $e');
+      throw mapError(e, stackTrace: StackTrace.current);
+    }
+  }
+
   /// Fallback resolver: if any dispatch job lacks GPS coordinates, resolve them
   /// from the linked customer's profile / address pin (orders -> customers) and
   /// auto-heal the dispatch_jobs record in Supabase.

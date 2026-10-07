@@ -35,6 +35,7 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
   LatLng? _riderLocation;
   StreamSubscription? _locationSubscription;
   bool _isCompleting = false;
+  bool _isSkipping = false;
   int _updateCount = 0;
   bool _isMapLoading = true; // Track map loading state
   
@@ -358,6 +359,190 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
     }
   }
 
+  void _showSkipBottomSheet() {
+    String? selectedReason;
+    final reasons = [
+      'Too far away',
+      'Customer unreachable',
+      'Schedule conflict',
+      'Vehicle issue',
+      'Other',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.skip_next, color: Colors.orange.shade700, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Skip This Order?',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          'This will release the job so another rider can take it.',
+                          style: TextStyle(fontSize: 13, color: AppTheme.textLight),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // Reason selection
+              const Text(
+                'Reason for skipping (optional):',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: reasons.map((reason) {
+                  final isSelected = selectedReason == reason;
+                  return ChoiceChip(
+                    label: Text(reason),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setSheetState(() {
+                        selectedReason = selected ? reason : null;
+                      });
+                    },
+                    selectedColor: Colors.orange.shade100,
+                    checkmarkColor: Colors.orange.shade700,
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.orange.shade700 : AppTheme.textDark,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(
+                        color: isSelected ? Colors.orange.shade300 : AppTheme.borderGray,
+                      ),
+                    ),
+                    backgroundColor: Colors.white,
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 24),
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.textLight,
+                        side: const BorderSide(color: AppTheme.borderGray),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _skipJob(selectedReason);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange.shade700,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('Skip Order', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _skipJob(String? reason) async {
+    setState(() => _isSkipping = true);
+
+    try {
+      _routeCalculationTimer?.cancel();
+      _locationSubscription?.cancel();
+      await _locationProvider.stopUploading();
+      _gpsProvider.stopTracking();
+
+      await _riderService.skipJob(widget.job.id, reason: reason);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.skip_next, color: Colors.white, size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text('Order skipped — it\'s now available for other riders.'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to skip order: $e'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+        setState(() => _isSkipping = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Use cached job location to avoid repeated null checks and object creation
@@ -481,6 +666,15 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
                   children: [
                     Row(
                       children: [
+                        if (Navigator.canPop(context)) ...[
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back, size: 20),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => Navigator.maybePop(context),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
@@ -599,24 +793,65 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
           ),
 
           Positioned(
-            bottom: 32,
+            bottom: 24,
             left: 16,
             right: 16,
-            child: ElevatedButton(
-              onPressed: _isCompleting ? null : _completeJob,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-              child: _isCompleting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: (_isCompleting || _isSkipping) ? null : _completeJob,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: _isCompleting
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text('Complete ${widget.job.jobType == 'pickup' ? 'Pickup' : 'Delivery'}'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: (_isCompleting || _isSkipping) ? null : _showSkipBottomSheet,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orange.shade700,
+                      side: BorderSide(color: Colors.orange.shade300),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    )
-                  : Text('Complete ${widget.job.jobType == 'pickup' ? 'Pickup' : 'Delivery'}'),
+                      backgroundColor: Colors.white.withValues(alpha: 0.95),
+                    ),
+                    child: _isSkipping
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade700),
+                            ),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.skip_next, size: 18),
+                              SizedBox(width: 8),
+                              Text('Skip Order', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                  ),
+                ),
+              ],
             ),
           ),
 
