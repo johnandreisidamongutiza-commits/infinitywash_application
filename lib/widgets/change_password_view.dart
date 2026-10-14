@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../screens/login_screen.dart';
 import '../services/auth_service.dart';
+import '../services/push_notification_service.dart';
+import '../services/secure_storage_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_error.dart';
 import '../utils/validators.dart';
@@ -88,6 +91,7 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
           type: AppErrorType.auth,
         );
       }
+      final userId = user.id;
 
       // Re-authenticate with current password to verify it
       await _authService.signIn(
@@ -98,18 +102,45 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
       // Update to new password
       await _authService.updatePassword(_newPasswordController.text);
 
+      // Drop this device's push token before signing out
+      try {
+        PushNotificationService.instance.unregisterCurrentUser();
+      } catch (e) {
+        debugPrint('Push unregister error: $e');
+      }
+
+      // Invalidate stored auto-login session so user is forced to log in with new password
+      try {
+        await SecureStorageService.instance.deleteUserTokens(userId);
+        await SecureStorageService.instance.clearLastAutoLoginUser();
+      } catch (e) {
+        debugPrint('Secure storage clean error: $e');
+      }
+
+      // Sign out from Supabase
+      await _authService.signOut();
+
       if (!mounted) return;
-      _showMessage('Password changed successfully!', isError: false);
 
       // Clear form
       _currentPasswordController.clear();
       _newPasswordController.clear();
       _confirmPasswordController.clear();
 
-      // Go back after a brief delay
-      Future.delayed(const Duration(milliseconds: 1200), () {
-        if (mounted) Navigator.pop(context);
-      });
+      _showMessage(
+        'Password changed successfully! Please log in again.',
+        isError: false,
+      );
+
+      // Brief delay so the user sees the confirmation message before navigation
+      await Future.delayed(const Duration(milliseconds: 1200));
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false,
+      );
     } catch (error) {
       if (!mounted) return;
       _showMessage(mapErrorToMessage(error), isError: true);
