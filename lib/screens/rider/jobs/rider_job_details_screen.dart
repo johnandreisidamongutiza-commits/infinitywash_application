@@ -16,10 +16,15 @@ import 'rider_job_tracking_screen.dart';
 /// Shows job information, location on map, and action buttons with a modern card-based theme
 class RiderJobDetailsScreen extends StatefulWidget {
   final DispatchJob job;
+  /// When true (e.g. opened from the active route Details button), the bottom
+  /// action panel (Start Job / Skip Order / Continue Tracking) is hidden so
+  /// the screen is a read-only information view only.
+  final bool readOnly;
 
   const RiderJobDetailsScreen({
     super.key,
     required this.job,
+    this.readOnly = false,
   });
 
   @override
@@ -311,7 +316,8 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomActions(),
+      // Hide action buttons when opened in read-only mode (e.g. from active route)
+      bottomNavigationBar: widget.readOnly ? null : _buildBottomActions(),
     );
   }
 

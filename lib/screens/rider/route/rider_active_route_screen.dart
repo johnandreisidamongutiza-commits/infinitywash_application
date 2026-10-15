@@ -1,16 +1,20 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/dispatch_job.dart';
 import '../../../services/routing_service.dart';
+import '../../../services/rider_service.dart';
+import '../../../services/supabase_service.dart';
 import '../../../config/location_constants.dart';
 import '../../../state/gps_provider.dart';
 import '../../../widgets/map_loading_overlay.dart';
 import '../../../widgets/cached_tile_provider.dart';
 import '../jobs/rider_job_details_screen.dart';
+import '../payments/rider_payment_process_screen.dart';
 
 /// Active Route Tracking Screen
 /// Shows rider's live location centered on map with rotating arrow pointing to next destination
@@ -26,25 +30,34 @@ class RiderActiveRouteScreen extends StatefulWidget {
 class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   final MapController _mapController = MapController();
   final RoutingService _routingService = RoutingService();
+  final RiderService _riderService = RiderService();
   final GpsProvider _gpsProvider = GpsProvider();
-  
+
   LatLng? _currentLocation;
   double _currentBearing = 0.0; // Direction rider is facing/moving
   List<DispatchJob> _remainingJobs = [];
   List<LatLng> _routePoints = [];
   bool _isRouteFallback = false;
-  int _currentJobIndex = 0;
+  int _completedStops = 0;
+  late int _totalStops;
+
   StreamSubscription? _locationSubscription;
   bool _isLoadingRoute = false;
-  bool _isMapLoading = true; // Track map loading state
+  bool _isMapLoading = true;
+  bool _isCompleting = false;
+
+  // Metadata cache per order: phone, landmark, customer notes
+  final Map<String, Map<String, dynamic>> _jobMetadata = {};
 
   @override
   void initState() {
     super.initState();
     _remainingJobs = List.from(widget.jobs);
+    _totalStops = widget.jobs.length;
     _initializeTracking();
-    
-    // Hide loading after 2 seconds (map tiles should be loaded by then)
+    _loadJobsMetadata();
+
+    // Hide initial map loading after 2 seconds
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
         setState(() => _isMapLoading = false);
@@ -64,41 +77,82 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
       _gpsProvider.attachDialogContext(context);
       await _gpsProvider.initialize();
       await _gpsProvider.startTracking();
-      
-      // Listen to location updates
+
       _locationSubscription = _gpsProvider.locationStream.listen((location) {
         if (mounted && location.latitude != null && location.longitude != null) {
           final newLocation = LatLng(location.latitude!, location.longitude!);
-          
           final isFirstLocation = _currentLocation == null;
-          
+
           setState(() {
             final oldLocation = _currentLocation;
             _currentLocation = newLocation;
-            
-            // Calculate bearing (direction of movement)
+
             if (oldLocation != null && _remainingJobs.isNotEmpty) {
-              _currentBearing = _calculateBearing(
-                _currentLocation!,
-                LatLng(_remainingJobs.first.latitude!, _remainingJobs.first.longitude!),
-              );
+              final nextJob = _remainingJobs.first;
+              if (nextJob.latitude != null && nextJob.longitude != null) {
+                _currentBearing = _calculateBearing(
+                  _currentLocation!,
+                  LatLng(nextJob.latitude!, nextJob.longitude!),
+                );
+              }
             }
           });
 
-          // Center map on rider's location
           _mapController.move(_currentLocation!, 17.0);
-          
-          // Recalculate route when location first acquired or every 10 seconds
+
           if (isFirstLocation) {
             _calculateRoute();
           }
         }
       });
 
-      // Calculate initial route
       await _calculateRoute();
     } catch (e) {
-      print('❌ Error initializing tracking: $e');
+      debugPrint('❌ Error initializing tracking: $e');
+    }
+  }
+
+  /// Load extra order metadata (phone, landmark, customer notes) for all route jobs
+  Future<void> _loadJobsMetadata() async {
+    final orderIds = _remainingJobs.map((j) => j.orderId).toSet().toList();
+    if (orderIds.isEmpty) return;
+
+    try {
+      final ordersRes = await SupabaseService.client
+          .from('orders')
+          .select('id, customer_notes, landmark, payment_status, total_amount, customers(phone_number, landmark, first_name, last_name)')
+          .inFilter('id', orderIds);
+
+      if (mounted) {
+        final Map<String, Map<String, dynamic>> meta = {};
+        for (final row in (ordersRes as List)) {
+          final id = row['id'] as String;
+          final cust = row['customers'] as Map<String, dynamic>?;
+          final phone = cust?['phone_number'] as String?;
+          final landmark = (row['landmark'] as String?) ?? (cust?['landmark'] as String?);
+          final notes = row['customer_notes'] as String?;
+          final paymentStatus = row['payment_status'] as String?;
+          final totalAmount = (row['total_amount'] as num?)?.toDouble();
+
+          final first = cust?['first_name'] as String? ?? '';
+          final last = cust?['last_name'] as String? ?? '';
+          final fullName = last.isNotEmpty ? '$first $last'.trim() : first;
+
+          meta[id] = {
+            'phone': phone,
+            'landmark': landmark,
+            'notes': notes,
+            'payment_status': paymentStatus,
+            'total_amount': totalAmount,
+            'customer_name': fullName.isNotEmpty ? fullName : null,
+          };
+        }
+        setState(() {
+          _jobMetadata.addAll(meta);
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error fetching job metadata: $e');
     }
   }
 
@@ -113,7 +167,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
 
     final bearing = math.atan2(y, x);
-    return (bearing * 180 / math.pi + 360) % 360; // Convert to degrees (0-360)
+    return (bearing * 180 / math.pi + 360) % 360;
   }
 
   /// Calculate distance in meters between two points
@@ -123,33 +177,23 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   }
 
   Future<void> _calculateRoute() async {
-    if (_remainingJobs.isEmpty) {
-      print('⚠️ No remaining jobs to calculate route');
-      setState(() => _routePoints = []);
-      return;
-    }
-    
-    if (_currentLocation == null) {
-      print('⚠️ Current location is null, cannot calculate route');
+    if (_remainingJobs.isEmpty || _currentLocation == null) {
       setState(() => _routePoints = []);
       return;
     }
 
-    print('🔵 Calculating route from ${_currentLocation!.latitude}, ${_currentLocation!.longitude}');
     setState(() => _isLoadingRoute = true);
 
     try {
       final waypoints = <LatLng>[_currentLocation!];
-      
+
       for (final job in _remainingJobs) {
         if (job.latitude != null && job.longitude != null) {
           waypoints.add(LatLng(job.latitude!, job.longitude!));
-          print('  → Adding waypoint: ${job.latitude}, ${job.longitude} (${job.jobType})');
         }
       }
 
       if (waypoints.length < 2) {
-        print('⚠️ Not enough waypoints for route calculation');
         setState(() {
           _routePoints = [];
           _isLoadingRoute = false;
@@ -157,13 +201,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         return;
       }
 
-      print('🔵 Requesting route with ${waypoints.length} waypoints...');
       final route = await _routingService.getRouteResult(waypoints);
-
-      print(
-        '${route.isFallback ? '⚠️ Fallback' : '✅'} route with ${route.points.length} points'
-        '${route.error != null ? ' (${route.error})' : ''}',
-      );
 
       if (mounted) {
         setState(() {
@@ -173,7 +211,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         });
       }
     } catch (e) {
-      print('❌ Error calculating route: $e');
+      debugPrint('❌ Error calculating route: $e');
       if (mounted) {
         setState(() {
           _routePoints = [];
@@ -184,20 +222,317 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     }
   }
 
-  void _completeCurrentJob() async {
-    if (_remainingJobs.isEmpty) return;
+  /// Skip current stop: moves it to the end of the route queue so the rider can revisit later
+  void _skipCurrentJob() {
+    if (_remainingJobs.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This is the only remaining stop on your route.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final currentJob = _remainingJobs.first;
+    final meta = _jobMetadata[currentJob.orderId];
+    final customerDisplayName = currentJob.customerName ?? meta?['customer_name'] ?? 'Current Customer';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.skip_next_rounded, color: Colors.orange, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Skip This Stop?',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Move $customerDisplayName to the end of your route so you can complete your other stops first and return here later.',
+          style: const TextStyle(fontSize: 14, height: 1.4, color: AppTheme.textLight),
+        ),
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange.shade700,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _executeSkip();
+            },
+            icon: const Icon(Icons.skip_next_rounded, size: 18),
+            label: const Text('Skip & Revisit Later', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _executeSkip() async {
+    if (_remainingJobs.length <= 1) return;
+
+    final skipped = _remainingJobs.removeAt(0);
 
     setState(() {
-      _remainingJobs.removeAt(0);
-      _currentJobIndex++;
+      _remainingJobs.add(skipped);
+      // Immediately clear old polyline so stale route isn't shown
+      _routePoints = [];
+      _isRouteFallback = false;
+
+      // Update bearing arrow to point toward the new first stop
+      final newNext = _remainingJobs.first;
+      if (_currentLocation != null &&
+          newNext.latitude != null &&
+          newNext.longitude != null) {
+        _currentBearing = _calculateBearing(
+          _currentLocation!,
+          LatLng(newNext.latitude!, newNext.longitude!),
+        );
+      }
     });
 
-    if (_remainingJobs.isEmpty) {
-      // All jobs completed!
-      _showCompletionDialog();
+    final nextJob = _remainingJobs.first;
+    final nextMeta = _jobMetadata[nextJob.orderId];
+    final nextName = nextJob.customerName ?? nextMeta?['customer_name'] ?? 'next stop';
+
+    // Animate camera to show rider + new destination in frame
+    if (_currentLocation != null &&
+        nextJob.latitude != null &&
+        nextJob.longitude != null) {
+      final destLatLng = LatLng(nextJob.latitude!, nextJob.longitude!);
+      // Move to midpoint between rider and new stop so both are visible
+      final midLat = (_currentLocation!.latitude + destLatLng.latitude) / 2;
+      final midLng = (_currentLocation!.longitude + destLatLng.longitude) / 2;
+      _mapController.move(LatLng(midLat, midLng), 15.5);
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.schedule_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text('Stop moved to end of route. Now heading to $nextName.'),
+            ),
+          ],
+        ),
+        backgroundColor: AppTheme.accentBlue,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+
+    // Recalculate road route to new stop order
+    await _calculateRoute();
+  }
+
+  /// Complete Stop flow with proximity verification and payment check
+  Future<void> _handleCompleteStop(DispatchJob job, double distanceToNext) async {
+    // Proximity check warning if rider is farther than 50 meters
+    if (distanceToNext >= 50) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.location_searching, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('Not at Stop Yet'),
+            ],
+          ),
+          content: Text(
+            'You are currently ${(distanceToNext).toStringAsFixed(0)}m away (expected within 50m). Mark this stop complete anyway?',
+            style: const TextStyle(height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Wait / Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentBlue,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Complete Anyway', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
     } else {
-      // Recalculate route to next job
-      await _calculateRoute();
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Complete ${job.jobType == 'pickup' ? 'Pickup' : 'Delivery'}?'),
+          content: Text(
+            'Mark stop for ${job.customerName ?? 'customer'} as complete?',
+            style: const TextStyle(height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentBlue,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Complete', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+
+    // Payment prompt for deliveries if payment is not completed
+    if (job.jobType == 'delivery') {
+      try {
+        final paymentInfo = await _riderService.getOrderPaymentInfo(job.orderId);
+        final paymentStatus = paymentInfo?['payment_status'] as String? ?? 'pending';
+        if (paymentStatus != 'paid' && mounted) {
+          final double totalAmount = (paymentInfo?['total_amount'] as num?)?.toDouble() ??
+              (paymentInfo?['subtotal'] as num?)?.toDouble() ??
+              170.0;
+
+          final collectPayment = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Row(
+                children: [
+                  Icon(Icons.payments_outlined, color: AppTheme.accentBlue),
+                  SizedBox(width: 8),
+                  Text('Payment Due'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This order has an unpaid balance of ₱${totalAmount.toStringAsFixed(2)}.',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Would you like to collect payment now via Cash or GCash?',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Skip / Pay Later', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.accentBlue,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Collect Payment', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          );
+
+          if (collectPayment == true && mounted) {
+            final order = await _riderService.fetchOrderById(job.orderId);
+            if (mounted) {
+              await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => RiderPaymentProcessScreen(
+                    order: order,
+                    orderId: job.orderId,
+                    customerName: job.customerName,
+                    address: job.address,
+                    amount: totalAmount,
+                    jobType: job.jobType,
+                  ),
+                ),
+              );
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Non-critical payment check error: $e');
+      }
+    }
+
+    setState(() => _isCompleting = true);
+
+    try {
+      if (job.jobType == 'pickup') {
+        await _riderService.completePickup(job.id, job.orderId);
+      } else {
+        await _riderService.completeDelivery(job.id, job.orderId);
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _isCompleting = false;
+        _remainingJobs.removeAt(0);
+        _completedStops++;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${job.jobType == 'pickup' ? 'Pickup' : 'Delivery'} completed successfully!'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      if (_remainingJobs.isEmpty) {
+        _showCompletionDialog();
+      } else {
+        await _calculateRoute();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isCompleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to complete stop: $e'),
+          backgroundColor: AppTheme.errorRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -206,17 +541,129 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Route Completed! 🎉'),
-        content: const Text('All deliveries have been completed.'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.celebration_rounded, color: Colors.green, size: 28),
+            SizedBox(width: 10),
+            Text('Route Completed!'),
+          ],
+        ),
+        content: const Text(
+          'All stops have been completed. Great job!',
+          style: TextStyle(fontSize: 15, color: AppTheme.textLight),
+        ),
         actions: [
-          TextButton(
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accentBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            ),
             onPressed: () {
-              Navigator.of(context).pop(); // Close dialog
-              Navigator.of(context).pop(); // Go back to route overview
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
             },
-            child: const Text('Done'),
+            child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showContactSheet(String? phone, String name) {
+    if (phone == null || phone.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No phone number recorded for this customer.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Text(
+                'Contact Customer',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                name,
+                style: const TextStyle(fontSize: 14, color: AppTheme.textLight),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(color: Colors.grey.shade200),
+                ),
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.phone_outlined, color: AppTheme.accentBlue),
+                ),
+                title: Text(
+                  phone,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                subtitle: const Text('Tap to copy phone number', style: TextStyle(fontSize: 12)),
+                trailing: IconButton(
+                  icon: const Icon(Icons.copy_rounded, color: AppTheme.accentBlue),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: phone));
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Copied $phone to clipboard'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                ),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: phone));
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Copied $phone to clipboard'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -231,28 +678,30 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
           )
         : 0.0;
 
+    final currentMeta = nextJob != null ? _jobMetadata[nextJob.orderId] : null;
+    final customerName = nextJob?.customerName ?? currentMeta?['customer_name'] ?? 'Customer';
+    final landmark = nextJob?.landmark ?? currentMeta?['landmark'];
+    final phone = currentMeta?['phone'] as String?;
+
     return Scaffold(
       body: Stack(
         children: [
-          // Map
+          // Map Layer
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
               initialCenter: _currentLocation ?? const LatLng(14.2499596, 121.4027956),
               initialZoom: 17.0,
               minZoom: 12.0,
-              // Restrict map bounds to 10km around shop
               cameraConstraint: CameraConstraint.contain(
                 bounds: LatLngBounds(
-                  // Southwest corner (10km south and west of shop)
                   LatLng(
-                    LocationConstants.shopLocation.latitude - 0.09, // ~10km south
-                    LocationConstants.shopLocation.longitude - 0.09, // ~10km west
+                    LocationConstants.shopLocation.latitude - 0.09,
+                    LocationConstants.shopLocation.longitude - 0.09,
                   ),
-                  // Northeast corner (10km north and east of shop)
                   LatLng(
-                    LocationConstants.shopLocation.latitude + 0.09, // ~10km north
-                    LocationConstants.shopLocation.longitude + 0.09, // ~10km east
+                    LocationConstants.shopLocation.latitude + 0.09,
+                    LocationConstants.shopLocation.longitude + 0.09,
                   ),
                 ),
               ),
@@ -264,9 +713,9 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.infinitywash.app',
-                tileProvider: CachedTileProvider(), // Use cached tiles
+                tileProvider: CachedTileProvider(),
               ),
-              // Shop delivery radius circle & customer meetup radius circles
+              // Delivery radius & meeting radius circles
               CircleLayer(
                 circles: [
                   CircleMarker(
@@ -291,24 +740,26 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                       ),
                 ],
               ),
-              // Route line
+              // Polyline route
               if (_isLoadingRoute)
-                // Show loading indicator
                 const Center(
                   child: Card(
                     margin: EdgeInsets.all(16),
                     child: Padding(
-                      padding: EdgeInsets.all(16),
+                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           SizedBox(
-                            width: 20,
-                            height: 20,
+                            width: 18,
+                            height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                           SizedBox(width: 12),
-                          Text('Calculating route...'),
+                          Text(
+                            'Updating route...',
+                            style: TextStyle(fontWeight: FontWeight.w500),
+                          ),
                         ],
                       ),
                     ),
@@ -320,9 +771,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                     Polyline(
                       points: _routePoints,
                       strokeWidth: _isRouteFallback ? 3.0 : 5.0,
-                      color: _isRouteFallback
-                          ? AppTheme.textLight
-                          : AppTheme.accentBlue,
+                      color: _isRouteFallback ? AppTheme.textLight : AppTheme.accentBlue,
                       pattern: _isRouteFallback
                           ? StrokePattern.dashed(segments: [10, 6])
                           : StrokePattern.solid(),
@@ -334,166 +783,32 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
             ],
           ),
 
-          // Top info card
+          // Top Info & Destination Card
           Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
+            top: MediaQuery.of(context).padding.top + 12,
             left: 16,
             right: 16,
-            child: Card(
-              elevation: 8,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                        Text(
-                          'Stop ${_currentJobIndex + 1} of ${widget.jobs.length}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Column(
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.refresh),
-                              onPressed: _calculateRoute,
-                            ),
-                            if (_routePoints.isNotEmpty)
-                              Text(
-                                '${_routePoints.length}',
-                                style: const TextStyle(fontSize: 8, color: Colors.green),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    if (nextJob != null) ...[
-                      const Divider(),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: CircleAvatar(
-                          backgroundColor: nextJob.jobType == 'pickup'
-                              ? AppTheme.errorRed
-                              : AppTheme.teamMemberIconOrange,
-                          child: Icon(
-                            nextJob.jobType == 'pickup'
-                                ? Icons.local_shipping
-                                : Icons.home,
-                            color: Colors.white,
-                          ),
-                        ),
-                        title: Text(
-                          nextJob.address ?? 'No address',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          '${(distanceToNext / 1000).toStringAsFixed(2)} km away',
-                          style: const TextStyle(color: AppTheme.textLight),
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.info_outline),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => RiderJobDetailsScreen(job: nextJob),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+            child: _buildTopDestinationCard(
+              nextJob: nextJob,
+              customerName: customerName,
+              landmark: landmark,
+              phone: phone,
+              distanceToNext: distanceToNext,
             ),
           ),
 
-          // Bottom action button
+          // Bottom Action Bar
           if (nextJob != null)
             Positioned(
-              bottom: 32,
+              bottom: 24,
               left: 16,
               right: 16,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (!_isLoadingRoute &&
-                      (_routePoints.isEmpty || _isRouteFallback))
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.orange,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.warning, color: Colors.white, size: 16),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _currentLocation == null
-                                  ? 'Waiting for GPS'
-                                  : _isRouteFallback
-                                      ? 'Showing straight line — road route unavailable. Tap refresh to retry.'
-                                      : 'No route: tap refresh',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.accentBlue,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                    ),
-                    onPressed: () {
-                      // Check if rider is close enough to complete (within 50 meters)
-                      if (distanceToNext < 50) {
-                        _completeCurrentJob();
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'You need to be within 50m to complete this stop (currently ${(distanceToNext).toStringAsFixed(0)}m away)',
-                            ),
-                            backgroundColor: AppTheme.errorRed,
-                          ),
-                        );
-                      }
-                    },
-                    child: Text(
-                      distanceToNext < 50 ? 'Complete Stop' : 'Arrive to Complete',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
+              child: _buildBottomActionBar(
+                nextJob: nextJob,
+                distanceToNext: distanceToNext,
               ),
             ),
-          
+
           // Map loading overlay
           MapLoadingOverlay(
             isLoading: _isMapLoading,
@@ -504,10 +819,454 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     );
   }
 
+  /// Modern Destination & Address Card
+  Widget _buildTopDestinationCard({
+    required DispatchJob? nextJob,
+    required String customerName,
+    required String? landmark,
+    required String? phone,
+    required double distanceToNext,
+  }) {
+    final isPickup = nextJob?.jobType == 'pickup';
+    final distanceText = distanceToNext < 1000
+        ? '${distanceToNext.toStringAsFixed(0)} m away'
+        : '${(distanceToNext / 1000).toStringAsFixed(2)} km away';
+
+    final currentStopNumber = _completedStops + 1;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header Bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textDark),
+                  tooltip: 'Exit Route',
+                  onPressed: () => Navigator.pop(context),
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Text(
+                        'Stop $currentStopNumber of $_totalStops',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      _buildProgressIndicator(),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: _isLoadingRoute
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded, color: AppTheme.accentBlue),
+                  tooltip: 'Recalculate Route',
+                  onPressed: _isLoadingRoute ? null : _calculateRoute,
+                ),
+              ],
+            ),
+          ),
+
+          if (nextJob != null) ...[
+            const Divider(height: 16, thickness: 1, indent: 16, endIndent: 16),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Badges: Job Type + Order Number + Distance
+                  Row(
+                    children: [
+                      // Job Type Chip
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isPickup
+                              ? AppTheme.errorRed.withValues(alpha: 0.1)
+                              : AppTheme.accentBlue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isPickup
+                                ? AppTheme.errorRed.withValues(alpha: 0.3)
+                                : AppTheme.accentBlue.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isPickup ? Icons.inventory_2_outlined : Icons.local_shipping_outlined,
+                              size: 13,
+                              color: isPickup ? AppTheme.errorRed : AppTheme.accentBlue,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isPickup ? 'PICKUP' : 'DELIVERY',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isPickup ? AppTheme.errorRed : AppTheme.accentBlue,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Order ID chip
+                      if (nextJob.jobNumber != null || nextJob.orderId.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '#${nextJob.jobNumber ?? (nextJob.orderId.length > 6 ? nextJob.orderId.substring(0, 6).toUpperCase() : nextJob.orderId)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                        ),
+
+                      const Spacer(),
+
+                      // Distance pill
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentBlue.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.near_me_rounded, size: 12, color: AppTheme.accentBlue),
+                            const SizedBox(width: 4),
+                            Text(
+                              distanceText,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.accentBlue,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Customer Name
+                  Text(
+                    customerName,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textDark,
+                      letterSpacing: -0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+
+                  // Full Address
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Icon(Icons.location_on_rounded, size: 16, color: AppTheme.accentBlue),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          nextJob.address ?? 'No address recorded',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade800,
+                            height: 1.3,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // Landmark (if present)
+                  if (landmark != null && landmark.trim().isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Icon(Icons.explore_outlined, size: 15, color: Colors.amber.shade800),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Landmark: $landmark',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.amber.shade900,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  const SizedBox(height: 14),
+
+                  // Quick Action Buttons Row
+                  Row(
+                    children: [
+                      // Contact button
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            side: BorderSide(color: Colors.grey.shade300),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            foregroundColor: AppTheme.accentBlue,
+                          ),
+                          onPressed: () => _showContactSheet(phone, customerName),
+                          icon: const Icon(Icons.phone_outlined, size: 16),
+                          label: const Text('Contact', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Details button
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            side: BorderSide(color: Colors.grey.shade300),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            foregroundColor: AppTheme.textDark,
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => RiderJobDetailsScreen(
+                                  job: nextJob,
+                                  readOnly: true,
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.info_outline_rounded, size: 16),
+                          label: const Text('Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Progress indicator dots or bar
+  Widget _buildProgressIndicator() {
+    if (_totalStops <= 6) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(_totalStops, (index) {
+          final isCompleted = index < _completedStops;
+          final isCurrent = index == _completedStops;
+
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 2.5),
+            width: isCurrent ? 18 : 6,
+            height: 5,
+            decoration: BoxDecoration(
+              color: isCompleted
+                  ? Colors.green
+                  : isCurrent
+                      ? AppTheme.accentBlue
+                      : Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          );
+        }),
+      );
+    } else {
+      final progress = (_completedStops + 1) / _totalStops;
+      return SizedBox(
+        width: 100,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: progress.clamp(0.0, 1.0),
+            backgroundColor: Colors.grey.shade200,
+            valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accentBlue),
+            minHeight: 4,
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Bottom action bar with Skip and Complete Stop buttons
+  Widget _buildBottomActionBar({
+    required DispatchJob nextJob,
+    required double distanceToNext,
+  }) {
+    final canSkip = _remainingJobs.length > 1;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Route Warning Notice (if applicable)
+        if (!_isLoadingRoute && (_routePoints.isEmpty || _isRouteFallback))
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade800,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _currentLocation == null
+                        ? 'Acquiring GPS signal...'
+                        : _isRouteFallback
+                            ? 'Road routing unavailable — showing direct path.'
+                            : 'Route line unavailable. Tap refresh to retry.',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // Action Buttons Row
+        Row(
+          children: [
+            // Skip Button (Outlined)
+            if (canSkip) ...[
+              Expanded(
+                flex: 2,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: BorderSide(color: Colors.orange.shade400, width: 1.5),
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.orange.shade800,
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: _skipCurrentJob,
+                  icon: const Icon(Icons.skip_next_rounded, size: 20),
+                  label: const Text(
+                    'Skip',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
+
+            // Complete Stop Button (Primary Blue)
+            Expanded(
+              flex: 3,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentBlue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                onPressed: _isCompleting
+                    ? null
+                    : () => _handleCompleteStop(nextJob, distanceToNext),
+                icon: _isCompleting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.check_circle_outline_rounded, size: 20),
+                label: Text(
+                  _isCompleting
+                      ? 'Completing...'
+                      : (distanceToNext < 50 ? 'Complete Stop' : 'Arrive to Complete'),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   List<Marker> _buildMarkers() {
     final markers = <Marker>[];
 
-    // Rider's current location with rotating arrow
+    // Rider live location marker with rotating arrow
     if (_currentLocation != null) {
       markers.add(
         Marker(
@@ -516,7 +1275,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
           height: 60,
           alignment: Alignment.center,
           child: Transform.rotate(
-            angle: _currentBearing * math.pi / 180, // Convert degrees to radians
+            angle: _currentBearing * math.pi / 180,
             child: Icon(
               Icons.navigation,
               size: 40,
@@ -534,10 +1293,11 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
       );
     }
 
-    // Job markers
+    // Numbered Stop Markers
     int index = 0;
     for (final job in _remainingJobs) {
       if (job.latitude != null && job.longitude != null) {
+        final isCurrent = index == 0;
         markers.add(
           Marker(
             point: LatLng(job.latitude!, job.longitude!),
@@ -549,7 +1309,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: index == 0
+                    color: isCurrent
                         ? AppTheme.errorRed
                         : AppTheme.teamMemberIconOrange,
                     shape: BoxShape.circle,
@@ -570,9 +1330,9 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                     ),
                   ),
                 ),
-                const Icon(
+                Icon(
                   Icons.arrow_drop_down,
-                  color: Colors.red,
+                  color: isCurrent ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
                   size: 24,
                 ),
               ],
