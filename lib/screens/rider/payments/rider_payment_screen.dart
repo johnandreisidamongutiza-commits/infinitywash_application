@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
@@ -45,6 +46,11 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
   // ── Tab badges (cover every row, not just the loaded page) ──────────────
   int _unpaidCount = 0;
   int _paidCount = 0;
+  String _jobTypeFilter = 'all'; // 'all', 'pickup', 'delivery'
+  int _unpaidPickupCount = 0;
+  int _unpaidDeliveryCount = 0;
+  int _paidPickupCount = 0;
+  int _paidDeliveryCount = 0;
 
   @override
   void initState() {
@@ -126,6 +132,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
     try {
       final page = await _riderService.fetchRiderPaymentOrders(
         paymentStatus: 'unpaid',
+        jobType: _jobTypeFilter == 'all' ? null : _jobTypeFilter,
         limit: _kPageSize,
         offset: _unpaidOffset,
       );
@@ -174,6 +181,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
     try {
       final page = await _riderService.fetchRiderPaymentOrders(
         paymentStatus: 'paid',
+        jobType: _jobTypeFilter == 'all' ? null : _jobTypeFilter,
         limit: _kPageSize,
         offset: _paidOffset,
       );
@@ -205,11 +213,23 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
       final counts = await Future.wait([
         _riderService.fetchRiderPaymentOrderCount(paymentStatus: 'unpaid'),
         _riderService.fetchRiderPaymentOrderCount(paymentStatus: 'paid'),
+        _riderService.fetchRiderPaymentOrderCount(
+            paymentStatus: 'unpaid', jobType: 'pickup'),
+        _riderService.fetchRiderPaymentOrderCount(
+            paymentStatus: 'unpaid', jobType: 'delivery'),
+        _riderService.fetchRiderPaymentOrderCount(
+            paymentStatus: 'paid', jobType: 'pickup'),
+        _riderService.fetchRiderPaymentOrderCount(
+            paymentStatus: 'paid', jobType: 'delivery'),
       ]);
       if (!mounted) return;
       setState(() {
         _unpaidCount = counts[0];
         _paidCount = counts[1];
+        _unpaidPickupCount = counts[2];
+        _unpaidDeliveryCount = counts[3];
+        _paidPickupCount = counts[4];
+        _paidDeliveryCount = counts[5];
       });
     } catch (e) {
       // Badges are cosmetic — keep the last known values if the query fails.
@@ -252,10 +272,24 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
 
   ScrollController get _activeScroll => _showPaid ? _paidScroll : _unpaidScroll;
 
+  bool _isDelivery(LaundryOrder order) {
+    if (order.status == OrderStatus.pending_pickup) return false;
+    return order.returnMethod == ReturnMethod.delivery;
+  }
+
   /// Only free-text search is applied here; it covers the pages loaded so far
   /// (same convention as the other list screens).
   List<LaundryOrder> _getFilteredOrders() {
-    final list = _activeOrders;
+    var list = _activeOrders;
+
+    if (_jobTypeFilter != 'all') {
+      if (_jobTypeFilter == 'delivery') {
+        list = list.where((o) => _isDelivery(o)).toList();
+      } else if (_jobTypeFilter == 'pickup') {
+        list = list.where((o) => !_isDelivery(o)).toList();
+      }
+    }
+
     if (_searchQuery.trim().isEmpty) return list;
 
     final q = _searchQuery.trim().toLowerCase();
@@ -348,6 +382,9 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                     ),
                   ),
                 ),
+                // Sub-filter chips below search bar
+                const SizedBox(height: 12),
+                _buildSubFilterBar(),
               ],
             ),
           ),
@@ -388,14 +425,39 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                                       isSearching
                                           ? 'No matching orders'
                                           : (_showPaid
-                                              ? 'No paid orders found'
-                                              : 'No unpaid orders. All caught up!'),
+                                              ? (_jobTypeFilter == 'pickup'
+                                                  ? 'No paid pickup orders found'
+                                                  : (_jobTypeFilter == 'delivery'
+                                                      ? 'No paid delivery orders found'
+                                                      : 'No paid orders found'))
+                                              : (_jobTypeFilter == 'pickup'
+                                                  ? 'No unpaid pickup orders found'
+                                                  : (_jobTypeFilter == 'delivery'
+                                                      ? 'No unpaid delivery orders found'
+                                                      : 'No unpaid orders. All caught up!'))),
                                       style: TextStyle(
                                         color: Colors.grey[600],
                                         fontSize: 15,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
+                                    if (_jobTypeFilter != 'all' &&
+                                        !isSearching) ...[
+                                      const SizedBox(height: 12),
+                                      TextButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _jobTypeFilter = 'all';
+                                          });
+                                          if (_showPaid) {
+                                            _initPaid();
+                                          } else {
+                                            _initUnpaid();
+                                          }
+                                        },
+                                        child: Text('Show All ${_showPaid ? 'Paid' : 'Unpaid'} Orders'),
+                                      ),
+                                    ],
                                     const SizedBox(height: 6),
                                     Text(
                                       'Pull down to refresh',
@@ -466,6 +528,132 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                       color: Colors.grey.shade400,
                     ),
                   ),
+      ),
+    );
+  }
+
+  Widget _buildSubFilterBar() {
+    final allCount = _showPaid ? _paidCount : _unpaidCount;
+    final pickupCount = _showPaid ? _paidPickupCount : _unpaidPickupCount;
+    final deliveryCount = _showPaid ? _paidDeliveryCount : _unpaidDeliveryCount;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          _buildSubFilterChip(
+            label: 'All',
+            icon: Icons.all_inbox_rounded,
+            value: 'all',
+            count: allCount,
+            color: AppTheme.accentBlue,
+          ),
+          const SizedBox(width: 8),
+          _buildSubFilterChip(
+            label: 'Pickups',
+            icon: Icons.inventory_2_outlined,
+            value: 'pickup',
+            count: pickupCount,
+            color: AppTheme.accentBlue,
+          ),
+          const SizedBox(width: 8),
+          _buildSubFilterChip(
+            label: 'Deliveries',
+            icon: Icons.local_shipping_outlined,
+            value: 'delivery',
+            count: deliveryCount,
+            color: Colors.purple.shade700,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubFilterChip({
+    required String label,
+    required IconData icon,
+    required String value,
+    required int count,
+    required Color color,
+  }) {
+    final isSelected = _jobTypeFilter == value;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () {
+          if (_jobTypeFilter == value) return;
+          setState(() {
+            _jobTypeFilter = value;
+          });
+          if (_showPaid) {
+            _initPaid();
+          } else {
+            _initUnpaid();
+          }
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: isSelected ? color : AppTheme.softGray,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected ? color : Colors.black.withValues(alpha: 0.06),
+              width: 1,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.28),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: isSelected ? Colors.white : color,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: GoogleFonts.lexend(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? Colors.white : AppTheme.textDark,
+                ),
+              ),
+              if (count > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white.withValues(alpha: 0.25)
+                        : color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: GoogleFonts.lexend(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: isSelected ? Colors.white : color,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -651,7 +839,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
   }
 
   Widget _buildOrderCard(LaundryOrder order) {
-    final isDelivery = order.returnMethod == ReturnMethod.delivery;
+    final isDelivery = _isDelivery(order);
     final isPaid = order.paymentStatus == PaymentStatus.paid;
     final total = order.totalAmount ?? (order.basePrice > 0 ? order.basePrice : 170.0);
     final jobStatusLabel = _getJobStatusLabel(order);

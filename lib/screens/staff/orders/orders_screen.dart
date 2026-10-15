@@ -47,6 +47,8 @@ class OrdersScreenState extends State<OrdersScreen>
   int _activeOffset = 0;
   bool _activeInitialized = false;
   final ScrollController _activeScroll = ScrollController();
+  OrderStatus? _selectedActiveStatus;
+  Map<String, int> _activeStatusCounts = {};
 
   // ── History tab ─────────────────────────────────────────────────────────
   final List<LaundryOrder> _history = [];
@@ -122,8 +124,13 @@ class OrdersScreenState extends State<OrdersScreen>
   List<LaundryOrder> get _filteredRequests =>
       _searchQuery.trim().isEmpty ? _requests : _requests.where(_matchesSearch).toList();
 
-  List<LaundryOrder> get _filteredActive =>
-      _searchQuery.trim().isEmpty ? _active : _active.where(_matchesSearch).toList();
+  List<LaundryOrder> get _filteredActive {
+    var list = _active;
+    if (_selectedActiveStatus != null) {
+      list = list.where((o) => o.status == _selectedActiveStatus).toList();
+    }
+    return _searchQuery.trim().isEmpty ? list : list.where(_matchesSearch).toList();
+  }
 
   List<LaundryOrder> get _filteredHistory =>
       _searchQuery.trim().isEmpty ? _history : _history.where(_matchesSearch).toList();
@@ -146,9 +153,10 @@ class OrdersScreenState extends State<OrdersScreen>
     // Tab-change listener: lazy-load a tab on first visit
     _tabController.addListener(_onTabChanged);
 
-    // Load the initial tab eagerly + rejected badge
+    // Load the initial tab eagerly + rejected badge + status counts
     _loadTabForIndex(widget.initialTab);
     _loadRejectedCount();
+    _loadActiveStatusCounts();
     // Also check for pending requests in background to keep badge accurate
     if (widget.initialTab != 0) {
       _initRequests();
@@ -212,7 +220,7 @@ class OrdersScreenState extends State<OrdersScreen>
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Rejected count (for AppBar badge)
+  // Rejected & Active status counts
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _loadRejectedCount() async {
     try {
@@ -220,6 +228,28 @@ class OrdersScreenState extends State<OrdersScreen>
       // (with their loads and customer details) only to read `.length`.
       final count = await _orderService.fetchOrderCount(statuses: ['rejected']);
       if (mounted) setState(() => _rejectedCount = count);
+    } catch (_) {}
+  }
+
+  Future<void> _loadActiveStatusCounts() async {
+    try {
+      final results = await Future.wait([
+        _orderService.fetchOrderCount(statuses: ['pending_pickup']),
+        _orderService.fetchOrderCount(statuses: ['processing']),
+        _orderService.fetchOrderCount(statuses: ['ready']),
+        _orderService.fetchOrderCount(statuses: ['out_for_delivery']),
+      ]);
+      if (mounted) {
+        setState(() {
+          _activeStatusCounts = {
+            'pending_pickup': results[0],
+            'processing': results[1],
+            'ready': results[2],
+            'out_for_delivery': results[3],
+            'all': results[0] + results[1] + results[2] + results[3],
+          };
+        });
+      }
     } catch (_) {}
   }
 
@@ -296,9 +326,12 @@ class OrdersScreenState extends State<OrdersScreen>
   Future<void> _fetchActive({required bool reset}) async {
     try {
       print('🔵 ACTIVE TAB: Fetching with offset=$_activeOffset, limit=$_kActivePageSize');
-      print('🔵 ACTIVE TAB: Statuses filter: [pending_pickup, processing, ready, out_for_delivery]');
+      final statusesToFetch = _selectedActiveStatus != null
+          ? [_selectedActiveStatus!.name]
+          : ['pending_pickup', 'processing', 'ready', 'out_for_delivery'];
+      print('🔵 ACTIVE TAB: Statuses filter: $statusesToFetch');
       final page = await _orderService.fetchOrders(
-        statuses: ['pending_pickup', 'processing', 'ready', 'out_for_delivery'],
+        statuses: statusesToFetch,
         limit: _kActivePageSize,
         offset: _activeOffset,
       );
@@ -388,6 +421,7 @@ class OrdersScreenState extends State<OrdersScreen>
       if (_activeInitialized) _initActive(),
       if (_historyInitialized) _initHistory(),
       _loadRejectedCount(),
+      _loadActiveStatusCounts(),
     ]);
   }
 
@@ -411,9 +445,10 @@ class OrdersScreenState extends State<OrdersScreen>
       await _initHistory();
     }
     
-    // Refresh rejected count badge
-    print('🔵 _refreshAllTabs: Refreshing rejected count...');
+    // Refresh rejected count badge & status counts
+    print('🔵 _refreshAllTabs: Refreshing rejected count & status counts...');
     await _loadRejectedCount();
+    await _loadActiveStatusCounts();
     print('🔵 _refreshAllTabs: All refreshes complete!');
   }
 
@@ -440,6 +475,7 @@ class OrdersScreenState extends State<OrdersScreen>
           print('🔵 refreshCurrentTab: Active tab not initialized yet, loading for first time');
           _loadTabForIndex(1);
         }
+        _loadActiveStatusCounts();
         break;
       case 2:
         if (_historyInitialized) {
@@ -665,6 +701,17 @@ class OrdersScreenState extends State<OrdersScreen>
       body: Column(
         children: [
           _buildSearchBar(),
+          AnimatedBuilder(
+            animation: _tabController,
+            builder: (context, _) {
+              final isCurrentTabActive =
+                  (_tabController.animation?.value.round() ??
+                          _tabController.index) ==
+                      1;
+              if (!isCurrentTabActive) return const SizedBox.shrink();
+              return _buildActiveStatusFilter();
+            },
+          ),
           Expanded(
             child: RefreshIndicator(
               color: AppTheme.accentBlue,
@@ -788,6 +835,21 @@ class OrdersScreenState extends State<OrdersScreen>
     }
 
     if (!_activeLoading && _active.isEmpty) {
+      if (_selectedActiveStatus != null) {
+        final label = _statusLabel(_selectedActiveStatus!);
+        return _buildEmptyState(
+          icon: _statusIcon(_selectedActiveStatus!),
+          title: 'No $label orders',
+          subtitle: 'There are currently no active orders marked as $label.',
+          actionLabel: 'Show All Active Orders',
+          onAction: () {
+            setState(() {
+              _selectedActiveStatus = null;
+            });
+            _initActive();
+          },
+        );
+      }
       return _buildEmptyState(
         icon: Icons.local_laundry_service_outlined,
         title: 'No active orders',
@@ -796,10 +858,13 @@ class OrdersScreenState extends State<OrdersScreen>
     }
 
     if (_searchQuery.trim().isNotEmpty && _filteredActive.isEmpty) {
+      final statusSuffix = _selectedActiveStatus != null
+          ? ' in ${_statusLabel(_selectedActiveStatus!)}'
+          : '';
       return _buildEmptyState(
         icon: Icons.search_off_rounded,
         title: 'No matching active orders',
-        subtitle: 'No active orders matched "$_searchQuery".',
+        subtitle: 'No active orders$statusSuffix matched "$_searchQuery".',
         actionLabel: 'Clear Search',
         onAction: () {
           setState(() {
@@ -916,7 +981,7 @@ class OrdersScreenState extends State<OrdersScreen>
   Widget _buildSearchBar() {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Container(
         decoration: BoxDecoration(
           color: AppTheme.softGray,
@@ -971,6 +1036,115 @@ class OrdersScreenState extends State<OrdersScreen>
               vertical: 12,
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActiveStatusFilter() {
+    final statuses = [
+      null, // All
+      OrderStatus.pending_pickup,
+      OrderStatus.processing,
+      OrderStatus.ready,
+      OrderStatus.out_for_delivery,
+    ];
+
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.only(bottom: 10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: statuses.map((status) {
+            final isSelected = _selectedActiveStatus == status;
+            final label = status == null ? 'All' : _statusLabel(status);
+            final icon = status == null ? Icons.all_inbox_rounded : _statusIcon(status);
+            final color = status == null ? AppTheme.accentBlue : _statusColor(status);
+
+            final countKey = status == null ? 'all' : status.name;
+            final count = _activeStatusCounts[countKey];
+
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () {
+                    if (_selectedActiveStatus == status) return;
+                    setState(() {
+                      _selectedActiveStatus = status;
+                    });
+                    _initActive();
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: isSelected ? color : AppTheme.softGray,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSelected ? color : Colors.black.withValues(alpha: 0.06),
+                        width: 1,
+                      ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: color.withValues(alpha: 0.28),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          icon,
+                          size: 15,
+                          color: isSelected ? Colors.white : color,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          label,
+                          style: GoogleFonts.lexend(
+                            fontSize: 12,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color: isSelected ? Colors.white : AppTheme.textDark,
+                          ),
+                        ),
+                        if (count != null && count > 0) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? Colors.white.withValues(alpha: 0.25)
+                                  : color.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '$count',
+                              style: GoogleFonts.lexend(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: isSelected ? Colors.white : color,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ),
     );
@@ -1367,6 +1541,7 @@ class OrdersScreenState extends State<OrdersScreen>
                 // Currently on History tab
                 await _initHistory();
               }
+              _loadActiveStatusCounts();
             }
           },
           child: IntrinsicHeight(

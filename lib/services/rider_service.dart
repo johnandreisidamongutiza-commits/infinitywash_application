@@ -1111,12 +1111,13 @@ class RiderService {
   /// drive infinite-scroll pagination.
   Future<List<LaundryOrder>> fetchRiderPaymentOrders({
     String? paymentStatus,
+    String? jobType,
     int limit = 100,
     int offset = 0,
   }) async {
     try {
       print('💳 Fetching rider payment orders '
-          '(paymentStatus=$paymentStatus, limit=$limit, offset=$offset)...');
+          '(paymentStatus=$paymentStatus, jobType=$jobType, limit=$limit, offset=$offset)...');
       var query = _supabaseClient
           .from('orders')
           .select('''
@@ -1170,6 +1171,12 @@ class RiderService {
         query = query.neq('payment_status', 'paid');
       }
 
+      if (jobType == 'delivery') {
+        query = query.eq('delivery_requested', true).neq('status', 'pending_pickup');
+      } else if (jobType == 'pickup') {
+        query = query.or('delivery_requested.eq.false,status.eq.pending_pickup');
+      }
+
       final response = await query
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
@@ -1188,6 +1195,7 @@ class RiderService {
   /// Keeps the same base filters as [fetchRiderPaymentOrders].
   Future<int> fetchRiderPaymentOrderCount({
     required String paymentStatus,
+    String? jobType,
   }) async {
     try {
       var query = _supabaseClient
@@ -1199,6 +1207,12 @@ class RiderService {
       query = paymentStatus == 'paid'
           ? query.eq('payment_status', 'paid')
           : query.neq('payment_status', 'paid');
+
+      if (jobType == 'delivery') {
+        query = query.eq('delivery_requested', true).neq('status', 'pending_pickup');
+      } else if (jobType == 'pickup') {
+        query = query.or('delivery_requested.eq.false,status.eq.pending_pickup');
+      }
 
       // limit(0) keeps the response body empty: count() on its own would still
       // return every matching row, which defeats the point of a count query.
