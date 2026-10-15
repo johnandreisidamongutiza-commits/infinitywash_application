@@ -6,6 +6,7 @@ import '../../../../utils/app_error.dart';
 import '../../../../utils/input_formatters.dart';
 import '../../../../utils/validators.dart';
 import '../../../../widgets/custom_text_field.dart';
+import '../../../../widgets/editable_profile_avatar.dart';
 
 class RiderAccountDetailsScreen extends StatefulWidget {
   const RiderAccountDetailsScreen({super.key});
@@ -24,6 +25,8 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
   final _emailController = TextEditingController();
   final _nameController = TextEditingController();
   final _vehicleController = TextEditingController();
+  String? _avatarUrl;
+  bool _hasChanges = false;
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -57,6 +60,7 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
       _emailController.text = profile['email'] ?? employee['email'] ?? '';
       _nameController.text = employee['name'] ?? '';
       _vehicleController.text = employee['vehicle_details'] ?? '';
+      _avatarUrl = profile['avatar_url'] as String?;
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -162,21 +166,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
     }
   }
 
-  String _getInitials() {
-    final first = _firstNameController.text.trim();
-    final last = _lastNameController.text.trim();
-    if (first.isNotEmpty || last.isNotEmpty) {
-      final f = first.isNotEmpty ? first[0].toUpperCase() : '';
-      final l = last.isNotEmpty ? last[0].toUpperCase() : '';
-      return '$f$l';
-    }
-    final name = _nameController.text.trim();
-    if (name.isNotEmpty) {
-      return name[0].toUpperCase();
-    }
-    return 'R';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -199,7 +188,7 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
             color: AppTheme.textDark,
             size: 20,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, _hasChanges),
         ),
       ),
       body: _isLoading
@@ -272,36 +261,17 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
       ),
       child: Row(
         children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [
-                  AppTheme.primaryBlue,
-                  AppTheme.accentBlue,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.accentBlue.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              _getInitials(),
-              style: GoogleFonts.lexend(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 22,
-              ),
-            ),
+          EditableProfileAvatar(
+            avatarUrl: _avatarUrl,
+            name: displayName,
+            role: 'Rider',
+            radius: 30,
+            onAvatarChanged: (newUrl) {
+              setState(() {
+                _avatarUrl = newUrl;
+                _hasChanges = true;
+              });
+            },
           ),
           const SizedBox(width: 16),
           Expanded(

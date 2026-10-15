@@ -143,6 +143,17 @@ class SavedAccountsDatabase {
     );
   }
 
+  // Update profile picture url
+  Future<void> updateProfilePicture(String id, String? profilePictureUrl) async {
+    final db = await database;
+    await db.update(
+      'saved_accounts',
+      {'profile_picture_url': profilePictureUrl},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   // Delete an account
   Future<void> deleteAccount(String id) async {
     final db = await database;

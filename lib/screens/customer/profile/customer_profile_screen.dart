@@ -3,6 +3,7 @@ import '../../../theme/app_theme.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/push_notification_service.dart';
+import '../../../widgets/editable_profile_avatar.dart';
 import '../../login_screen.dart';
 import 'options/account_details_screen.dart';
 import 'options/change_password_screen.dart';
@@ -23,6 +24,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
+  String? _avatarUrl;
   bool _isLoading = true;
 
   @override
@@ -47,6 +49,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       _lastNameController.text = profile['last_name'] ?? '';
       _phoneController.text = profile['phone'] ?? '';
       _emailController.text = profile['email'] ?? '';
+      _avatarUrl = profile['avatar_url'] as String?;
     } catch (error) {
       _showMessage('Could not load profile: $error');
     } finally {
@@ -77,35 +80,14 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
         child: Column(
           children: [
             Center(
-              child: Stack(
-                children: [
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: AppTheme.softGray,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppTheme.accentBlue, width: 2),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/images/logo.jpg',
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, size: 60),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: AppTheme.accentBlue, shape: BoxShape.circle),
-                      child: const Icon(Icons.edit, color: Colors.white, size: 20),
-                    ),
-                  ),
-                ],
+              child: EditableProfileAvatar(
+                avatarUrl: _avatarUrl,
+                name: '${_firstNameController.text} ${_lastNameController.text}'.trim(),
+                role: 'Customer',
+                radius: 60,
+                onAvatarChanged: (newUrl) {
+                  setState(() => _avatarUrl = newUrl);
+                },
               ),
             ),
             const SizedBox(height: 24),

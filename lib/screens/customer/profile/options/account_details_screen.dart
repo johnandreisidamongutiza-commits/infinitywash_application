@@ -9,6 +9,7 @@ import '../../../../utils/input_formatters.dart';
 import '../../../../utils/validators.dart';
 import '../../../../widgets/address_input_widget.dart';
 import '../../../../widgets/custom_text_field.dart';
+import '../../../../widgets/editable_profile_avatar.dart';
 import '../../../../widgets/location_picker_widget.dart';
 
 class CustomerAccountDetailsScreen extends StatefulWidget {
@@ -34,6 +35,8 @@ class _CustomerAccountDetailsScreenState
 
   LatLng? _pinLocation;
   bool _pinChanged = false;
+  String? _avatarUrl;
+  bool _hasChanges = false;
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -66,6 +69,7 @@ class _CustomerAccountDetailsScreenState
       _phoneController.text = profile['phone'] ?? '';
       _emailController.text = profile['email'] ?? '';
       _landmarkController.text = profile['landmark'] ?? '';
+      _avatarUrl = profile['avatar_url'] as String?;
 
       final savedAddress = (profile['address'] as String?) ?? '';
       if (savedAddress.isNotEmpty) {
@@ -212,15 +216,6 @@ class _CustomerAccountDetailsScreenState
     }
   }
 
-  String _getInitials() {
-    final first = _firstNameController.text.trim();
-    final last = _lastNameController.text.trim();
-    if (first.isEmpty && last.isEmpty) return 'U';
-    final f = first.isNotEmpty ? first[0].toUpperCase() : '';
-    final l = last.isNotEmpty ? last[0].toUpperCase() : '';
-    return '$f$l';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -240,7 +235,7 @@ class _CustomerAccountDetailsScreenState
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded,
               color: AppTheme.textDark, size: 20),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, _hasChanges),
         ),
       ),
       body: _isLoading
@@ -315,36 +310,17 @@ class _CustomerAccountDetailsScreenState
       ),
       child: Row(
         children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppTheme.primaryBlue,
-                  AppTheme.accentBlue,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.accentBlue.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              _getInitials(),
-              style: GoogleFonts.lexend(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 22,
-              ),
-            ),
+          EditableProfileAvatar(
+            avatarUrl: _avatarUrl,
+            name: fullName,
+            role: 'Customer',
+            radius: 30,
+            onAvatarChanged: (newUrl) {
+              setState(() {
+                _avatarUrl = newUrl;
+                _hasChanges = true;
+              });
+            },
           ),
           const SizedBox(width: 16),
           Expanded(
