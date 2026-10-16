@@ -10,6 +10,7 @@ import '../../../services/supabase_service.dart';
 import '../../../config/location_constants.dart';
 import '../../../state/gps_provider.dart';
 import '../../../widgets/cached_tile_provider.dart';
+import '../../../widgets/address_input_widget.dart';
 import 'rider_job_tracking_screen.dart';
 
 /// Details screen for a specific dispatch job
@@ -263,7 +264,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
 
     final isPickup = widget.job.jobType == 'pickup';
     final customerName = widget.job.customerName ?? 'Customer';
-    final address = widget.job.address ?? '';
+    final address = AddressInputWidget.formatDisplayAddress(widget.job.address);
 
     return Scaffold(
       backgroundColor: AppTheme.softGray,

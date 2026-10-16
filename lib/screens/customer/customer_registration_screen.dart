@@ -186,7 +186,11 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
             customBarangayController: _customBarangayController,
           );
           // Prepend Blk/Lot placeholder if not already there
-          if (!_houseStreetController.text.startsWith('Blk')) {
+          if (_houseStreetController.text.trim().isEmpty) {
+            _houseStreetController.text = 'Blk _ Lot _';
+            _houseStreetController.selection =
+                const TextSelection(baseOffset: 4, extentOffset: 5);
+          } else if (!_houseStreetController.text.startsWith('Blk')) {
             _houseStreetController.text =
                 'Blk _ Lot _, ${_houseStreetController.text}';
             _houseStreetController.selection =

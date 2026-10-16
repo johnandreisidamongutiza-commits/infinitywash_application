@@ -15,6 +15,7 @@ import '../../../widgets/map_loading_overlay.dart';
 import '../../../widgets/cached_tile_provider.dart';
 import '../jobs/rider_job_details_screen.dart';
 import '../payments/rider_payment_process_screen.dart';
+import '../../../widgets/address_input_widget.dart';
 
 /// Active Route Tracking Screen
 /// Shows rider's live location centered on map with rotating arrow pointing to next destination
@@ -460,7 +461,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
             if (job.address != null) ...[
               const SizedBox(height: 4),
               Text(
-                job.address!,
+                AddressInputWidget.formatDisplayAddress(job.address),
                 style: const TextStyle(fontSize: 13, color: AppTheme.textLight),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -668,7 +669,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                               ),
                               if (job.address != null)
                                 Text(
-                                  job.address!,
+                                  AddressInputWidget.formatDisplayAddress(job.address),
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: AppTheme.textLight,
@@ -1396,7 +1397,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          nextJob.address ?? 'No address recorded',
+                          AddressInputWidget.formatDisplayAddress(nextJob.address),
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.grey.shade800,

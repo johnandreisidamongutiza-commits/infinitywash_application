@@ -13,6 +13,7 @@ import '../../../widgets/map_loading_overlay.dart';
 import '../../../widgets/cached_tile_provider.dart';
 import '../jobs/rider_job_details_screen.dart';
 import 'rider_active_route_screen.dart';
+import '../../../widgets/address_input_widget.dart';
 
 /// Route Overview Screen - Shows rider's route with all stops
 /// Displays real map with route lines from Supabase data
@@ -870,7 +871,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        job.address ?? 'No address provided',
+                        AddressInputWidget.formatDisplayAddress(job.address),
                         style: const TextStyle(
                           fontSize: 12,
                           color: AppTheme.textLight,
@@ -1198,7 +1199,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
             if (job.address != null) ...[
               const SizedBox(height: 4),
               Text(
-                job.address!,
+                AddressInputWidget.formatDisplayAddress(job.address),
                 style: const TextStyle(fontSize: 13, color: AppTheme.textLight),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,

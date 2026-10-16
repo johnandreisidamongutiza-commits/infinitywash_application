@@ -147,7 +147,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
         if (_houseStreetController.text.trim().isEmpty && result.address != null) {
           _parseAndSetCustomerAddress(result.address!);
-          if (!_houseStreetController.text.startsWith('Blk')) {
+          if (_houseStreetController.text.trim().isEmpty) {
+            _houseStreetController.text = 'Blk _ Lot _';
+            _houseStreetController.selection = const TextSelection(baseOffset: 4, extentOffset: 5);
+          } else if (!_houseStreetController.text.startsWith('Blk')) {
             _houseStreetController.text = 'Blk _ Lot _, ${_houseStreetController.text}';
             _houseStreetController.selection = const TextSelection(baseOffset: 4, extentOffset: 5);
           }
