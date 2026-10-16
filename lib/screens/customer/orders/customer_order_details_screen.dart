@@ -770,17 +770,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     );
   }
 
-  Color _getStatusColor(LaundryOrder order) {
-    switch (order.status) {
-      case OrderStatus.completed:
-        return Colors.green;
-      case OrderStatus.rejected:
-      case OrderStatus.cancelled:
-        return Colors.red;
-      default:
-        return AppTheme.accentBlue;
-    }
-  }
+  Color _getStatusColor(LaundryOrder order) => AppTheme.statusColor(order.status);
 
   IconData _getStatusIcon(LaundryOrder order) {
     switch (order.status) {

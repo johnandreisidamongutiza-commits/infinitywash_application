@@ -584,26 +584,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
     return '${date.month}/${date.day}/${date.year}';
   }
 
-  Color _statusColor(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.pending_approval:
-        return Colors.orange;
-      case OrderStatus.pending_pickup:
-        return Colors.orange;
-      case OrderStatus.processing:
-        return AppTheme.accentBlue;
-      case OrderStatus.ready:
-        return const Color(0xFF43A047);
-      case OrderStatus.out_for_delivery:
-        return const Color(0xFF7B1FA2);
-      case OrderStatus.completed:
-        return const Color(0xFF43A047);
-      case OrderStatus.rejected:
-        return AppTheme.errorRed;
-      case OrderStatus.cancelled:
-        return AppTheme.textLight;
-    }
-  }
+  Color _statusColor(OrderStatus status) => AppTheme.statusColor(status);
 
   String _statusLabel(OrderStatus status) {
     switch (status) {

@@ -501,29 +501,12 @@ class OrdersScreenState extends State<OrdersScreen>
     return '${date.month}/${date.day}/${date.year}';
   }
 
-  Color _statusColor(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.pending_approval:
-        return Colors.orange;
-      case OrderStatus.pending_pickup:
-        return Colors.orange;
-      case OrderStatus.processing:
-        return AppTheme.accentBlue;
-      case OrderStatus.ready:
-        return const Color(0xFF43A047); // green
-      case OrderStatus.out_for_delivery:
-        return const Color(0xFF7B1FA2); // purple
-      case OrderStatus.completed:
-        return const Color(0xFF78909C); // blue-grey
-      case OrderStatus.rejected:
-        return AppTheme.errorRed;
-      case OrderStatus.cancelled:
-        return AppTheme.textLight;
-    }
-  }
+  Color _statusColor(OrderStatus status) => AppTheme.statusColor(status);
 
   String _statusLabel(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_approval:
+        return 'Pending Approval';
       case OrderStatus.pending_pickup:
         return 'Waiting for Pickup';
       case OrderStatus.processing:
@@ -534,25 +517,31 @@ class OrdersScreenState extends State<OrdersScreen>
         return 'Out for Delivery';
       case OrderStatus.completed:
         return 'Completed';
-      default:
-        return status.toString().split('.').last;
+      case OrderStatus.rejected:
+        return 'Rejected';
+      case OrderStatus.cancelled:
+        return 'Cancelled';
     }
   }
 
   IconData _statusIcon(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_approval:
+        return Icons.hourglass_top_rounded;
       case OrderStatus.pending_pickup:
         return Icons.local_shipping_outlined;
       case OrderStatus.processing:
         return Icons.local_laundry_service_outlined;
       case OrderStatus.ready:
-        return Icons.check_circle_outline;
+        return Icons.check_circle_outline_rounded;
       case OrderStatus.out_for_delivery:
-        return Icons.delivery_dining;
+        return Icons.delivery_dining_rounded;
       case OrderStatus.completed:
-        return Icons.task_alt;
-      default:
-        return Icons.circle_outlined;
+        return Icons.task_alt_rounded;
+      case OrderStatus.rejected:
+        return Icons.cancel_outlined;
+      case OrderStatus.cancelled:
+        return Icons.remove_circle_outline_rounded;
     }
   }
 
@@ -1191,7 +1180,7 @@ class OrdersScreenState extends State<OrdersScreen>
             final isSelected = _selectedActiveStatus == status;
             final label = status == null ? 'All' : _statusLabel(status);
             final icon = status == null ? Icons.all_inbox_rounded : _statusIcon(status);
-            final color = status == null ? AppTheme.accentBlue : _statusColor(status);
+            final color = status == null ? AppTheme.primaryBlue : _statusColor(status);
 
             final countKey = status == null ? 'all' : status.name;
             final count = _activeStatusCounts[countKey];
@@ -1371,7 +1360,7 @@ class OrdersScreenState extends State<OrdersScreen>
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.orange.withValues(alpha: 0.25),
+          color: AppTheme.statusPendingBorder.withValues(alpha: 0.6),
           width: 1,
         ),
         boxShadow: [
@@ -1401,15 +1390,10 @@ class OrdersScreenState extends State<OrdersScreen>
             children: [
               // ── Top accent bar ──
               Container(
-                height: 4,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.orange.withValues(alpha: 0.8),
-                      Colors.amber.withValues(alpha: 0.6),
-                    ],
-                  ),
-                  borderRadius: const BorderRadius.vertical(
+                height: 3.5,
+                decoration: const BoxDecoration(
+                  color: AppTheme.statusPending,
+                  borderRadius: BorderRadius.vertical(
                     top: Radius.circular(16),
                   ),
                 ),
@@ -1438,18 +1422,20 @@ class OrdersScreenState extends State<OrdersScreen>
                         _buildChip(
                           label: request.collectionText.toUpperCase(),
                           color: isRiderPickup
-                              ? AppTheme.accentBlue
-                              : const Color(0xFF26A69A), // teal
+                              ? AppTheme.statusDelivery
+                              : AppTheme.primaryBlue,
+                          backgroundColor: isRiderPickup
+                              ? AppTheme.statusDeliveryBg
+                              : AppTheme.primaryBlue.withValues(alpha: 0.07),
+                          borderColor: isRiderPickup
+                              ? AppTheme.statusDeliveryBorder
+                              : AppTheme.primaryBlue.withValues(alpha: 0.15),
                           icon: isRiderPickup
                               ? Icons.delivery_dining
                               : Icons.storefront_outlined,
                         ),
-                        const SizedBox(width: 5),
-                        _buildChip(
-                          label: 'PENDING',
-                          color: Colors.orange,
-                          icon: Icons.schedule,
-                        ),
+                        const SizedBox(width: 6),
+                        _buildStatusBadge(OrderStatus.pending_approval),
                         const Spacer(),
                         Text(
                           _timeAgo(request.createdAt),
@@ -1470,7 +1456,7 @@ class OrdersScreenState extends State<OrdersScreen>
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Center(
@@ -1481,7 +1467,7 @@ class OrdersScreenState extends State<OrdersScreen>
                               style: GoogleFonts.lexend(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
-                                color: AppTheme.accentBlue,
+                                color: AppTheme.primaryBlue,
                               ),
                             ),
                           ),
@@ -1549,23 +1535,27 @@ class OrdersScreenState extends State<OrdersScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentBlue.withValues(alpha: 0.06),
+                          color: AppTheme.primaryBlue.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.12),
+                            width: 1,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.photo_library_outlined,
                               size: 14,
-                              color: AppTheme.accentBlue,
+                              color: AppTheme.primaryBlue,
                             ),
                             const SizedBox(width: 6),
                             Text(
                               '$photoCount photo${photoCount > 1 ? 's' : ''} attached',
                               style: GoogleFonts.lexend(
                                 fontSize: 11,
-                                color: AppTheme.accentBlue,
+                                color: AppTheme.primaryBlue,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -1591,7 +1581,7 @@ class OrdersScreenState extends State<OrdersScreen>
                           if (result == true) await _initRequests();
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.accentBlue,
+                          backgroundColor: AppTheme.primaryBlue,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 13),
                           elevation: 0,
@@ -1631,15 +1621,20 @@ class OrdersScreenState extends State<OrdersScreen>
   Widget _buildOrderCard(LaundryOrder order) {
     final isPendingPickup = order.status == OrderStatus.pending_pickup;
     final isOutForDelivery = order.status == OrderStatus.out_for_delivery;
-    final color = _statusColor(order.status);
+    final style = AppTheme.statusStyleFor(order.status);
+    final color = style.primary;
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.black.withValues(alpha: 0.04),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: 0.035),
             blurRadius: 12,
             offset: const Offset(0, 3),
           ),
@@ -1675,9 +1670,9 @@ class OrdersScreenState extends State<OrdersScreen>
           child: IntrinsicHeight(
             child: Row(
               children: [
-                // ── Left status accent ──
+                // ── Left status accent (refined 3.5px line) ──
                 Container(
-                  width: 5,
+                  width: 3.5,
                   decoration: BoxDecoration(
                     color: color,
                     borderRadius: const BorderRadius.horizontal(
@@ -1697,7 +1692,7 @@ class OrdersScreenState extends State<OrdersScreen>
                           children: [
                             Icon(
                               _statusIcon(order.status),
-                              size: 16,
+                              size: 15,
                               color: color,
                             ),
                             const SizedBox(width: 6),
@@ -1732,7 +1727,9 @@ class OrdersScreenState extends State<OrdersScreen>
                           _buildActionBanner(
                             icon: Icons.local_shipping_outlined,
                             text: 'Tap to complete pickup manually',
-                            color: Colors.orange,
+                            color: AppTheme.statusPending,
+                            backgroundColor: AppTheme.statusPendingBg,
+                            borderColor: AppTheme.statusPendingBorder,
                           ),
                         ],
                         if (isOutForDelivery) ...[
@@ -1740,7 +1737,9 @@ class OrdersScreenState extends State<OrdersScreen>
                           _buildActionBanner(
                             icon: Icons.delivery_dining,
                             text: 'Tap to complete delivery manually',
-                            color: const Color(0xFF7B1FA2),
+                            color: AppTheme.statusDelivery,
+                            backgroundColor: AppTheme.statusDeliveryBg,
+                            borderColor: AppTheme.statusDeliveryBorder,
                           ),
                         ],
 
@@ -1750,11 +1749,11 @@ class OrdersScreenState extends State<OrdersScreen>
                         Row(
                           children: [
                             Container(
-                              width: 32,
-                              height: 32,
+                              width: 34,
+                              height: 34,
                               decoration: BoxDecoration(
-                                color: color.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
+                                color: AppTheme.primaryBlue.withValues(alpha: 0.07),
+                                borderRadius: BorderRadius.circular(9),
                               ),
                               child: Center(
                                 child: Text(
@@ -1764,7 +1763,7 @@ class OrdersScreenState extends State<OrdersScreen>
                                   style: GoogleFonts.lexend(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
-                                    color: color,
+                                    color: AppTheme.primaryBlue,
                                   ),
                                 ),
                               ),
@@ -1790,7 +1789,7 @@ class OrdersScreenState extends State<OrdersScreen>
                                     style: GoogleFonts.lexend(
                                       fontSize: 12,
                                       color: order.needsCheckIn
-                                          ? Colors.orange
+                                          ? AppTheme.statusPending
                                           : AppTheme.textLight,
                                       fontWeight: order.needsCheckIn
                                           ? FontWeight.w600
@@ -1817,14 +1816,14 @@ class OrdersScreenState extends State<OrdersScreen>
                               Icon(
                                 Icons.nfc_rounded,
                                 size: 14,
-                                color: AppTheme.accentBlue,
+                                color: AppTheme.primaryBlue.withValues(alpha: 0.7),
                               ),
                               const SizedBox(width: 6),
                               Text(
                                 'RFID: ${order.rfidTag}',
                                 style: GoogleFonts.lexend(
                                   fontSize: 11,
-                                  color: AppTheme.accentBlue,
+                                  color: AppTheme.primaryBlue.withValues(alpha: 0.7),
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -1848,22 +1847,41 @@ class OrdersScreenState extends State<OrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildStatusBadge(OrderStatus status) {
-    final color = _statusColor(status);
+    final style = AppTheme.statusStyleFor(status);
     final label = _statusLabel(status);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: style.background,
         borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label.toUpperCase(),
-        style: GoogleFonts.lexend(
-          color: color,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
+        border: Border.all(
+          color: style.border,
+          width: 1,
         ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: style.primary,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label.toUpperCase(),
+            style: GoogleFonts.lexend(
+              color: style.primary,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1871,27 +1889,34 @@ class OrdersScreenState extends State<OrdersScreen>
   Widget _buildChip({
     required String label,
     required Color color,
+    Color? backgroundColor,
+    Color? borderColor,
     IconData? icon,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
+        color: backgroundColor ?? color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: borderColor ?? color.withValues(alpha: 0.2),
+          width: 1,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 10, color: color),
-            const SizedBox(width: 3),
+            Icon(icon, size: 11, color: color),
+            const SizedBox(width: 4),
           ],
           Text(
             label,
             style: GoogleFonts.lexend(
-              fontSize: 9,
+              fontSize: 9.5,
               fontWeight: FontWeight.w700,
               color: color,
+              letterSpacing: 0.2,
             ),
           ),
         ],
@@ -1903,30 +1928,37 @@ class OrdersScreenState extends State<OrdersScreen>
     required IconData icon,
     required String text,
     required Color color,
+    Color? backgroundColor,
+    Color? borderColor,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: backgroundColor ?? color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: color.withValues(alpha: 0.2),
+          color: borderColor ?? color.withValues(alpha: 0.22),
           width: 1,
         ),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: color),
+          Icon(icon, size: 15, color: color),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               text,
               style: GoogleFonts.lexend(
-                fontSize: 11,
+                fontSize: 11.5,
                 color: color,
                 fontWeight: FontWeight.w600,
               ),
             ),
+          ),
+          Icon(
+            Icons.arrow_forward_ios_rounded,
+            size: 11,
+            color: color.withValues(alpha: 0.6),
           ),
         ],
       ),
