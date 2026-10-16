@@ -555,7 +555,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
         ),
 
         // Bottom Action Bar
-        if (_allJobs.isNotEmpty && _filter != 'completed')
+        if (_filteredJobs.isNotEmpty && _filter != 'completed')
           _buildBottomActionBar(),
       ],
     );
@@ -910,7 +910,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                   ),
                 ],
 
-                // Footer row: Completed time OR Details arrow
+                // Footer row: Completed time OR Details arrow & Start Route button
                 const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -930,7 +930,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                           ),
                         ],
                       )
-                    else
+                    else ...[
                       Text(
                         'Tap to view order details',
                         style: TextStyle(
@@ -938,7 +938,8 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                           fontSize: 11,
                         ),
                       ),
-                    const Icon(Icons.chevron_right, size: 18, color: AppTheme.textLight),
+                      const Icon(Icons.chevron_right, size: 18, color: AppTheme.textLight),
+                    ],
                   ],
                 ),
               ],
@@ -950,6 +951,23 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
   }
 
   Widget _buildBottomActionBar() {
+    final targetJobs = _filteredJobs;
+    if (targetJobs.isEmpty) return const SizedBox.shrink();
+
+    String labelText;
+    switch (_filter) {
+      case 'pickup':
+        labelText = 'Start Pickup Route (${targetJobs.length} ${targetJobs.length == 1 ? 'Stop' : 'Stops'})';
+        break;
+      case 'delivery':
+        labelText = 'Start Delivery Route (${targetJobs.length} ${targetJobs.length == 1 ? 'Stop' : 'Stops'})';
+        break;
+      case 'all':
+      default:
+        labelText = 'Start Route (${targetJobs.length} ${targetJobs.length == 1 ? 'Stop' : 'Stops'})';
+        break;
+    }
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
       decoration: BoxDecoration(
@@ -970,18 +988,18 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
           height: 48,
           child: ElevatedButton.icon(
             onPressed: () {
-              if (_allJobs.isNotEmpty) {
+              if (targetJobs.isNotEmpty) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => RiderActiveRouteScreen(jobs: _allJobs),
+                    builder: (context) => RiderActiveRouteScreen(jobs: targetJobs),
                   ),
                 ).then((_) => _loadJobs());
               }
             },
             icon: const Icon(Icons.navigation_outlined, size: 18),
             label: Text(
-              'Start Route (${_allJobs.length} ${_allJobs.length == 1 ? 'Stop' : 'Stops'})',
+              labelText,
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
             style: ElevatedButton.styleFrom(
@@ -1081,38 +1099,163 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
 
       markers.add(Marker(
         point: LatLng(job.latitude!, job.longitude!),
-        width: 34,
-        height: 34,
-        child: Container(
-          decoration: BoxDecoration(
-            color: markerColor,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: markerColor.withValues(alpha: 0.35),
-                blurRadius: 5,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Center(
-            child: isCompleted
-                ? const Icon(Icons.check, color: Colors.white, size: 16)
-                : Text(
-                    '${i + 1}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+        width: 36,
+        height: 36,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _showJobMarkerSheet(job, i + 1),
+          child: Container(
+            decoration: BoxDecoration(
+              color: markerColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: markerColor.withValues(alpha: 0.35),
+                  blurRadius: 5,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Center(
+              child: isCompleted
+                  ? const Icon(Icons.check, color: Colors.white, size: 16)
+                  : Text(
+                      '${i + 1}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
+            ),
           ),
         ),
       ));
     }
 
     return markers;
+  }
+
+  void _showJobMarkerSheet(DispatchJob job, int stopNumber) {
+    final isPickup = job.jobType == 'pickup';
+    final isCompleted = _filter == 'completed';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).padding.bottom + 16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isCompleted
+                        ? Colors.green.withValues(alpha: 0.1)
+                        : (isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    isCompleted
+                        ? 'COMPLETED'
+                        : 'STOP #$stopNumber • ${isPickup ? 'PICKUP' : 'DELIVERY'}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isCompleted
+                          ? Colors.green
+                          : (isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              job.customerName ?? 'Customer',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+            ),
+            if (job.address != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                job.address!,
+                style: const TextStyle(fontSize: 13, color: AppTheme.textLight),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => RiderJobDetailsScreen(job: job),
+                        ),
+                      ).then((_) => _loadJobs());
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('View Details'),
+                  ),
+                ),
+                if (!isCompleted) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => RiderActiveRouteScreen(jobs: [job]),
+                          ),
+                        ).then((_) => _loadJobs());
+                      },
+                      icon: const Icon(Icons.navigation_outlined, size: 16),
+                      label: const Text('Start Route', style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.accentBlue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   double _calculateTotalDistance() {

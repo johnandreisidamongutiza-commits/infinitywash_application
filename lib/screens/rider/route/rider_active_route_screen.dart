@@ -182,24 +182,19 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
       return;
     }
 
+    final activeJob = _remainingJobs.first;
+    if (activeJob.latitude == null || activeJob.longitude == null) {
+      setState(() => _routePoints = []);
+      return;
+    }
+
     setState(() => _isLoadingRoute = true);
 
     try {
-      final waypoints = <LatLng>[_currentLocation!];
-
-      for (final job in _remainingJobs) {
-        if (job.latitude != null && job.longitude != null) {
-          waypoints.add(LatLng(job.latitude!, job.longitude!));
-        }
-      }
-
-      if (waypoints.length < 2) {
-        setState(() {
-          _routePoints = [];
-          _isLoadingRoute = false;
-        });
-        return;
-      }
+      final waypoints = <LatLng>[
+        _currentLocation!,
+        LatLng(activeJob.latitude!, activeJob.longitude!),
+      ];
 
       final route = await _routingService.getRouteResult(waypoints);
 
@@ -349,6 +344,391 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
 
     // Recalculate road route to new stop order
     await _calculateRoute();
+  }
+
+  /// Immediately switch active navigation to focus on a specific stop in the queue
+  void _focusOnJob(DispatchJob job) async {
+    final index = _remainingJobs.indexOf(job);
+    if (index <= 0) return; // Already active destination or not found
+
+    setState(() {
+      _remainingJobs.removeAt(index);
+      _remainingJobs.insert(0, job);
+      _routePoints = [];
+      _isRouteFallback = false;
+      _isLoadingRoute = true;
+
+      // Update bearing arrow to point toward the new focused stop
+      if (_currentLocation != null &&
+          job.latitude != null &&
+          job.longitude != null) {
+        _currentBearing = _calculateBearing(
+          _currentLocation!,
+          LatLng(job.latitude!, job.longitude!),
+        );
+      }
+    });
+
+    // Animate camera to midpoint between rider and new destination
+    if (_currentLocation != null &&
+        job.latitude != null &&
+        job.longitude != null) {
+      final destLatLng = LatLng(job.latitude!, job.longitude!);
+      final midLat = (_currentLocation!.latitude + destLatLng.latitude) / 2;
+      final midLng = (_currentLocation!.longitude + destLatLng.longitude) / 2;
+      _mapController.move(LatLng(midLat, midLng), 15.5);
+    }
+
+    final meta = _jobMetadata[job.orderId];
+    final customerDisplayName = job.customerName ?? meta?['customer_name'] ?? 'Stop';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.navigation_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text('Now heading to $customerDisplayName.'),
+            ),
+          ],
+        ),
+        backgroundColor: AppTheme.accentBlue,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+
+    // Recalculate route for the new order
+    await _calculateRoute();
+  }
+
+  /// Show sheet when tapping a stop marker on the map to allow quick focus
+  void _showFocusPrompt(DispatchJob job, int stopNumber) {
+    final meta = _jobMetadata[job.orderId];
+    final customerName = job.customerName ?? meta?['customer_name'] ?? 'Customer';
+    final isPickup = job.jobType == 'pickup';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).padding.bottom + 16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: (isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'STOP #$stopNumber • ${isPickup ? 'PICKUP' : 'DELIVERY'}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              customerName,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+            ),
+            if (job.address != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                job.address!,
+                style: const TextStyle(fontSize: 13, color: AppTheme.textLight),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _focusOnJob(job);
+                    },
+                    icon: const Icon(Icons.navigation_outlined, size: 16),
+                    label: const Text('Focus This Stop', style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accentBlue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Show sheet displaying all remaining stops with ability to focus on any stop
+  void _showStopsQueueSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).padding.bottom + 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.format_list_bulleted_rounded, color: AppTheme.accentBlue, size: 20),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Route Stops Queue',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_remainingJobs.length} Remaining',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textLight,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Select any stop below to immediately focus navigation on it.',
+              style: TextStyle(fontSize: 13, color: AppTheme.textLight),
+            ),
+            const Divider(height: 24),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(ctx).size.height * 0.5,
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: _remainingJobs.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final job = _remainingJobs[index];
+                  final isCurrent = index == 0;
+                  final isPickup = job.jobType == 'pickup';
+                  final meta = _jobMetadata[job.orderId];
+                  final customerName = job.customerName ?? meta?['customer_name'] ?? 'Customer';
+                  final distance = (_currentLocation != null && job.latitude != null && job.longitude != null)
+                      ? _calculateDistance(_currentLocation!, LatLng(job.latitude!, job.longitude!))
+                      : null;
+                  final distanceText = distance == null
+                      ? null
+                      : (distance < 1000
+                          ? '${distance.toStringAsFixed(0)}m away'
+                          : '${(distance / 1000).toStringAsFixed(1)}km away');
+
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isCurrent ? AppTheme.accentBlue.withValues(alpha: 0.05) : Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isCurrent ? AppTheme.accentBlue : AppTheme.borderGray,
+                        width: isCurrent ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: isCurrent
+                                ? AppTheme.accentBlue
+                                : (isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${index + 1}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    isPickup ? 'PICKUP' : 'DELIVERY',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                  if (distanceText != null) ...[
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '• $distanceText',
+                                      style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                customerName,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.textDark,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (job.address != null)
+                                Text(
+                                  job.address!,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textLight,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (isCurrent)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'Navigating',
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                              ),
+                            ),
+                          )
+                        else
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.accentBlue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              elevation: 0,
+                            ),
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _focusOnJob(job);
+                            },
+                            icon: const Icon(Icons.near_me_rounded, size: 13),
+                            label: const Text(
+                              'Focus',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Complete Stop flow with proximity verification and payment check
@@ -876,6 +1256,12 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                     ],
                   ),
                 ),
+                if (_remainingJobs.length > 1)
+                  IconButton(
+                    icon: const Icon(Icons.format_list_bulleted_rounded, color: AppTheme.accentBlue),
+                    tooltip: 'All Stops & Focus',
+                    onPressed: _showStopsQueueSheet,
+                  ),
                 IconButton(
                   icon: _isLoadingRoute
                       ? const SizedBox(
@@ -1298,44 +1684,53 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     for (final job in _remainingJobs) {
       if (job.latitude != null && job.longitude != null) {
         final isCurrent = index == 0;
+        final stopNum = index + 1;
         markers.add(
           Marker(
             point: LatLng(job.latitude!, job.longitude!),
             width: 80,
             height: 80,
             alignment: Alignment.center,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: isCurrent
-                        ? AppTheme.errorRed
-                        : AppTheme.teamMemberIconOrange,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (!isCurrent) {
+                  _showFocusPrompt(job, stopNum);
+                }
+              },
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isCurrent
+                          ? AppTheme.errorRed
+                          : AppTheme.teamMemberIconOrange,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      '$stopNum',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
-                    ],
-                  ),
-                  child: Text(
-                    '${index + 1}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
                     ),
                   ),
-                ),
-                Icon(
-                  Icons.arrow_drop_down,
-                  color: isCurrent ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
-                  size: 24,
-                ),
-              ],
+                  Icon(
+                    Icons.arrow_drop_down,
+                    color: isCurrent ? AppTheme.errorRed : AppTheme.teamMemberIconOrange,
+                    size: 24,
+                  ),
+                ],
+              ),
             ),
           ),
         );
