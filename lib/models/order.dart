@@ -201,11 +201,11 @@ class LaundryOrder {
   
   bool get hasMultipleLoads => loads.length > 1;
 
-  /// App request that was accepted but laundry has not been weighed/tagged yet.
-  /// Also includes staff-created rider pickup orders that need check-in.
+  /// App request that was accepted and arrived at shop, but laundry has not been weighed/tagged yet.
+  /// Also includes staff-created rider pickup orders that arrived at shop and need check-in.
   bool get needsCheckIn =>
       loads.isEmpty &&
-      (status == OrderStatus.processing || status == OrderStatus.pending_pickup) &&
+      status == OrderStatus.processing &&
       (channel == OrderChannel.online || collectionMethod == CollectionMethod.riderPickup);
   
   String get weightDisplay {

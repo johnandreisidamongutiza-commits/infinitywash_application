@@ -1538,14 +1538,18 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                                     order.totalWeight > 0
                                         ? '${order.loads.length} load${order.loads.length != 1 ? 's' : ''} • ${order.totalWeight.toStringAsFixed(1)} kg'
                                         : order.needsCheckIn
-                                            ? 'Needs check-in'
-                                            : '${order.loads.length} load${order.loads.length != 1 ? 's' : ''}',
+                                            ? 'Being checked in at branch'
+                                            : (order.status == OrderStatus.pending_pickup && order.loads.isEmpty)
+                                                ? 'Rider on the way'
+                                                : '${order.loads.length} load${order.loads.length != 1 ? 's' : ''}',
                                     style: GoogleFonts.lexend(
                                       fontSize: 12,
                                       color: order.needsCheckIn
-                                          ? Colors.orange
-                                          : AppTheme.textLight,
-                                      fontWeight: order.needsCheckIn
+                                          ? AppTheme.statusRequest
+                                          : (order.status == OrderStatus.pending_pickup && order.loads.isEmpty)
+                                              ? AppTheme.statusPending
+                                              : AppTheme.textLight,
+                                      fontWeight: (order.needsCheckIn || (order.status == OrderStatus.pending_pickup && order.loads.isEmpty))
                                           ? FontWeight.w600
                                           : FontWeight.normal,
                                     ),

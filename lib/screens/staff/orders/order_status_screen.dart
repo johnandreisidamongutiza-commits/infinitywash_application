@@ -656,18 +656,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     String title;
     String subtitle;
 
-    if (_currentOrder.needsCheckIn) {
+    if (_isPendingPickup) {
+      icon = Icons.two_wheeler;
+      color = AppTheme.statusPending;
+      bgColor = AppTheme.statusPendingBg;
+      title = 'Waiting for Rider Pickup';
+      subtitle = 'Rider has been dispatched to collect the laundry from customer.';
+    } else if (_currentOrder.needsCheckIn) {
       icon = Icons.scale_outlined;
       color = const Color(0xFF0284C7);
       bgColor = const Color(0xFFF0F9FF);
       title = 'Check-In & Weighing Required';
       subtitle = 'Laundry has arrived at the shop. Please weigh and assign RFID tags.';
-    } else if (_isPendingPickup) {
-      icon = Icons.two_wheeler;
-      color = Colors.orange.shade800;
-      bgColor = Colors.orange.shade50;
-      title = 'Waiting for Rider Pickup';
-      subtitle = 'Rider has been dispatched to collect the laundry from customer.';
     } else if (_currentStatus == OrderStatus.processing) {
       icon = Icons.local_laundry_service;
       color = AppTheme.accentBlue;
@@ -1028,7 +1028,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Widget _buildLaundrySpecsCard() {
-    final weightStr = _currentOrder.needsCheckIn ? 'Needs Check-in' : _currentOrder.weightDisplay;
+    final weightStr = _currentOrder.needsCheckIn
+        ? 'Needs Check-in'
+        : (_isPendingPickup && _currentOrder.loads.isEmpty)
+            ? 'Waiting for Pickup'
+            : _currentOrder.weightDisplay;
     final loadsCount = _currentOrder.totalLoads;
     final rfid = _currentOrder.rfidTag;
 
@@ -1247,7 +1251,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Widget _buildStickyBottomBar() {
     Widget actionButton;
 
-    if (_currentOrder.needsCheckIn) {
+    if (_isPendingPickup) {
+      actionButton = ElevatedButton.icon(
+        onPressed: _isUpdating ? null : _forceCompletePickup,
+        icon: _isUpdating
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : const Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+        label: Text(
+          _isUpdating ? 'Completing...' : 'Complete Pickup Manually (Staff Override)',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: Colors.white),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.statusPending,
+          disabledBackgroundColor: Colors.grey,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+      );
+    } else if (_currentOrder.needsCheckIn) {
       actionButton = ElevatedButton.icon(
         onPressed: () async {
           final done = await Navigator.push<bool>(
@@ -1312,20 +1337,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           disabledBackgroundColor: Colors.grey,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(vertical: 14),
-        ),
-      );
-    } else if (_isPendingPickup) {
-      actionButton = OutlinedButton.icon(
-        onPressed: _isUpdating ? null : _forceCompletePickup,
-        icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-        label: Text(
-          _isUpdating ? 'Completing...' : 'Force Complete Pickup (Staff Override)',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Colors.orange),
-        ),
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: Colors.orange, width: 1.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          padding: const EdgeInsets.symmetric(vertical: 13),
         ),
       );
     } else if (_isOutForDelivery) {
