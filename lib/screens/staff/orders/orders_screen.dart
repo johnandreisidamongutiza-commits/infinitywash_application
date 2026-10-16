@@ -1624,8 +1624,6 @@ class OrdersScreenState extends State<OrdersScreen>
   // ORDER CARD — for active & history orders
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildOrderCard(LaundryOrder order) {
-    final isPendingPickup = order.status == OrderStatus.pending_pickup;
-    final isOutForDelivery = order.status == OrderStatus.out_for_delivery;
     final style = AppTheme.statusStyleFor(order.status);
     final color = style.primary;
 
@@ -1725,28 +1723,6 @@ class OrdersScreenState extends State<OrdersScreen>
                             ),
                           ],
                         ),
-
-                        // ── Action banner (pending pickup / out for delivery) ──
-                        if (isPendingPickup) ...[
-                          const SizedBox(height: 10),
-                          _buildActionBanner(
-                            icon: Icons.local_shipping_outlined,
-                            text: 'Tap to complete pickup manually',
-                            color: AppTheme.statusPending,
-                            backgroundColor: AppTheme.statusPendingBg,
-                            borderColor: AppTheme.statusPendingBorder,
-                          ),
-                        ],
-                        if (isOutForDelivery) ...[
-                          const SizedBox(height: 10),
-                          _buildActionBanner(
-                            icon: Icons.delivery_dining,
-                            text: 'Tap to complete delivery manually',
-                            color: AppTheme.statusDelivery,
-                            backgroundColor: AppTheme.statusDeliveryBg,
-                            borderColor: AppTheme.statusDeliveryBorder,
-                          ),
-                        ],
 
                         const SizedBox(height: 12),
 
@@ -1927,47 +1903,6 @@ class OrdersScreenState extends State<OrdersScreen>
               color: color,
               letterSpacing: 0.2,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionBanner({
-    required IconData icon,
-    required String text,
-    required Color color,
-    Color? backgroundColor,
-    Color? borderColor,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: backgroundColor ?? color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: borderColor ?? color.withValues(alpha: 0.22),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: GoogleFonts.lexend(
-                fontSize: 11.5,
-                color: color,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Icon(
-            Icons.arrow_forward_ios_rounded,
-            size: 11,
-            color: color.withValues(alpha: 0.6),
           ),
         ],
       ),
