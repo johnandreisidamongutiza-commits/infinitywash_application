@@ -689,6 +689,7 @@ class OrderService {
     bool requireLoads = false,
     int limit = 50,
     int offset = 0,
+    String? search,
   }) async {
     try {
       print('📊 fetchOrders called: statuses=$statuses, paymentStatus=$paymentStatus, '
@@ -766,6 +767,16 @@ class OrderService {
         query = query
             .eq('pickup_requested', false)
             .eq('delivery_requested', false);
+      }
+
+      // Apply server-side search: match order_number, or customer name/phone
+      // via the joined customers table.
+      if (search != null && search.trim().isNotEmpty) {
+        final s = search.trim();
+        // PostgREST OR across columns; customers.* filters against the join.
+        query = query.or(
+          'order_number.ilike.%$s%,customers.first_name.ilike.%$s%,customers.last_name.ilike.%$s%,customers.phone.ilike.%$s%',
+        );
       }
 
       // Apply ordering and range (for pagination), then execute.
@@ -854,12 +865,22 @@ class OrderService {
   /// without it this would download every id it is supposed to be counting.
   /// With it, PostgREST answers with an empty body and reports the exact total
   /// in `Content-Range` (e.g. `range */23`), which is all we need.
-  Future<int> fetchOrderCount({List<String>? statuses}) async {
+  Future<int> fetchOrderCount({
+    List<String>? statuses,
+    String? search,
+  }) async {
     try {
-      var query = _client.from('orders').select('id');
+      var query = _client.from('orders').select('id, customers(first_name, last_name, phone)');
 
       if (statuses != null && statuses.isNotEmpty) {
         query = query.inFilter('status', statuses);
+      }
+
+      if (search != null && search.trim().isNotEmpty) {
+        final s = search.trim();
+        query = query.or(
+          'order_number.ilike.%$s%,customers.first_name.ilike.%$s%,customers.last_name.ilike.%$s%,customers.phone.ilike.%$s%',
+        );
       }
 
       final response = await query.limit(0).count(CountOption.exact);

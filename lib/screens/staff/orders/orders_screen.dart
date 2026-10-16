@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
@@ -14,7 +15,7 @@ import '../../../services/order_service.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 const int _kRequestsPageSize = 8;
 const int _kActivePageSize = 8;
-const int _kHistoryPageSize = 8;
+const int _kHistoryPageSize = 10;
 
 class OrdersScreen extends StatefulWidget {
   final int initialTab;
@@ -50,90 +51,39 @@ class OrdersScreenState extends State<OrdersScreen>
   OrderStatus? _selectedActiveStatus;
   Map<String, int> _activeStatusCounts = {};
 
-  // ── History tab ─────────────────────────────────────────────────────────
+  // ── History tab — explicit page pagination ──────────────────────────────
   final List<LaundryOrder> _history = [];
   bool _historyLoading = false;
-  bool _historyLoadingMore = false;
-  bool _historyHasMore = true;
-  int _historyOffset = 0;
   bool _historyInitialized = false;
   final ScrollController _historyScroll = ScrollController();
+  int _historyPage = 1;          // 1-indexed current page
+  int _historyTotalCount = 0;    // total rows from DB
+  int get _historyTotalPages =>
+      _historyTotalCount == 0 ? 1 : (_historyTotalCount / _kHistoryPageSize).ceil();
 
   // ── Rejected count (badge only, not paginated) ──────────────────────────
   int _rejectedCount = 0;
 
-  // ── Search state ────────────────────────────────────────────────────────
+  // ── Search state — debounced, server-side ────────────────────────────────
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  Timer? _searchDebounce;
 
-  bool _matchesSearch(LaundryOrder order) {
-    if (_searchQuery.trim().isEmpty) return true;
-    final q = _searchQuery.trim().toLowerCase();
-
-    // 1. Customer Name & Phone
-    if (order.customerName.toLowerCase().contains(q)) return true;
-    if (order.customerPhone != null &&
-        order.customerPhone!.toLowerCase().contains(q)) {
-      return true;
-    }
-
-    // 2. Order & Request IDs
-    if (order.displayNumber.toLowerCase().contains(q)) return true;
-    if (order.orderNumber != null &&
-        order.orderNumber!.toLowerCase().contains(q)) {
-      return true;
-    }
-    if (order.id.toLowerCase().contains(q)) return true;
-
-    // 3. RFID Card Tag
-    if (order.rfidTag != null && order.rfidTag!.toLowerCase().contains(q)) {
-      return true;
-    }
-
-    // 4. Service / Category names & load descriptions
-    for (final load in order.loads) {
-      if (load.category.toLowerCase().contains(q)) return true;
-      if (load.description.toLowerCase().contains(q)) return true;
-      if (load.notes != null && load.notes!.toLowerCase().contains(q)) return true;
-    }
-
-    // 5. Status label
-    if (_statusLabel(order.status).toLowerCase().contains(q)) return true;
-
-    // 6. Customer description, notes, instructions, delivery info
-    if (order.customerDescription != null &&
-        order.customerDescription!.toLowerCase().contains(q)) {
-      return true;
-    }
-    if (order.instructions != null &&
-        order.instructions!.toLowerCase().contains(q)) {
-      return true;
-    }
-    if (order.deliveryAddress != null &&
-        order.deliveryAddress!.toLowerCase().contains(q)) {
-      return true;
-    }
-    if (order.deliveryLandmark != null &&
-        order.deliveryLandmark!.toLowerCase().contains(q)) {
-      return true;
-    }
-
-    return false;
-  }
-
-  List<LaundryOrder> get _filteredRequests =>
-      _searchQuery.trim().isEmpty ? _requests : _requests.where(_matchesSearch).toList();
+  // Server-side search: results are already filtered by the DB so no
+  // additional in-memory filtering is needed.
+  List<LaundryOrder> get _filteredRequests => _requests;
 
   List<LaundryOrder> get _filteredActive {
-    var list = _active;
+    // Status filter is handled server-side in _fetchActive; filter only needed
+    // locally when the user has chosen a sub-status and we already fetched all.
     if (_selectedActiveStatus != null) {
-      list = list.where((o) => o.status == _selectedActiveStatus).toList();
+      return _active.where((o) => o.status == _selectedActiveStatus).toList();
     }
-    return _searchQuery.trim().isEmpty ? list : list.where(_matchesSearch).toList();
+    return _active;
   }
 
-  List<LaundryOrder> get _filteredHistory =>
-      _searchQuery.trim().isEmpty ? _history : _history.where(_matchesSearch).toList();
+  // History is paginated server-side — no local filtering needed.
+  List<LaundryOrder> get _filteredHistory => _history;
 
   @override
   void initState() {
@@ -145,10 +95,9 @@ class OrdersScreenState extends State<OrdersScreen>
       initialIndex: widget.initialTab,
     );
 
-    // Attach scroll listeners
+    // Attach scroll listeners (Requests & Active only — History uses page buttons)
     _requestsScroll.addListener(() => _onScroll(_requestsScroll, _loadMoreRequests));
     _activeScroll.addListener(() => _onScroll(_activeScroll, _loadMoreActive));
-    _historyScroll.addListener(() => _onScroll(_historyScroll, _loadMoreHistory));
 
     // Tab-change listener: lazy-load a tab on first visit
     _tabController.addListener(_onTabChanged);
@@ -174,6 +123,7 @@ class OrdersScreenState extends State<OrdersScreen>
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
@@ -280,6 +230,7 @@ class OrdersScreenState extends State<OrdersScreen>
         statuses: ['pending_approval'],
         limit: _kRequestsPageSize,
         offset: _requestsOffset,
+        search: _searchQuery.trim().isEmpty ? null : _searchQuery.trim(),
       );
       if (!mounted) return;
       setState(() {
@@ -334,6 +285,7 @@ class OrdersScreenState extends State<OrdersScreen>
         statuses: statusesToFetch,
         limit: _kActivePageSize,
         offset: _activeOffset,
+        search: _searchQuery.trim().isEmpty ? null : _searchQuery.trim(),
       );
       print('🔵 ACTIVE TAB: Received ${page.length} orders');
       if (page.isNotEmpty) {
@@ -366,48 +318,64 @@ class OrdersScreenState extends State<OrdersScreen>
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // HISTORY TAB
+  // HISTORY TAB — explicit page-based pagination
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _initHistory() async {
     if (_historyLoading) return;
     setState(() {
       _historyLoading = true;
       _historyInitialized = true;
-      _history.clear();
-      _historyOffset = 0;
-      _historyHasMore = true;
+      _historyPage = 1;
+      _historyTotalCount = 0;
     });
-    await _fetchHistory(reset: true);
+    await _fetchHistory();
   }
 
-  Future<void> _loadMoreHistory() async {
-    if (_historyLoadingMore || !_historyHasMore) return;
-    setState(() => _historyLoadingMore = true);
-    await _fetchHistory(reset: false);
+  /// Navigate to a specific page in History (1-indexed).
+  Future<void> _goToHistoryPage(int page) async {
+    if (page < 1 || page > _historyTotalPages) return;
+    setState(() {
+      _historyPage = page;
+      _historyLoading = true;
+    });
+    // Scroll to top so the user sees the new page from the beginning.
+    if (_historyScroll.hasClients) _historyScroll.jumpTo(0);
+    await _fetchHistory();
   }
 
-  Future<void> _fetchHistory({required bool reset}) async {
+  Future<void> _fetchHistory() async {
     try {
-      final page = await _orderService.fetchOrders(
-        statuses: ['completed'],
-        limit: _kHistoryPageSize,
-        offset: _historyOffset,
-      );
+      final searchTerm = _searchQuery.trim().isEmpty ? null : _searchQuery.trim();
+      final offset = (_historyPage - 1) * _kHistoryPageSize;
+
+      // Fetch the page rows + total count in parallel.
+      final results = await Future.wait([
+        _orderService.fetchOrders(
+          statuses: ['completed'],
+          limit: _kHistoryPageSize,
+          offset: offset,
+          search: searchTerm,
+        ),
+        _orderService.fetchOrderCount(
+          statuses: ['completed'],
+          search: searchTerm,
+        ),
+      ]);
+
       if (!mounted) return;
+      final pageData = results[0] as List<LaundryOrder>;
+      final total = results[1] as int;
+
       setState(() {
-        if (reset) _history.clear();
-        _history.addAll(page);
-        _historyHasMore = page.length == _kHistoryPageSize;
-        _historyOffset += page.length;
+        _history
+          ..clear()
+          ..addAll(pageData);
+        _historyTotalCount = total;
         _historyLoading = false;
-        _historyLoadingMore = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _historyLoading = false;
-        _historyLoadingMore = false;
-      });
+      setState(() => _historyLoading = false);
       _showError(e);
     }
   }
@@ -499,6 +467,25 @@ class OrdersScreenState extends State<OrdersScreen>
         backgroundColor: Colors.red,
       ),
     );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Debounced server-side search — fires 400 ms after the user stops typing.
+  // Resets all tabs (and History back to page 1) with the new query.
+  // ───────────────────────────────────────────────────────────────────────────
+  void _onSearchChanged(String val) {
+    _searchDebounce?.cancel();
+    setState(() => _searchQuery = val); // update UI immediately (clear icon, etc.)
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      // Reset pagination state then re-fetch whichever tabs are initialized.
+      if (_requestsInitialized) _initRequests();
+      if (_activeInitialized) _initActive();
+      if (_historyInitialized) {
+        // History resets to page 1 on every new search.
+        setState(() => _historyPage = 1);
+        _fetchHistory();
+      }
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -728,40 +715,49 @@ class OrdersScreenState extends State<OrdersScreen>
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          print('🔵 FAB: Opening create order flow...');
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const CreateOrderFlow()),
+      floatingActionButton: AnimatedBuilder(
+        animation: _tabController,
+        builder: (context, _) {
+          final isHistoryTab =
+              (_tabController.animation?.value.round() ?? _tabController.index) == 2;
+          if (isHistoryTab) return const SizedBox.shrink();
+
+          return FloatingActionButton.extended(
+            onPressed: () async {
+              print('🔵 FAB: Opening create order flow...');
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CreateOrderFlow()),
+              );
+              print('🔵 FAB: Returned from create order flow. Result: $result');
+              if (result == true) {
+                print('🔵 FAB: Order created successfully! Switching to Active tab...');
+                // Switch to Active tab to show the newly created order
+                _tabController.animateTo(1);
+                print('🔵 FAB: Tab switched to index 1 (Active). Now refreshing...');
+                // Force refresh Active tab
+                await _refreshAllTabs();
+                print('🔵 FAB: Refresh complete!');
+              } else {
+                print('🔵 FAB: Order not created (result != true)');
+              }
+            },
+            backgroundColor: AppTheme.accentBlue,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(
+              'New Order',
+              style: GoogleFonts.lexend(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
           );
-          print('🔵 FAB: Returned from create order flow. Result: $result');
-          if (result == true) {
-            print('🔵 FAB: Order created successfully! Switching to Active tab...');
-            // Switch to Active tab to show the newly created order
-            _tabController.animateTo(1);
-            print('🔵 FAB: Tab switched to index 1 (Active). Now refreshing...');
-            // Force refresh Active tab
-            await _refreshAllTabs();
-            print('🔵 FAB: Refresh complete!');
-          } else {
-            print('🔵 FAB: Order not created (result != true)');
-          }
         },
-        backgroundColor: AppTheme.accentBlue,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: Text(
-          'New Order',
-          style: GoogleFonts.lexend(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
-        ),
-        elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
       ),
     );
   }
@@ -779,14 +775,6 @@ class OrdersScreenState extends State<OrdersScreen>
       );
     }
 
-    if (!_requestsLoading && _requests.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.mark_email_unread_outlined,
-        title: 'No pending requests',
-        subtitle: 'New online requests from customers will appear here.',
-      );
-    }
-
     if (_searchQuery.trim().isNotEmpty && _filteredRequests.isEmpty) {
       return _buildEmptyState(
         icon: Icons.search_off_rounded,
@@ -794,11 +782,17 @@ class OrdersScreenState extends State<OrdersScreen>
         subtitle: 'No requests matched "$_searchQuery".',
         actionLabel: 'Clear Search',
         onAction: () {
-          setState(() {
-            _searchController.clear();
-            _searchQuery = '';
-          });
+          _searchController.clear();
+          _onSearchChanged('');
         },
+      );
+    }
+
+    if (!_requestsLoading && _requests.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.mark_email_unread_outlined,
+        title: 'No pending requests',
+        subtitle: 'New online requests from customers will appear here.',
       );
     }
 
@@ -834,6 +828,22 @@ class OrdersScreenState extends State<OrdersScreen>
       );
     }
 
+    if (_searchQuery.trim().isNotEmpty && _filteredActive.isEmpty) {
+      final statusSuffix = _selectedActiveStatus != null
+          ? ' in ${_statusLabel(_selectedActiveStatus!)}'
+          : '';
+      return _buildEmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'No matching active orders',
+        subtitle: 'No active orders$statusSuffix matched "$_searchQuery".',
+        actionLabel: 'Clear Search',
+        onAction: () {
+          _searchController.clear();
+          _onSearchChanged('');
+        },
+      );
+    }
+
     if (!_activeLoading && _active.isEmpty) {
       if (_selectedActiveStatus != null) {
         final label = _statusLabel(_selectedActiveStatus!);
@@ -854,24 +864,6 @@ class OrdersScreenState extends State<OrdersScreen>
         icon: Icons.local_laundry_service_outlined,
         title: 'No active orders',
         subtitle: 'Create a new order to get started.',
-      );
-    }
-
-    if (_searchQuery.trim().isNotEmpty && _filteredActive.isEmpty) {
-      final statusSuffix = _selectedActiveStatus != null
-          ? ' in ${_statusLabel(_selectedActiveStatus!)}'
-          : '';
-      return _buildEmptyState(
-        icon: Icons.search_off_rounded,
-        title: 'No matching active orders',
-        subtitle: 'No active orders$statusSuffix matched "$_searchQuery".',
-        actionLabel: 'Clear Search',
-        onAction: () {
-          setState(() {
-            _searchController.clear();
-            _searchQuery = '';
-          });
-        },
       );
     }
 
@@ -906,6 +898,19 @@ class OrdersScreenState extends State<OrdersScreen>
       );
     }
 
+    if (_searchQuery.trim().isNotEmpty && _filteredHistory.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'No matching order history',
+        subtitle: 'No orders in history matched "$_searchQuery".',
+        actionLabel: 'Clear Search',
+        onAction: () {
+          _searchController.clear();
+          _onSearchChanged('');
+        },
+      );
+    }
+
     if (!_historyLoading && _history.isEmpty) {
       return _buildEmptyState(
         icon: Icons.history_rounded,
@@ -914,36 +919,165 @@ class OrdersScreenState extends State<OrdersScreen>
       );
     }
 
-    if (_searchQuery.trim().isNotEmpty && _filteredHistory.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.search_off_rounded,
-        title: 'No matching order history',
-        subtitle: 'No orders in history matched "$_searchQuery".',
-        actionLabel: 'Clear Search',
-        onAction: () {
-          setState(() {
-            _searchController.clear();
-            _searchQuery = '';
-          });
-        },
-      );
-    }
+    return Column(
+      children: [
+        if (_historyLoading)
+          LinearProgressIndicator(
+            color: AppTheme.accentBlue,
+            backgroundColor: AppTheme.accentBlue.withValues(alpha: 0.15),
+            minHeight: 2,
+          ),
+        Expanded(
+          child: ListView.separated(
+            controller: _historyScroll,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            itemCount: _filteredHistory.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              return _buildOrderCard(_filteredHistory[index]);
+            },
+          ),
+        ),
+        _buildHistoryPaginationBar(),
+      ],
+    );
+  }
 
-    final isSearching = _searchQuery.trim().isNotEmpty;
-    final displayList = _filteredHistory;
+  /// Bottom pagination control bar for the History tab.
+  Widget _buildHistoryPaginationBar() {
+    final totalPages = _historyTotalPages;
+    final currentPage = _historyPage;
+    final totalCount = _historyTotalCount;
 
-    return ListView.separated(
-      controller: _historyScroll,
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-      itemCount: isSearching ? displayList.length : displayList.length + 1,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        if (!isSearching && index == displayList.length) {
-          return _buildPaginationFooter(_historyLoadingMore, _historyHasMore);
-        }
-        return _buildOrderCard(displayList[index]);
-      },
+    final startItem =
+        totalCount == 0 ? 0 : (currentPage - 1) * _kHistoryPageSize + 1;
+    final endItem = (currentPage * _kHistoryPageSize > totalCount)
+        ? totalCount
+        : currentPage * _kHistoryPageSize;
+
+    final canGoPrev = currentPage > 1 && !_historyLoading;
+    final canGoNext = currentPage < totalPages && !_historyLoading;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            offset: const Offset(0, -2),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Previous button
+                OutlinedButton.icon(
+                  onPressed:
+                      canGoPrev ? () => _goToHistoryPage(currentPage - 1) : null,
+                  icon: const Icon(Icons.arrow_back_ios_rounded, size: 13),
+                  label: Text(
+                    'Prev',
+                    style: GoogleFonts.lexend(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.accentBlue,
+                    disabledForegroundColor:
+                        AppTheme.textLight.withValues(alpha: 0.35),
+                    side: BorderSide(
+                      color: canGoPrev
+                          ? AppTheme.accentBlue.withValues(alpha: 0.4)
+                          : AppTheme.textLight.withValues(alpha: 0.2),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    minimumSize: const Size(0, 36),
+                  ),
+                ),
+
+                // Page indicator
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Page $currentPage of $totalPages',
+                    style: GoogleFonts.lexend(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ),
+
+                // Next button
+                OutlinedButton(
+                  onPressed:
+                      canGoNext ? () => _goToHistoryPage(currentPage + 1) : null,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.accentBlue,
+                    disabledForegroundColor:
+                        AppTheme.textLight.withValues(alpha: 0.35),
+                    side: BorderSide(
+                      color: canGoNext
+                          ? AppTheme.accentBlue.withValues(alpha: 0.4)
+                          : AppTheme.textLight.withValues(alpha: 0.2),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    minimumSize: const Size(0, 36),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Next',
+                        style: GoogleFonts.lexend(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 13),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              totalCount == 0
+                  ? 'No completed orders'
+                  : 'Showing $startItem–$endItem of $totalCount completed orders',
+              style: GoogleFonts.lexend(
+                fontSize: 11,
+                color: AppTheme.textLight,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -993,11 +1127,7 @@ class OrdersScreenState extends State<OrdersScreen>
         ),
         child: TextField(
           controller: _searchController,
-          onChanged: (val) {
-            setState(() {
-              _searchQuery = val;
-            });
-          },
+          onChanged: _onSearchChanged,
           style: GoogleFonts.lexend(
             fontSize: 14,
             color: AppTheme.textDark,
@@ -1022,10 +1152,8 @@ class OrdersScreenState extends State<OrdersScreen>
                     ),
                     splashRadius: 18,
                     onPressed: () {
-                      setState(() {
-                        _searchController.clear();
-                        _searchQuery = '';
-                      });
+                      _searchController.clear();
+                      _onSearchChanged('');
                     },
                   )
                 : null,
