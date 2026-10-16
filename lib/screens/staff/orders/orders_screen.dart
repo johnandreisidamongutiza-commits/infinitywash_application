@@ -174,8 +174,8 @@ class OrdersScreenState extends State<OrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _loadRejectedCount() async {
     try {
-      // Count in the database instead of downloading up to 200 full orders
-      // (with their loads and customer details) only to read `.length`.
+      // Auto-reject any expired requests so the badge count is always accurate.
+      await _orderService.autoRejectExpiredRequests();
       final count = await _orderService.fetchOrderCount(statuses: ['rejected']);
       if (mounted) setState(() => _rejectedCount = count);
     } catch (_) {}
@@ -215,6 +215,11 @@ class OrdersScreenState extends State<OrdersScreen>
       _requestsOffset = 0;
       _requestsHasMore = true;
     });
+    // Auto-reject any requests that expired past the 24h window before fetching
+    final expiredCount = await _orderService.autoRejectExpiredRequests();
+    if (expiredCount > 0) {
+      _loadRejectedCount();
+    }
     await _fetchRequests(reset: true);
   }
 
@@ -506,7 +511,7 @@ class OrdersScreenState extends State<OrdersScreen>
   String _statusLabel(OrderStatus status) {
     switch (status) {
       case OrderStatus.pending_approval:
-        return 'Pending Approval';
+        return 'New Request';
       case OrderStatus.pending_pickup:
         return 'Waiting for Pickup';
       case OrderStatus.processing:
@@ -527,7 +532,7 @@ class OrdersScreenState extends State<OrdersScreen>
   IconData _statusIcon(OrderStatus status) {
     switch (status) {
       case OrderStatus.pending_approval:
-        return Icons.hourglass_top_rounded;
+        return Icons.mark_email_unread_outlined;
       case OrderStatus.pending_pickup:
         return Icons.local_shipping_outlined;
       case OrderStatus.processing:
@@ -1360,7 +1365,7 @@ class OrdersScreenState extends State<OrdersScreen>
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: AppTheme.statusPendingBorder.withValues(alpha: 0.6),
+          color: AppTheme.statusRequestBorder.withValues(alpha: 0.5),
           width: 1,
         ),
         boxShadow: [
@@ -1392,7 +1397,7 @@ class OrdersScreenState extends State<OrdersScreen>
               Container(
                 height: 3.5,
                 decoration: const BoxDecoration(
-                  color: AppTheme.statusPending,
+                  color: AppTheme.statusRequest,
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(16),
                   ),

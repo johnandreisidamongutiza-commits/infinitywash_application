@@ -28,7 +28,12 @@ class AppTheme {
   static const Color teamMemberIconOrange = Color(0xFFFF9800);
 
   // ── Semantic Status Colors (Calibrated HSL Palette) ─────────────────────
-  // Pending Approval & Pickup (Warm Honey Amber)
+  // Online Request / Pending Approval (Clean Ocean Cyan / Sky Blue)
+  static const Color statusRequest = Color(0xFF0284C7);
+  static const Color statusRequestBg = Color(0xFFE0F2FE);
+  static const Color statusRequestBorder = Color(0xFFBAE6FD);
+
+  // Pending Pickup / Waiting (Warm Honey Amber)
   static const Color statusPending = Color(0xFFD97706);
   static const Color statusPendingBg = Color(0xFFFEF3C7);
   static const Color statusPendingBorder = Color(0xFFFDE68A);
@@ -62,6 +67,11 @@ class AppTheme {
   static StatusStyle statusStyleFor(OrderStatus status) {
     switch (status) {
       case OrderStatus.pending_approval:
+        return const StatusStyle(
+          primary: statusRequest,
+          background: statusRequestBg,
+          border: statusRequestBorder,
+        );
       case OrderStatus.pending_pickup:
         return const StatusStyle(
           primary: statusPending,

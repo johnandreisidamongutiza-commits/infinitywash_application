@@ -743,6 +743,13 @@ class OrderService {
       // Apply status filter if provided
       if (statuses != null && statuses.isNotEmpty) {
         query = query.inFilter('status', statuses);
+
+        // When querying pending requests, exclude any requests whose 24h expiry
+        // has passed so they never show up in the Requests tab.
+        if (statuses.length == 1 && statuses.first == 'pending_approval') {
+          final nowIso = DateTime.now().toUtc().toIso8601String();
+          query = query.or('expires_at.is.null,expires_at.gt.$nowIso');
+        }
       }
 
       // Apply staff filter if provided
@@ -874,6 +881,12 @@ class OrderService {
 
       if (statuses != null && statuses.isNotEmpty) {
         query = query.inFilter('status', statuses);
+
+        // When counting pending requests, exclude expired ones so the badge is accurate.
+        if (statuses.length == 1 && statuses.first == 'pending_approval') {
+          final nowIso = DateTime.now().toUtc().toIso8601String();
+          query = query.or('expires_at.is.null,expires_at.gt.$nowIso');
+        }
       }
 
       if (search != null && search.trim().isNotEmpty) {
@@ -888,6 +901,35 @@ class OrderService {
     } catch (e) {
       print('❌ Error counting orders: $e');
       rethrow;
+    }
+  }
+
+  /// Auto-reject pending requests past their 24-hour expiry.
+  /// Transitions them to 'rejected' with a clear rejection reason so they move
+  /// from the Requests tab to the Rejected Requests archive.
+  Future<int> autoRejectExpiredRequests() async {
+    try {
+      final now = DateTime.now().toUtc().toIso8601String();
+      final response = await _client
+          .from('orders')
+          .update({
+            'status': 'rejected',
+            'rejection_reason': 'Request expired (no staff response within 24 hours)',
+            'reviewed_at': now,
+            'updated_at': now,
+          })
+          .eq('status', 'pending_approval')
+          .not('expires_at', 'is', null)
+          .lt('expires_at', now)
+          .select('id');
+      final updatedCount = (response as List).length;
+      if (updatedCount > 0) {
+        print('⚠️ Auto-rejected $updatedCount expired request(s)');
+      }
+      return updatedCount;
+    } catch (e) {
+      print('⚠️ Could not auto-reject expired requests: $e');
+      return 0;
     }
   }
 

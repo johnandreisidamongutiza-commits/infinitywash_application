@@ -66,6 +66,9 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
 
   Future<void> _fetchRejected({required bool reset}) async {
     try {
+      if (reset) {
+        await _orderService.autoRejectExpiredRequests();
+      }
       final page = await _orderService.fetchOrders(
         statuses: ['rejected'],
         limit: _kRejectedPageSize,
