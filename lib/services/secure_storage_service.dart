@@ -20,6 +20,33 @@ class SecureStorageService {
   static const String _refreshTokenPrefix = 'refresh_token_';
   static const String _tokenExpiryPrefix = 'token_expiry_';
   static const String _lastAutoLoginKey = 'last_auto_login';
+  static const String _permissionRationalePrefix = 'permission_rationale_';
+
+  /// Whether this account has already accepted a permission explanation.
+  Future<bool> hasAcceptedPermissionRationale({
+    required String userId,
+    required String permission,
+  }) async {
+    try {
+      return await _storage.read(
+            key: '$_permissionRationalePrefix${permission}_$userId',
+          ) ==
+          'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Stores acceptance separately for each account on this device.
+  Future<void> savePermissionRationaleAcceptance({
+    required String userId,
+    required String permission,
+  }) async {
+    await _storage.write(
+      key: '$_permissionRationalePrefix${permission}_$userId',
+      value: 'true',
+    );
+  }
 
   // Save authentication tokens for a user
   Future<void> saveAuthTokens({

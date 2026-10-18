@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
@@ -14,13 +15,37 @@ class RiderNotificationsScreen extends StatefulWidget {
 class _RiderNotificationsScreenState extends State<RiderNotificationsScreen> {
   final NotificationService _notificationService = NotificationService();
   List<NotificationModel> _notifications = [];
+  StreamSubscription<List<NotificationModel>>? _notificationsSubscription;
   bool _isLoading = true;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
+    _notificationsSubscription = _notificationService.getNotificationsStream().listen(
+      (notifications) {
+        if (!mounted) return;
+        setState(() {
+          _notifications = notifications;
+          _isLoading = false;
+          _errorMessage = null;
+        });
+      },
+      onError: (Object error) {
+        if (!mounted) return;
+        setState(() {
+          _errorMessage = mapErrorToMessage(error);
+          _isLoading = false;
+        });
+      },
+    );
     _loadNotifications();
+  }
+
+  @override
+  void dispose() {
+    _notificationsSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadNotifications() async {

@@ -9,7 +9,7 @@ class NotificationService {
   
   // Collection name in Firestore
   static const String _notificationsCollection = 'announcements'; // Changed to match your Firebase collection
-  static const String _notificationReadsCollection = 'notification_reads';
+  static const String _notificationReadsTable = 'announcement_reads';
 
   // Get current user's role (null on failure — callers return empty lists)
   Future<String?> _getCurrentUserRole() async {
@@ -162,12 +162,13 @@ class NotificationService {
   // Check if notification is read by user
   Future<bool> _isNotificationRead(String notificationId, String userId) async {
     try {
-      final doc = await _firestore
-          .collection(_notificationReadsCollection)
-          .doc('${userId}_$notificationId')
-          .get();
-      
-      return doc.exists;
+      final row = await SupabaseService.client
+          .from(_notificationReadsTable)
+          .select('announcement_id')
+          .eq('user_id', userId)
+          .eq('announcement_id', notificationId)
+          .maybeSingle();
+      return row != null;
     } catch (e) {
       print('Error checking read state: $e');
       return false;
@@ -180,22 +181,16 @@ class NotificationService {
     if (userId == null) return;
 
     try {
-      await _firestore
-          .collection(_notificationReadsCollection)
-          .doc('${userId}_$notificationId')
-          .set({
+      await SupabaseService.client.from(_notificationReadsTable).upsert({
         'user_id': userId,
-        'notification_id': notificationId,
-        'read_at': FieldValue.serverTimestamp(),
-      });
-    } on FirebaseException catch (e) {
-      print('Error marking notification as read: ${e.code}');
+        'announcement_id': notificationId,
+        'read_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'user_id,announcement_id');
+    } catch (e) {
+      print('Error marking notification as read: $e');
       throw Exception(
         'Could not mark that notification as read. Check your connection and try again.',
       );
-    } catch (e) {
-      print('Error marking notification as read: $e');
-      rethrow;
     }
   }
 
@@ -205,29 +200,20 @@ class NotificationService {
     if (userId == null) return;
 
     try {
-      final batch = _firestore.batch();
-
-      for (final notificationId in notificationIds) {
-        final docRef = _firestore
-            .collection(_notificationReadsCollection)
-            .doc('${userId}_$notificationId');
-        
-        batch.set(docRef, {
+      final now = DateTime.now().toUtc().toIso8601String();
+      await SupabaseService.client.from(_notificationReadsTable).upsert(
+        notificationIds.map((notificationId) => {
           'user_id': userId,
-          'notification_id': notificationId,
-          'read_at': FieldValue.serverTimestamp(),
-        });
-      }
-
-      await batch.commit();
-    } on FirebaseException catch (e) {
-      print('Error marking all notifications as read: ${e.code}');
-      throw Exception(
-        'Could not mark all notifications as read. Check your connection and try again.',
+          'announcement_id': notificationId,
+          'read_at': now,
+        }).toList(),
+        onConflict: 'user_id,announcement_id',
       );
     } catch (e) {
       print('Error marking all notifications as read: $e');
-      rethrow;
+      throw Exception(
+        'Could not mark all notifications as read. Check your connection and try again.',
+      );
     }
   }
 
@@ -238,18 +224,11 @@ class NotificationService {
 
     try {
       final cutoffDate = DateTime.now().subtract(Duration(days: daysOld));
-      final snapshot = await _firestore
-          .collection(_notificationReadsCollection)
-          .where('user_id', isEqualTo: userId)
-          .where('read_at', isLessThan: Timestamp.fromDate(cutoffDate))
-          .get();
-
-      final batch = _firestore.batch();
-      for (final doc in snapshot.docs) {
-        batch.delete(doc.reference);
-      }
-
-      await batch.commit();
+      await SupabaseService.client
+          .from(_notificationReadsTable)
+          .delete()
+          .eq('user_id', userId)
+          .lt('read_at', cutoffDate.toUtc().toIso8601String());
     } catch (e) {
       print('Error cleaning up old read states: $e');
     }

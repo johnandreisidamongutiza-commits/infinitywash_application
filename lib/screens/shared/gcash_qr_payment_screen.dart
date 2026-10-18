@@ -5,10 +5,13 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:gal/gal.dart';
 
 import '../../services/payment_service.dart';
+import '../../services/photo_file_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/permission_manager.dart';
+import '../../widgets/in_app_camera_screen.dart';
 
 /// Shared GCash payment flow for staff and customer screens.
 ///
@@ -64,6 +67,7 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
 
   File? _receiptFile;
   bool _isPickingImage = false;
+  bool _receiptReturnedToCaller = false;
   int _step = 1; // 1 = show QR, 2 = capture/upload receipt
 
   @override
@@ -75,6 +79,10 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
   @override
   void dispose() {
     _qrTransformController.dispose();
+    final receipt = _receiptFile;
+    if (receipt != null && !_receiptReturnedToCaller) {
+      PhotoFileService.deleteTemporary(receipt);
+    }
     super.dispose();
   }
 
@@ -153,13 +161,29 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
 
     setState(() => _isPickingImage = true);
     try {
-      final XFile? picked = await _imagePicker.pickImage(
-        source: source,
-        imageQuality: 80,
-        maxWidth: 1600,
-      );
-      if (picked != null) {
-        setState(() => _receiptFile = File(picked.path));
+      File? selected;
+      if (source == ImageSource.camera) {
+        selected = await Navigator.of(context).push<File>(
+          MaterialPageRoute(builder: (_) => const InAppCameraScreen()),
+        );
+      } else {
+        final picked = await _imagePicker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 90,
+          maxWidth: 1920,
+          maxHeight: 1920,
+        );
+        if (picked != null) selected = File(picked.path);
+      }
+      if (selected != null) {
+        final prepared = await PhotoFileService.prepareForUpload(selected);
+        if (!mounted) {
+          await PhotoFileService.deleteTemporary(prepared);
+          return;
+        }
+        final oldFile = _receiptFile;
+        setState(() => _receiptFile = prepared);
+        if (oldFile != null) await PhotoFileService.deleteTemporary(oldFile);
       }
     } on PlatformException catch (e) {
       if (!mounted) return;
@@ -176,6 +200,11 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           ),
         );
       }
+    } on PhotoTooLargeException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -734,14 +763,17 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
       ),
       child: Column(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 320),
-              child: Image.file(
-                _receiptFile!,
-                width: double.infinity,
-                fit: BoxFit.contain,
+          GestureDetector(
+            onTap: _showReceiptViewer,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: Image.file(
+                  _receiptFile!,
+                  width: double.infinity,
+                  fit: BoxFit.contain,
+                ),
               ),
             ),
           ),
@@ -767,6 +799,70 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
 
   void _saveReceipt() {
     if (_receiptFile == null) return;
+    _receiptReturnedToCaller = true;
     Navigator.pop(context, _receiptFile);
+  }
+
+  void _showReceiptViewer() {
+    final receipt = _receiptFile;
+    if (receipt == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 4,
+                child: Image.file(receipt, fit: BoxFit.contain),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton.icon(
+                    onPressed: () async {
+                      try {
+                        await Gal.putImage(receipt.path);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Photo saved to your gallery.')),
+                          );
+                        }
+                      } catch (_) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Could not save the photo. Check gallery permission and try again.')),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.download_outlined),
+                    label: const Text('Save to gallery'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.white),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(dialogContext);
+                      setState(() => _receiptFile = null);
+                      await PhotoFileService.deleteTemporary(receipt);
+                    },
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Delete'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

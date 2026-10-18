@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/secure_storage_service.dart';
+import '../services/supabase_service.dart';
+
 /// The kinds of OS permissions InfinityWash requests, with the plain-language
 /// purpose shown to the user BEFORE the OS permission dialog appears.
 ///
@@ -111,6 +114,18 @@ class PermissionManager {
     BuildContext context,
     AppPermission kind,
   ) async {
+    final userId = kind == AppPermission.camera
+        ? SupabaseService.currentUser?.id
+        : null;
+    if (userId != null &&
+        await SecureStorageService.instance.hasAcceptedPermissionRationale(
+          userId: userId,
+          permission: kind.name,
+        )) {
+      return true;
+    }
+    if (!context.mounted) return false;
+
     final proceed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -129,7 +144,19 @@ class PermissionManager {
         ],
       ),
     );
-    return proceed ?? false;
+    if (proceed != true) return false;
+
+    if (userId != null) {
+      try {
+        await SecureStorageService.instance.savePermissionRationaleAcceptance(
+          userId: userId,
+          permission: kind.name,
+        );
+      } catch (_) {
+        // A storage failure must not prevent the user from granting permission.
+      }
+    }
+    return true;
   }
 
   /// Dialog after an OS request was denied. [deniedForever] switches the copy

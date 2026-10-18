@@ -13,6 +13,29 @@ class ServiceRequestService {
   final ServiceCatalogService _catalogService = ServiceCatalogService();
   final LoyaltyService _loyaltyService = LoyaltyService();
 
+  /// Removes one customer-provided request photo from its order record.
+  /// The order's row-level security remains the authority for who may edit it.
+  Future<void> deleteCustomerRequestPhoto({
+    required String orderId,
+    required String photoUrl,
+  }) async {
+    final row = await _client
+        .from('orders')
+        .select('laundry_photo_urls')
+        .eq('id', orderId)
+        .maybeSingle();
+    if (row == null) throw Exception('This service request could not be found.');
+
+    final photos = List<String>.from(row['laundry_photo_urls'] ?? const []);
+    final index = photos.indexOf(photoUrl);
+    if (index < 0) throw Exception('This photo is no longer attached to the request.');
+    photos.removeAt(index);
+    await _client
+        .from('orders')
+        .update({'laundry_photo_urls': photos})
+        .eq('id', orderId);
+  }
+
   /// Submit a new service request from authenticated customer
   /// Uses currently logged-in user's customer record instead of creating new one
   Future<String> submitAuthenticatedServiceRequest({

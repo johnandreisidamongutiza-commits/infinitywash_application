@@ -14,15 +14,13 @@ service cloud.firestore {
       return request.auth.token.role;
     }
     
-    // Notifications collection
-    match /notifications/{notificationId} {
-      // Anyone authenticated can read notifications for their role
-      allow read: if isAuthenticated() 
-                  && getUserRole() in resource.data.audience_roles
-                  && resource.data.status == 'published';
-      
-      // Only admins can create/update/delete notifications
-      // This should be done via backend, not directly from client
+    // Published announcements contain public business updates and are read
+    // directly by the app (which signs users in through Supabase, not Firebase).
+    match /announcements/{announcementId} {
+      // The app filters the audience_roles field using the signed-in profile.
+      // Firebase Auth is not used for app sessions, so visibility is limited
+      // here to published content and clients cannot write announcements.
+      allow read: if resource.data.status == 'published';
       allow write: if false;
     }
     

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/app_error.dart';
 import 'order_service.dart';
+import 'photo_file_service.dart';
 
 /// GCash configuration managed from the admin website, stored in the
 /// singleton `gcash_settings` row (id = 1).
@@ -213,6 +214,7 @@ class PaymentService {
 
     print('✅ GCash payment recorded: $transactionNumber '
         '(order $orderId marked paid, pending admin verification)');
+    await PhotoFileService.deleteTemporary(receiptFile);
     return transactionNumber;
   }
 
@@ -222,6 +224,12 @@ class PaymentService {
     required String orderId,
     required File receiptFile,
   }) async {
+    if (await receiptFile.length() > PhotoFileService.maxBytes) {
+      throw const AppError(
+        'The receipt photo must be 10 MB or smaller. Please choose another photo.',
+        type: AppErrorType.storage,
+      );
+    }
     Uint8List bytes;
     try {
       bytes = await receiptFile.readAsBytes();
