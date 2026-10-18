@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
-import 'staff/staff_main_screen.dart';
-import 'customer/customer_main_screen.dart';
-import 'rider/rider_main_screen.dart';
+import 'saved_accounts_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -50,56 +48,20 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       // Add a small delay for better UX
       await Future.delayed(const Duration(milliseconds: 800));
 
-      setState(() {
-        _statusMessage = 'Checking saved accounts...';
-      });
-
-      // Try to auto-login with the last saved account
-      final authResponse = await _authService.tryAutoLogin();
-
-      if (authResponse != null && authResponse.user != null) {
-        setState(() {
-          _statusMessage = 'Logging in...';
-        });
-
-        // Discover the user's role from the backend
-        final role = await _authService.getUserRole();
-
-        if (role == null) {
-          // No active role — deny auto-login. Saved data is intentionally
-          // left in place so a transient backend error cannot wipe tokens.
-          await _authService.signOut();
-          _navigateToLogin();
-          return;
-        }
-
-        // Navigate to appropriate screen based on role
-        final maybeDestination = switch (role) {
-          'customer' => const CustomerMainScreen(),
-          'staff' => const StaffMainScreen(),
-          'rider' => const RiderMainScreen(),
-          _ => null,
-        };
-
-        if (maybeDestination == null) {
-          // Role known but not supported in the app yet (admin/superadmin)
-          await _authService.signOut();
-          _navigateToLogin();
-          return;
-        }
-
-        final Widget destination = maybeDestination;
-
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => destination),
-          );
-          return;
-        }
+      setState(() => _statusMessage = 'Checking saved accounts...');
+      final accounts = await _authService.getSavedAccounts();
+      if (!mounted) return;
+      if (accounts.isNotEmpty) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const SavedAccountsScreen()),
+        );
+        return;
       }
 
-      // No auto-login or failed, go to login
+      // No opt-in account is saved on this device, so start at the regular
+      // sign-in screen instead of silently restoring a leftover SDK session.
+      await _authService.signOut();
       _navigateToLogin();
 
     } catch (e) {

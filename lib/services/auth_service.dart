@@ -6,6 +6,7 @@ import 'saved_accounts_db.dart';
 import 'customer_service.dart';
 import 'push_notification_service.dart';
 import '../models/saved_account.dart';
+import 'legal_service.dart';
 
 class AuthService {
   final _auth = SupabaseService.client.auth;
@@ -98,6 +99,61 @@ class AuthService {
     if (metadata['role'] != 'customer') return;
 
     await _saveCustomerProfile(user, user.email ?? '', metadata);
+  }
+
+  /// Saves the account session using the app's existing remember-me storage.
+  Future<void> rememberCurrentSession() async {
+    final user = _auth.currentUser;
+    final session = _auth.currentSession;
+    if (user == null || session == null) return;
+    await _saveRememberMeData(user: user, session: session, email: user.email ?? '');
+  }
+
+  /// Completes the customer data required before a Google-authenticated
+  /// account can be routed to ordering screens.
+  Future<void> completeCustomerProfile({
+    required String firstName,
+    required String lastName,
+    required String phone,
+    required String address,
+    required String landmark,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) throw StateError('Sign in before completing your profile.');
+    final metadata = <String, dynamic>{
+      ...?user.userMetadata,
+      'first_name': firstName,
+      'last_name': lastName,
+      'phone': phone,
+      'address': address,
+      'landmark': landmark,
+      'role': 'customer',
+    };
+    await _auth.updateUser(UserAttributes(data: metadata));
+    final updatedUser = _auth.currentUser;
+    if (updatedUser == null) throw StateError('Your sign-in expired. Please try again.');
+    await _saveCustomerProfile(updatedUser, updatedUser.email ?? '', metadata);
+    final profile = await SupabaseService.client
+        .from('profiles')
+        .select('id, address, landmark, first_name, last_name, phone, email')
+        .eq('supabase_user_id', updatedUser.id)
+        .single();
+    await _syncCustomerRecord(profile, updatedUser.email ?? '');
+  }
+
+  Future<bool> isCustomerProfileComplete() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    final profile = await SupabaseService.client
+        .from('profiles')
+        .select('role, status, first_name, last_name, phone, address')
+        .eq('supabase_user_id', user.id)
+        .maybeSingle();
+    if (profile == null || profile['role'] != 'customer' || profile['status'] != 'active') return false;
+    for (final key in ['first_name', 'last_name', 'phone', 'address']) {
+      if ((profile[key] as String? ?? '').trim().isEmpty) return false;
+    }
+    return LegalService().hasAcceptedCurrentVersions(user.id);
   }
 
   Future<void> _saveCustomerProfile(
@@ -620,16 +676,11 @@ class AuthService {
         return null;
       }
 
-      // Check if we have a valid token
+      // Prefer a still-valid access token, but a refresh token can restore an
+      // expired access token. Do not discard a saved account just because its
+      // short-lived access token expired while the app was closed.
       final hasValidToken = await _secureStorage.isTokenValid(targetUserId);
       print('🔄 Has valid token: $hasValidToken');
-      
-      if (!hasValidToken) {
-        print('❌ AUTO-LOGIN: Token expired or invalid');
-        // Token expired or doesn't exist
-        await _removeRememberMeData(targetUserId);
-        return null;
-      }
 
       // Get the access token
       final accessToken = await _secureStorage.getAccessToken(targetUserId);
@@ -638,8 +689,9 @@ class AuthService {
       print('🔄 Access token present: ${accessToken != null}');
       print('🔄 Refresh token present: ${refreshToken != null}');
       
-      if (accessToken == null) {
-        print('❌ AUTO-LOGIN: No access token found');
+      if (accessToken == null && refreshToken == null) {
+        print('❌ AUTO-LOGIN: No saved session tokens found');
+        await _removeRememberMeData(targetUserId);
         return null;
       }
 
@@ -648,7 +700,7 @@ class AuthService {
       // We just need to verify the current session is valid
       final currentSession = _auth.currentSession;
       
-      if (currentSession != null && currentSession.user.id == targetUserId) {
+      if (hasValidToken && currentSession != null && currentSession.user.id == targetUserId) {
         print('✅ AUTO-LOGIN: Session already active');
         
         // Validate account status before allowing access
@@ -706,13 +758,15 @@ class AuthService {
           }
         } catch (e) {
           print('❌ AUTO-LOGIN: Refresh failed - $e');
-          // Refresh failed, remove saved data
-          await _removeRememberMeData(targetUserId);
+          // Network failures are temporary; keep the account card so the user
+          // can retry. Remove only a rejected/invalid auth session.
+          if (e is AuthException) await _removeRememberMeData(targetUserId);
           return null;
         }
       }
 
       print('❌ AUTO-LOGIN: Could not restore session');
+      await _removeRememberMeData(targetUserId);
       return null;
     } catch (e) {
       print('❌ AUTO-LOGIN ERROR: $e');
@@ -725,11 +779,18 @@ class AuthService {
     return await _savedAccountsDb.getAllAccounts();
   }
 
+  Future<bool> isAccountSaved(String userId) async {
+    return await _savedAccountsDb.getAccountById(userId) != null;
+  }
+
   // Remove remember me data for a user
   Future<void> _removeRememberMeData(String userId) async {
     try {
       await _secureStorage.deleteUserTokens(userId);
       await _savedAccountsDb.deleteAccount(userId);
+      if (await _secureStorage.getLastAutoLoginUser() == userId) {
+        await _secureStorage.clearLastAutoLoginUser();
+      }
     } catch (e) {
       print('Failed to remove remember me data: $e');
     }

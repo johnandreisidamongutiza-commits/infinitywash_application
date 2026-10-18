@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../config/legal_documents.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/app_error.dart';
 import '../../utils/input_formatters.dart';
 import '../../utils/validators.dart';
 import '../../services/connectivity_service.dart';
@@ -10,12 +13,20 @@ import '../../widgets/custom_text_field.dart';
 import '../../widgets/location_picker_widget.dart';
 import '../../widgets/address_input_widget.dart';
 import '../../config/location_constants.dart';
-import '../../services/auth_service.dart';
 import '../../services/legal_service.dart';
+import '../../services/customer_registration_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/supabase_service.dart';
+import '../../utils/save_account_prompt.dart';
 import '../../widgets/legal_consent_checkbox.dart';
+import 'customer_main_screen.dart';
 
 class CustomerRegistrationScreen extends StatefulWidget {
   const CustomerRegistrationScreen({super.key});
+
+  /// Lets the underlying login route leave Google OAuth callbacks to this
+  /// registration route while it is open above the login screen.
+  static bool googleSignupInProgress = false;
 
   @override
   State<CustomerRegistrationScreen> createState() => _CustomerRegistrationScreenState();
@@ -34,9 +45,15 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   final _landmarkController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _otpController = TextEditingController();
+  final _registrationService = CustomerRegistrationService();
   final _authService = AuthService();
   final _legalService = LegalService();
+  StreamSubscription<AuthState>? _authSubscription;
   bool _isLoading = false;
+  bool _handlingGoogleCallback = false;
+  bool _isGoogleRegistration = false;
+  int _step = 0;
 
   /// Terms of Service / Privacy Policy consent. Server-enforced: the
   /// registration trigger refuses the sign-up without it.
@@ -45,7 +62,20 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   String? _selectedAddress;
 
   @override
+  void initState() {
+    super.initState();
+    _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((state) {
+      final user = state.session?.user;
+      if (state.event == AuthChangeEvent.signedIn &&
+          user?.appMetadata['provider'] == 'google') {
+        _finishGoogleRegistration();
+      }
+    });
+  }
+
+  @override
   void dispose() {
+    CustomerRegistrationScreen.googleSignupInProgress = false;
     _firstNameController.dispose();
     _lastNameController.dispose();
     _phoneController.dispose();
@@ -55,108 +85,229 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     _landmarkController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _otpController.dispose();
+    _authSubscription?.cancel();
     super.dispose();
   }
 
-  Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    if (_firstNameController.text.trim().isEmpty ||
-        _lastNameController.text.trim().isEmpty ||
-        _phoneController.text.trim().isEmpty ||
-        _emailController.text.trim().isEmpty ||
-        _houseStreetController.text.trim().isEmpty ||
-        _selectedBarangay == null ||
-        _passwordController.text.isEmpty ||
-        _confirmPasswordController.text.isEmpty) {
-      _showMessage('Complete all required fields.');
-      return;
-    }
-
-    final emailError = Validators.email(_emailController.text.trim());
-    if (emailError != null) {
-      _showMessage(emailError);
-      return;
-    }
-
-    final passwordError = Validators.newPassword(_passwordController.text);
-    if (passwordError != null) {
-      _showMessage(passwordError);
-      return;
-    }
-
-    final confirmError = Validators.confirmPassword(
-      _confirmPasswordController.text,
-      _passwordController.text,
-    );
-    if (confirmError != null) {
-      _showMessage(confirmError);
-      return;
-    }
-
-    final phoneError = Validators.phone(_phoneController.text.trim());
-    if (phoneError != null) {
-      _showMessage(phoneError);
-      return;
-    }
-
-    if (!_agreedToLegal) {
-      _showMessage(
-        'Please read and accept the Terms of Service and Privacy Policy.',
-      );
-      return;
-    }
-
-    // Fail fast when offline — registration cannot reach the server.
+  Future<void> _continueWithGoogle() async {
     if (!await ConnectivityService.instance.checkNow()) {
-      _showMessage(
-        'No internet connection. Please check your connection and try again.',
-      );
+      _showMessage('No internet connection. Please check your connection and try again.');
       return;
     }
-
+    CustomerRegistrationScreen.googleSignupInProgress = true;
     setState(() => _isLoading = true);
     try {
-      // Consent evidence: document keys, versions and the sha256 of the
-      // exact text bundled in this build. handle_new_auth_user() writes
-      // the legal_acceptances rows and rejects the sign-up if anything
-      // required is missing.
-      final legalAcceptances = await _legalService.registrationAcceptances();
-      final appVersion = await _legalService.appVersion();
-
-      // Compose the 3-part address into a single string for storage
-      final composedAddress = AddressInputWidget.buildFullAddress(
-        houseStreet: _houseStreetController.text.trim(),
-        selectedBarangay: _selectedBarangay,
-        customBarangay: _customBarangayController.text.trim(),
+      final launched = await SupabaseService.client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'com.example.infinitywash://login-callback/',
       );
+      if (!launched) {
+        CustomerRegistrationScreen.googleSignupInProgress = false;
+        if (mounted) _showMessage('Could not open Google sign-in. Please try again.');
+      }
+    } catch (error) {
+      CustomerRegistrationScreen.googleSignupInProgress = false;
+      if (mounted) _showMessage(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
-      final response = await _authService.registerCustomer(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        phone: _phoneController.text.trim(),
-        address: composedAddress,
-        landmark: _landmarkController.text.trim(),
-        latitude: _selectedLocation?.latitude,
-        longitude: _selectedLocation?.longitude,
-        legalAcceptances: legalAcceptances,
-        appVersion: appVersion,
-      );
-
+  Future<void> _finishGoogleRegistration() async {
+    if (_handlingGoogleCallback) return;
+    _handlingGoogleCallback = true;
+    try {
+      final user = SupabaseService.client.auth.currentUser;
+      if (user == null) return;
+      final profile = await SupabaseService.client
+          .from('profiles')
+          .select('role, status, first_name, last_name, phone, address, landmark')
+          .eq('supabase_user_id', user.id)
+          .maybeSingle();
       if (!mounted) return;
-      final message = response.session == null
-          ? 'Account created. Check your email, confirm your address, then sign in.'
-          : 'Account created. You can now sign in.';
-      _showMessage(message, isError: false);
-      Navigator.pop(context);
+      if (profile != null && profile['role'] != 'customer') {
+        await _authService.signOut();
+        if (mounted) _showMessage('This Google account is already registered. Please sign in instead.');
+        return;
+      }
+      if (profile != null && await _authService.isCustomerProfileComplete()) {
+        if (!mounted) return;
+        await offerSaveAccount(context, _authService);
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const CustomerMainScreen()),
+          (_) => false,
+        );
+        return;
+      }
+      if (profile != null && profile['status'] != 'active') {
+        await _authService.signOut();
+        if (mounted) _showMessage('This account cannot be registered right now. Please contact support.');
+        return;
+      }
+      final metadata = user.userMetadata ?? <String, dynamic>{};
+      final fullName = (metadata['full_name'] ?? metadata['name'] ?? '').toString().trim();
+      final nameParts = fullName.isEmpty ? <String>[] : fullName.split(RegExp(r'\s+'));
+      setState(() {
+        _isGoogleRegistration = true;
+        _firstNameController.text = (profile?['first_name'] ?? metadata['given_name'] ?? metadata['first_name'] ?? (nameParts.isNotEmpty ? nameParts.first : '')).toString();
+        _lastNameController.text = (profile?['last_name'] ?? metadata['family_name'] ?? metadata['last_name'] ?? (nameParts.length > 1 ? nameParts.skip(1).join(' ') : '')).toString();
+        _emailController.text = (user.email ?? '').trim();
+        if (profile != null) {
+          _phoneController.text = (profile['phone'] ?? '').toString();
+          _houseStreetController.text = (profile['address'] ?? '').toString();
+          _landmarkController.text = (profile['landmark'] ?? '').toString();
+        }
+        _step = 0;
+      });
+      _showMessage('${user.email ?? 'Your email'} is connected successfully. Continue to complete your profile.', isError: false);
+    } catch (error) {
+      if (mounted) _showMessage(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      CustomerRegistrationScreen.googleSignupInProgress = false;
+      _handlingGoogleCallback = false;
+    }
+  }
+
+  Future<Map<String, dynamic>> _registrationData() async {
+    final address = AddressInputWidget.buildFullAddress(
+      houseStreet: _houseStreetController.text.trim(),
+      selectedBarangay: _selectedBarangay,
+      customBarangay: _customBarangayController.text.trim(),
+    );
+    return {
+      'first_name': _firstNameController.text.trim(),
+      'last_name': _lastNameController.text.trim(),
+      'phone': _phoneController.text.trim(),
+      'address': address,
+      'landmark': _landmarkController.text.trim(),
+      'role': 'customer',
+      if (_selectedLocation != null) 'latitude': _selectedLocation!.latitude,
+      if (_selectedLocation != null) 'longitude': _selectedLocation!.longitude,
+      'legal_acceptances': await _legalService.registrationAcceptances(),
+      'app_version': await _legalService.appVersion(),
+    };
+  }
+
+  Future<void> _nextStep() async {
+    if (_step == 0 || _step == 1 || _step == 2 || _step == 3) {
+      if (_formKey.currentState?.validate() != true) return;
+      if (_step == 2) {
+        if (_houseStreetController.text.trim().isEmpty) {
+          _showMessage('Please enter your house and street address.');
+          return;
+        }
+        if (_selectedBarangay == null) {
+          _showMessage('Please select your barangay.');
+          return;
+        }
+      }
+      setState(() => _step = _isGoogleRegistration && _step == 2 ? 4 : _step + 1);
+      return;
+    }
+    if (_step != 4) return;
+    if (!_agreedToLegal) {
+      _showMessage('Please read and accept the Terms of Service and Privacy Policy.');
+      return;
+    }
+    if (_isGoogleRegistration) {
+      if (!await ConnectivityService.instance.checkNow()) {
+        _showMessage('No internet connection. Please check your connection and try again.');
+        return;
+      }
+      setState(() => _isLoading = true);
+      try {
+        final address = AddressInputWidget.buildFullAddress(
+          houseStreet: _houseStreetController.text.trim(),
+          selectedBarangay: _selectedBarangay,
+          customBarangay: _customBarangayController.text.trim(),
+        );
+        await _authService.completeCustomerProfile(
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          phone: _phoneController.text.trim(),
+          address: address,
+          landmark: _landmarkController.text.trim(),
+        );
+        for (final document in requiredLegalDocuments()) {
+          await _legalService.accept(document, source: 'registration');
+        }
+        await offerSaveAccount(context, _authService);
+        if (!mounted) return;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const CustomerMainScreen()),
+          (_) => false,
+        );
+      } catch (error) {
+        if (mounted) _showMessage(error.toString().replaceFirst('Exception: ', ''));
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
+      return;
+    }
+    if (!await ConnectivityService.instance.checkNow()) {
+      _showMessage('No internet connection. Please check your connection and try again.');
+      return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      await _registrationService.requestCode(
+        email: _emailController.text.trim(),
+        registrationData: await _registrationData(),
+      );
+      if (mounted) setState(() => _step = 5);
     } catch (error) {
       if (mounted) {
-        // Friendly mapped message: wrong-format password, duplicate email,
-        // rate limit, network failure — never a raw exception dump.
-        _showMessage(mapErrorToMessage(error));
+        final message = error.toString().replaceFirst('Exception: ', '');
+        if (message.toLowerCase().contains('already registered') ||
+            message.toLowerCase().contains('already in use')) {
+          setState(() => _step = 1);
+          _showMessage('This email already has an account. Change the email or sign in.');
+        } else {
+          _showMessage(message);
+        }
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _resendCode() async {
+    setState(() => _isLoading = true);
+    try {
+      await _registrationService.requestCode(
+        email: _emailController.text.trim(),
+        registrationData: await _registrationData(),
+        resend: true,
+      );
+      if (mounted) _showMessage('A new code has been sent.', isError: false);
+    } catch (error) {
+      if (mounted) _showMessage(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _verifyCode() async {
+    if (_otpController.text.trim().length != 6 ||
+        int.tryParse(_otpController.text.trim()) == null) {
+      _showMessage('Enter the 6-digit code from your email.');
+      return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      await _registrationService.verifyAndCreate(
+        email: _emailController.text.trim(),
+        code: _otpController.text.trim(),
+        password: _passwordController.text,
+      );
+      if (!mounted) return;
+      _showMessage('Email verified. Your account is ready. Please sign in.', isError: false);
+      Navigator.pop(context);
+    } catch (error) {
+      if (mounted) _showMessage(error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -289,6 +440,50 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
 
   @override
   Widget build(BuildContext context) {
+    final titles = ['Your name', 'Contact details', 'Your address', 'Set a password', 'Review and consent', 'Verify your email'];
+    final stepCount = _isGoogleRegistration ? 4 : 5;
+    final displayedStep = _isGoogleRegistration && _step == 4 ? 4 : _step + 1;
+    final progress = _step == 5 ? 1.0 : displayedStep / stepCount;
+    final pageFields = <Widget>[
+      Column(children: [
+        CustomTextField(label: 'First Name', hint: 'Juan', prefixIcon: Icons.person_outline, controller: _firstNameController, validator: (v) => Validators.nameField(v, 'First name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
+        const SizedBox(height: 18),
+        CustomTextField(label: 'Last Name', hint: 'Dela Cruz', prefixIcon: Icons.person_outline, controller: _lastNameController, validator: (v) => Validators.nameField(v, 'Last name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
+      ]),
+      Column(children: [
+        CustomTextField(label: 'Mobile Number', hint: '09XX-XXX-XXXX', prefixIcon: Icons.phone_android_outlined, controller: _phoneController, keyboardType: TextInputType.phone, inputFormatters: InputFormatters.phone(), validator: Validators.phone),
+        const SizedBox(height: 18),
+        CustomTextField(label: _isGoogleRegistration ? 'Google email (verified)' : 'Email Address', hint: 'Enter your email', prefixIcon: Icons.email_outlined, controller: _emailController, keyboardType: TextInputType.emailAddress, validator: Validators.emailField, enabled: !_isGoogleRegistration),
+        if (_isGoogleRegistration) const Padding(padding: EdgeInsets.only(top: 8), child: Row(children: [Icon(Icons.verified, size: 18, color: Colors.green), SizedBox(width: 6), Text('Email connected successfully. OTP is not needed.') ])),
+      ]),
+      Column(children: [
+        AddressInputWidget(houseStreetController: _houseStreetController, customBarangayController: _customBarangayController, landmarkController: _landmarkController, selectedBarangay: _selectedBarangay, onBarangayChanged: (v) => setState(() => _selectedBarangay = v), helperText: 'Santa Cruz, Laguna only. Select "Other" if outside.', landmarkHint: 'e.g. Near church, blue gate'),
+        const SizedBox(height: 16), _buildPinLocationCard(),
+      ]),
+      Column(children: [
+        CustomTextField(label: 'Password', hint: 'Create a password', prefixIcon: Icons.lock_outline, isPassword: true, controller: _passwordController, validator: Validators.passwordField, maxLength: Validators.passwordMax),
+        const SizedBox(height: 18),
+        CustomTextField(label: 'Confirm Password', hint: 'Repeat your password', prefixIcon: Icons.lock_reset_outlined, isPassword: true, controller: _confirmPasswordController, validator: (v) => Validators.confirmPassword(v, _passwordController.text), maxLength: Validators.passwordMax),
+      ]),
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${_firstNameController.text} ${_lastNameController.text}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8), Text(_emailController.text), Text(_phoneController.text),
+        if (_isGoogleRegistration) ...[
+          const SizedBox(height: 8),
+          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)), child: Row(children: [const Icon(Icons.verified, color: Colors.green), const SizedBox(width: 8), Expanded(child: Text('${_emailController.text} is connected successfully. No email OTP is needed.'))])),
+        ],
+        const SizedBox(height: 8), Text(AddressInputWidget.buildFullAddress(houseStreet: _houseStreetController.text.trim(), selectedBarangay: _selectedBarangay, customBarangay: _customBarangayController.text.trim())),
+        const SizedBox(height: 20),
+        Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppTheme.softGray, borderRadius: BorderRadius.circular(12)), child: LegalConsentCheckbox(value: _agreedToLegal, onChanged: (v) => setState(() => _agreedToLegal = v))),
+      ]),
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('We sent a 6-digit code to ${_emailController.text.trim()}. Enter it below to activate your account.'),
+        Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _isLoading ? null : () => setState(() { _otpController.clear(); _step = 1; }), child: const Text('Change email'))),
+        const SizedBox(height: 22),
+        TextFormField(controller: _otpController, keyboardType: TextInputType.number, maxLength: 6, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, letterSpacing: 8, fontWeight: FontWeight.bold), decoration: const InputDecoration(labelText: 'Email verification code', counterText: ''),),
+        TextButton(onPressed: _isLoading ? null : _resendCode, child: const Text('Resend code')),
+      ]),
+    ];
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -296,7 +491,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _step == 0 ? () => Navigator.pop(context) : () => setState(() => _step = _step == 5 ? 4 : _step - 1),
         ),
       ),
       body: SafeArea(
@@ -307,7 +502,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
+                if (_step == 0) Center(
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -331,130 +526,49 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                 ),
                 const SizedBox(height: 30),
                 Text(
-                  'Create Account',
+                  titles[_step],
                   style: AppTheme.lightTheme.textTheme.headlineMedium,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Join Infinity Wash and experience the best laundry service.',
+                  _step == 5
+                      ? 'Your account becomes active after email verification.'
+                      : 'Step $displayedStep of $stepCount · Complete each section to continue.',
                   style: AppTheme.lightTheme.textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 30),
-                Row(
-                  children: [
-                    Expanded(
-                      child: CustomTextField(
-                        label: 'First Name',
-                        hint: 'John',
-                        prefixIcon: Icons.person_outline,
-                        controller: _firstNameController,
-                        validator: (v) =>
-                            Validators.nameField(v, 'First name'),
-                        maxLength: Validators.nameMax,
-                        textCapitalization: TextCapitalization.words,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: CustomTextField(
-                        label: 'Last Name',
-                        hint: 'Doe',
-                        prefixIcon: Icons.person_outline,
-                        controller: _lastNameController,
-                        validator: (v) =>
-                            Validators.nameField(v, 'Last name'),
-                        maxLength: Validators.nameMax,
-                        textCapitalization: TextCapitalization.words,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Mobile Number',
-                  hint: '09XX-XXX-XXXX',
-                  prefixIcon: Icons.phone_android_outlined,
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: InputFormatters.phone(),
-                  validator: Validators.phone,
-                ),
-                const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Email Address',
-                  hint: 'Enter your email',
-                  prefixIcon: Icons.email_outlined,
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: Validators.emailField,
-                ),
-                const SizedBox(height: 20),
-                // ── 3-Part Address ──────────────────────────────────
-                AddressInputWidget(
-                  houseStreetController: _houseStreetController,
-                  customBarangayController: _customBarangayController,
-                  landmarkController: _landmarkController,
-                  selectedBarangay: _selectedBarangay,
-                  onBarangayChanged: (v) =>
-                      setState(() => _selectedBarangay = v),
-                  helperText: 'Santa Cruz, Laguna only. Select "Other" if outside.',
-                  landmarkHint: 'e.g. Near church, blue gate',
-                ),
-                const SizedBox(height: 20),
-                _buildPinLocationCard(),
-                const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Password',
-                  hint: 'Create a password',
-                  prefixIcon: Icons.lock_outline,
-                  isPassword: true,
-                  controller: _passwordController,
-                  validator: Validators.passwordField,
-                  maxLength: Validators.passwordMax,
-                ),
-                const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Confirm Password',
-                  hint: 'Repeat your password',
-                  prefixIcon: Icons.lock_reset_outlined,
-                  isPassword: true,
-                  controller: _confirmPasswordController,
-                  validator: (v) => Validators.confirmPassword(
-                    v,
-                    _passwordController.text,
-                  ),
-                  maxLength: Validators.passwordMax,
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.softGray,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: LegalConsentCheckbox(
-                    value: _agreedToLegal,
-                    onChanged: (v) => setState(() => _agreedToLegal = v),
-                  ),
-                ),
-                const SizedBox(height: 20),
+                LinearProgressIndicator(value: progress),
+                const SizedBox(height: 24),
+                pageFields[_step],
+                const SizedBox(height: 24),
                 ElevatedButton(
-                  onPressed: _isLoading ? null : _register,
+                  onPressed: _isLoading ? null : (_step == 5 ? _verifyCode : _nextStep),
                   child: _isLoading
                       ? const SizedBox(
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Register'),
+                      : Text(_step == 5 ? 'Verify and create account' : (_step == 4 ? (_isGoogleRegistration ? 'Complete registration' : 'Send verification code') : 'Next')),
                 ),
+                if (_step == 0) ...[
+                  const SizedBox(height: 12),
+                  const Center(child: Text('Or sign up with')),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _isLoading ? null : _continueWithGoogle,
+                      icon: const Icon(Icons.g_mobiledata, size: 28),
+                      label: Text(_isLoading ? 'Connecting...' : 'Continue with Google'),
+                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 // Wrap so the prompt and its action stack instead of
                 // overflowing when the text gets wider than the row.
-                Wrap(
+                if (_step == 0) Wrap(
                   alignment: WrapAlignment.center,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [

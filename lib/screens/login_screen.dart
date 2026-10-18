@@ -1,15 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_error.dart';
 import '../utils/validators.dart';
 import '../services/connectivity_service.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/auth_service.dart';
-import '../models/saved_account.dart';
+import '../services/supabase_service.dart';
+import '../utils/save_account_prompt.dart';
 import 'staff/staff_main_screen.dart';
 import 'customer/customer_main_screen.dart';
 import 'rider/rider_main_screen.dart';
 import 'customer/customer_registration_screen.dart';
+import 'customer/google_profile_completion_screen.dart';
 import 'forgot_password_screen.dart';
 
 /// Single, role-agnostic login screen and the app's logged-out entry point.
@@ -26,76 +31,32 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  bool rememberMe = false;
   bool _isLoading = false;
-  bool _isLoadingSavedAccounts = true;
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _authService = AuthService();
-  List<SavedAccount> _savedAccounts = [];
-  SavedAccount? _selectedAccount;
+  StreamSubscription<AuthState>? _authSubscription;
+  bool _handlingGoogleCallback = false;
 
   @override
   void initState() {
     super.initState();
-    _loadSavedAccounts();
+    _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((state) {
+      if (CustomerRegistrationScreen.googleSignupInProgress) return;
+      final user = state.session?.user;
+      if (state.event == AuthChangeEvent.signedIn &&
+          user?.appMetadata['provider'] == 'google') {
+        _finishGoogleSignIn();
+      }
+    });
   }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _authSubscription?.cancel();
     super.dispose();
-  }
-
-  Future<void> _loadSavedAccounts() async {
-    try {
-      final accounts = await _authService.getSavedAccounts();
-
-      if (!mounted) return;
-      setState(() {
-        _savedAccounts = accounts;
-        _isLoadingSavedAccounts = false;
-
-        // Pre-fill the most recent account if available
-        if (_savedAccounts.isNotEmpty) {
-          _selectedAccount = _savedAccounts.first;
-          _emailController.text = _selectedAccount!.email;
-          rememberMe = true;
-        }
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingSavedAccounts = false;
-      });
-    }
-  }
-
-  void _selectAccount(SavedAccount account) {
-    setState(() {
-      _selectedAccount = account;
-      _emailController.text = account.email;
-      _passwordController.clear();
-      rememberMe = true;
-    });
-  }
-
-  Future<void> _removeSavedAccount(SavedAccount account) async {
-    try {
-      await _authService.removeSavedAccount(account.id);
-      setState(() {
-        _savedAccounts.remove(account);
-        if (_selectedAccount?.id == account.id) {
-          _selectedAccount = null;
-          _emailController.clear();
-          _passwordController.clear();
-        }
-      });
-      _showMessage('Account removed from saved accounts');
-    } catch (e) {
-      _showMessage('Failed to remove account');
-    }
   }
 
   /// Map an active backend role to its main screen (null = unsupported role).
@@ -139,7 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await _authService.signIn(
         email: email,
         password: password,
-        rememberMe: rememberMe,
+        rememberMe: false,
       );
 
       // Discover the role from the backend — never from local state.
@@ -155,16 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // Ensure the customer record exists and stays up to date, but only
-      // for accounts the backend confirms as customers. Running this
-      // before role discovery could overwrite the profile of a promoted
-      // staff/rider/admin user whose auth metadata still says 'customer'.
-      if (role == 'customer') {
-        await _authService.ensureCustomerProfileFromMetadata();
-      }
-
       final maybeDestination = _destinationForRole(role);
-
       if (maybeDestination == null) {
         await _authService.signOut();
         if (mounted) {
@@ -175,6 +127,25 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         return;
       }
+
+      // Ensure the customer record exists and stays up to date, but only
+      // for accounts the backend confirms as customers. Running this
+      // before role discovery could overwrite the profile of a promoted
+      // staff/rider/admin user whose auth metadata still says 'customer'.
+      if (role == 'customer') {
+        await _authService.ensureCustomerProfileFromMetadata();
+        if (!await _authService.isCustomerProfileComplete()) {
+          if (!mounted) return;
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const GoogleProfileCompletionScreen()),
+            (_) => false,
+          );
+          return;
+        }
+      }
+
+      await offerSaveAccount(context, _authService);
 
       final Widget destination = maybeDestination;
 
@@ -197,6 +168,71 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    if (!await ConnectivityService.instance.checkNow()) {
+      _showMessage('No internet connection. Please check your connection and try again.');
+      return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      await SupabaseService.client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'com.example.infinitywash://login-callback/',
+      );
+    } catch (error) {
+      if (mounted) _showMessage(mapErrorToMessage(error));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _finishGoogleSignIn() async {
+    if (_handlingGoogleCallback) return;
+    _handlingGoogleCallback = true;
+    try {
+      final user = SupabaseService.client.auth.currentUser;
+      if (user == null) return;
+      final profile = await SupabaseService.client
+          .from('profiles')
+          .select('role, status')
+          .eq('supabase_user_id', user.id)
+          .maybeSingle();
+      if (!mounted) return;
+      if (profile == null || profile['role'] == 'customer') {
+        final ready = profile != null && await _authService.isCustomerProfileComplete();
+        if (!mounted) return;
+        if (!ready) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const GoogleProfileCompletionScreen()),
+            (_) => false,
+          );
+          return;
+        }
+        await offerSaveAccount(context, _authService);
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const CustomerMainScreen()),
+          (_) => false,
+        );
+        return;
+      }
+      final role = await _authService.getUserRole();
+      final destination = role == null ? null : _destinationForRole(role);
+      if (destination == null) {
+        await _authService.signOut();
+        if (mounted) _showMessage('This account does not have an active app role. Please contact support.');
+        return;
+      }
+      await offerSaveAccount(context, _authService);
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => destination), (_) => false);
+    } catch (error) {
+      if (mounted) _showMessage(mapErrorToMessage(error));
+    } finally {
+      _handlingGoogleCallback = false;
     }
   }
 
@@ -294,80 +330,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 28),
 
-            // Saved Accounts Section
-            if (_isLoadingSavedAccounts)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: CircularProgressIndicator(),
-              )
-            else if (_savedAccounts.isNotEmpty) ...[
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Saved Accounts',
-                  style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                constraints: const BoxConstraints(maxHeight: 200),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: _savedAccounts.length,
-                  itemBuilder: (context, index) {
-                    final account = _savedAccounts[index];
-                    final isSelected = _selectedAccount?.id == account.id;
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: isSelected ? AppTheme.accentBlue : AppTheme.borderGray,
-                          width: isSelected ? 2 : 1,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                        color: isSelected ? AppTheme.accentBlue.withValues(alpha: 0.05) : Colors.white,
-                      ),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: AppTheme.accentBlue,
-                          child: Text(
-                            account.initials,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        title: Text(
-                          account.displayName,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: Text(
-                          account.email,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.close, size: 20),
-                          onPressed: () => _removeSavedAccount(account),
-                          tooltip: 'Remove account',
-                        ),
-                        onTap: () => _selectAccount(account),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Divider(),
-              const SizedBox(height: 20),
-            ],
-
             CustomTextField(
               label: 'Email',
               hint: 'Enter your email',
@@ -386,25 +348,9 @@ class _LoginScreenState extends State<LoginScreen> {
               validator: Validators.passwordRequired,
             ),
             const SizedBox(height: 12),
-            // Wrap, not Row: once the system font is enlarged the two controls
-            // no longer fit side by side and have to stack, not overflow.
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Checkbox(
-                      value: rememberMe,
-                      onChanged: (value) => setState(() => rememberMe = value!),
-                      activeColor: AppTheme.accentBlue,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                    ),
-                    const Text('Remember me'),
-                  ],
-                ),
-                TextButton(
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -416,7 +362,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(color: AppTheme.accentBlue),
                   ),
                 ),
-              ],
             ),
             const SizedBox(height: 30),
             ElevatedButton(
@@ -435,6 +380,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(_isLoading ? 'Signing In...' : 'Sign In'),
                 ],
               ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _isLoading ? null : _signInWithGoogle,
+              icon: const Icon(Icons.g_mobiledata, size: 28),
+              label: const Text('Continue with Google'),
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
             ),
             const SizedBox(height: 24),
             // Wrap so the prompt and its action stack instead of overflowing
