@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:gal/gal.dart';
+import 'package:http/http.dart' as http;
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../widgets/top_notification.dart';
@@ -1250,6 +1253,8 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                                   _CustomerRequestPhotoViewer(
                                 photoUrls: order.laundryPhotoUrls!,
                                 initialIndex: 0,
+                                orderId: order.id,
+                                onDeleted: _loadCustomerOrders,
                               ),
                             ),
                           );
@@ -2575,10 +2580,14 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
 class _CustomerRequestPhotoViewer extends StatefulWidget {
   final List<String> photoUrls;
   final int initialIndex;
+  final String orderId;
+  final Future<void> Function() onDeleted;
 
   const _CustomerRequestPhotoViewer({
     required this.photoUrls,
     required this.initialIndex,
+    required this.orderId,
+    required this.onDeleted,
   });
 
   @override
@@ -2590,11 +2599,15 @@ class _CustomerRequestPhotoViewerState
     extends State<_CustomerRequestPhotoViewer> {
   late PageController _pageController;
   late int _currentIndex;
+  late List<String> _photos;
+  bool _isSaving = false;
+  bool _isDeleting = false;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    _photos = List<String>.from(widget.photoUrls);
     _pageController = PageController(initialPage: widget.initialIndex);
   }
 
@@ -2613,27 +2626,129 @@ class _CustomerRequestPhotoViewerState
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
         title: Text(
-          'Photo ${_currentIndex + 1} of ${widget.photoUrls.length}',
+          'Photo ${_currentIndex + 1} of ${_photos.length}',
           style: GoogleFonts.lexend(color: Colors.white, fontSize: 16),
         ),
         centerTitle: true,
       ),
-      body: PageView.builder(
-        controller: _pageController,
-        itemCount: widget.photoUrls.length,
-        onPageChanged: (index) => setState(() => _currentIndex = index),
-        itemBuilder: (context, index) {
-          final path = widget.photoUrls[index];
-          return Center(
-            child: InteractiveViewer(
-              minScale: 0.8,
-              maxScale: 4.0,
-              child: _buildFullImage(path),
+      body: Column(
+        children: [
+          Expanded(
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: _photos.length,
+              onPageChanged: (index) => setState(() => _currentIndex = index),
+              itemBuilder: (context, index) => Center(
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4.0,
+                  child: _buildFullImage(_photos[index]),
+                ),
+              ),
             ),
-          );
-        },
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _isSaving ? null : _saveToGallery,
+                    icon: _isSaving
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.download_outlined),
+                    label: const Text('Save to gallery'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _isDeleting ? null : _deletePhoto,
+                    icon: _isDeleting
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.delete_outline),
+                    label: const Text('Delete'),
+                    style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  Future<Uint8List> _loadPhotoBytes(String path) async {
+    if (path.startsWith('data:image')) {
+      return base64Decode(path.substring(path.indexOf(',') + 1));
+    }
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      final response = await http.get(Uri.parse(path));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Could not download photo');
+      }
+      return response.bodyBytes;
+    }
+    return File(path).readAsBytes();
+  }
+
+  Future<void> _saveToGallery() async {
+    setState(() => _isSaving = true);
+    try {
+      await Gal.putImageBytes(await _loadPhotoBytes(_photos[_currentIndex]));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Photo saved to your gallery.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save the photo. Check gallery permission and try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _deletePhoto() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete this photo?'),
+        content: const Text('It will be removed from this service request for you and the InfinityWash team.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _isDeleting = true);
+    try {
+      await ServiceRequestService().deleteCustomerRequestPhoto(
+        orderId: widget.orderId,
+        photoUrl: _photos[_currentIndex],
+      );
+      _photos.removeAt(_currentIndex);
+      await widget.onDeleted();
+      if (!mounted) return;
+      if (_photos.isEmpty) {
+        Navigator.of(context).pop();
+      } else {
+        if (_currentIndex >= _photos.length) _currentIndex = _photos.length - 1;
+        _pageController.jumpToPage(_currentIndex);
+        setState(() => _isDeleting = false);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not delete this photo. Please try again.')),
+        );
+      }
+    }
   }
 
   Widget _buildFullImage(String path) {

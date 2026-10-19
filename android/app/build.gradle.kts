@@ -26,7 +26,8 @@ android {
         applicationId = "com.example.infinitywash"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // The in-app camera plugin requires Android API 24 or newer.
+        minSdk = maxOf(flutter.minSdkVersion, 24)
 
         // firebase_messaging requires minSdk 23 (Android 6.0+)
         if (flutter.minSdkVersion < 23) {

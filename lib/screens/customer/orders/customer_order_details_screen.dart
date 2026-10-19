@@ -597,6 +597,29 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                 ),
               ),
             ],
+            if ((_existingFeedback!['admin_reply'] as String?)?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Reply from InfinityWash',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryBlue,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _existingFeedback!['admin_reply'] as String,
+                style: const TextStyle(fontSize: 14, color: AppTheme.textDark),
+              ),
+              if (_existingFeedback!['admin_reply_at'] != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Replied on ${_formatDateTime(DateTime.parse(_existingFeedback!['admin_reply_at'] as String))}',
+                  style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                ),
+              ],
+            ],
             const SizedBox(height: 12),
             Text(
               'Submitted on ${_formatDateTime(DateTime.parse(_existingFeedback!['created_at'] as String))}',

@@ -12,6 +12,17 @@
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.example.infinitywash</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -69,8 +80,12 @@
 	<!-- Location permissions for delivery tracking (Phase 5) -->
 	<key>NSCameraUsageDescription</key>
 	<string>InfinityWash uses your camera to photograph your laundry for pickup and your GCash receipt as proof of payment. Photos are attached only to your order.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>InfinityWash does not record audio for photos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>InfinityWash uses your photo library so you can attach laundry photos and payment receipts to your order. Your photos are never shared outside the app.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>InfinityWash saves a photo to your gallery only when you tap Save to gallery.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Infinity Wash needs access to your location to show your position on the map and track delivery routes.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

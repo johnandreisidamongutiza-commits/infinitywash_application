@@ -1,11 +1,13 @@
+import 'dart:async';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../theme/app_theme.dart';
 import '../utils/permission_manager.dart';
-import '../widgets/top_notification.dart';
 import 'supabase_service.dart';
 
 /// Global navigator key used by push handling to reach the overlay from
@@ -41,7 +43,7 @@ class PushMessage {
 ///   - permission request,
 ///   - FCM token generation and registration in the `fcm_tokens` table,
 ///   - token-refresh re-registration and stale-token cleanup on sign-out,
-///   - foreground display via the app's existing top banner,
+///   - foreground display as a system notification,
 ///   - background/terminated handling via the top-level handler wired in main.dart,
 ///   - tap routing through [onNotificationTap] so the shell can deep-link.
 class PushNotificationService {
@@ -49,7 +51,10 @@ class PushNotificationService {
   static final PushNotificationService instance = PushNotificationService._();
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final SupabaseClient _client = SupabaseService.client;
+  static const MethodChannel _foregroundNotificationChannel =
+      MethodChannel('infinitywash/foreground_notifications');
 
   /// Tray notifications on Android land on the channel named by the
   /// `com.google.firebase.messaging.default_notification_channel_id`
@@ -57,6 +62,10 @@ class PushNotificationService {
   static void Function(PushMessage message)? onNotificationTap;
 
   bool _initialized = false;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _announcementSubscription;
+  String? _announcementListenerUserId;
+  final Map<String, DateTime> _recentSystemNotifications = {};
   String? _registeredToken;
   String? _registeredUserId;
 
@@ -132,6 +141,15 @@ class PushNotificationService {
           return; // user can re-enable from OS settings later
         }
 
+        // iOS suppresses remote notifications while the app is active unless
+        // foreground presentation is explicitly enabled. Android displays
+        // foreground pushes through the native channel below.
+        await _messaging.setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+
         // Fired when FCM rotates the token (app restore, key rotation...).
         FirebaseMessaging.instance.onTokenRefresh.listen(_registerToken);
 
@@ -143,6 +161,12 @@ class PushNotificationService {
 
         _initialized = true;
       }
+
+      // Firestore announcements update the in-app feed directly. Turn those
+      // live updates into Android system notifications too, even when the
+      // admin's FCM delivery is misconfigured. This listener is foreground
+      // only; background delivery still comes from FCM.
+      await _watchForegroundAnnouncements(SupabaseService.currentUser!.id);
 
       final token = await _messaging.getToken();
       if (token == null) {
@@ -164,6 +188,71 @@ class PushNotificationService {
     } catch (e) {
       debugPrint('🔔 Push initialization failed (non-fatal): $e');
     }
+  }
+
+  Future<void> _watchForegroundAnnouncements(String userId) async {
+    if (_announcementListenerUserId == userId &&
+        _announcementSubscription != null) {
+      return;
+    }
+
+    await _announcementSubscription?.cancel();
+    _announcementListenerUserId = userId;
+
+    String? role;
+    try {
+      final profile = await _client
+          .from('profiles')
+          .select('role')
+          .eq('supabase_user_id', userId)
+          .single();
+      role = profile['role'] as String?;
+    } catch (error) {
+      debugPrint('🔔 Could not load role for announcement alerts: $error');
+      return;
+    }
+    if (role == null || role.isEmpty) return;
+
+    var isInitialSnapshot = true;
+    _announcementSubscription = _firestore
+        .collection('announcements')
+        .where('status', isEqualTo: 'published')
+        .snapshots()
+        .listen((snapshot) {
+      if (isInitialSnapshot) {
+        isInitialSnapshot = false;
+        return; // Don't alert for old announcements when opening the app.
+      }
+
+      for (final change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.removed) continue;
+        final data = change.doc.data();
+        if (data == null) continue;
+
+        final rawRoles = data['audience_roles'] ?? data['audienceRoles'];
+        final roles = rawRoles is List
+            ? rawRoles.map((value) => value.toString()).toList()
+            : const <String>[];
+        if (!roles.contains(role)) continue;
+
+        final expiresAt = data['expires_at'] ?? data['expiresAt'];
+        if (expiresAt is Timestamp && expiresAt.toDate().isBefore(DateTime.now())) {
+          continue;
+        }
+
+        final title = (data['title'] ?? '').toString().trim();
+        final body = (data['message'] ?? data['body'] ?? '').toString().trim();
+        if (title.isEmpty && body.isEmpty) continue;
+
+        _showSystemNotification(
+          id: change.doc.id.hashCode,
+          title: title.isEmpty ? 'InfinityWash' : title,
+          body: body.isEmpty ? 'You have a new announcement.' : body,
+        );
+      }
+    }, onError: (Object error) {
+      debugPrint('🔔 Firestore announcement alert listener failed: $error');
+    });
   }
 
   /// Enable FCM auto-init on Android. The notification channel used by
@@ -214,16 +303,51 @@ class PushNotificationService {
     }
   }
 
-  void _showForegroundBanner(RemoteMessage message) {
+  Future<void> _showForegroundBanner(RemoteMessage message) async {
     final push = PushMessage.fromRemoteMessage(message);
-    final context = infinityWashNavigatorKey.currentContext;
-    if (context == null) return;
-    showTopNotification(
-      context,
-      message: push.body ?? push.title ?? 'New notification',
-      icon: Icons.notifications_active,
-      backgroundColor: AppTheme.primaryBlue,
+    final title = push.title ?? 'InfinityWash';
+    final body = push.body ?? 'You have a new notification.';
+
+    await _showSystemNotification(
+      id: message.messageId?.hashCode ??
+          DateTime.now().millisecondsSinceEpoch.remainder(0x7fffffff),
+      title: title,
+      body: body,
     );
+  }
+
+  Future<void> _showSystemNotification({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      // The same announcement can arrive through both Firestore and FCM.
+      // Avoid displaying it twice when those two live paths overlap.
+      final fingerprint = '$title\n$body';
+      final now = DateTime.now();
+      final lastShown = _recentSystemNotifications[fingerprint];
+      if (lastShown != null && now.difference(lastShown).inSeconds < 30) {
+        return;
+      }
+      _recentSystemNotifications[fingerprint] = now;
+      _recentSystemNotifications.removeWhere(
+        (_, shownAt) => now.difference(shownAt).inMinutes >= 2,
+      );
+
+      try {
+        await _foregroundNotificationChannel.invokeMethod<void>(
+          'showForegroundNotification',
+          {
+            'id': id,
+            'title': title,
+            'body': body,
+          },
+        );
+      } catch (error) {
+        debugPrint('🔔 Could not show foreground system notification: $error');
+      }
+    }
   }
 
   void _handleTap(RemoteMessage message) {

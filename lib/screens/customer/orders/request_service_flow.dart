@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:gal/gal.dart';
 import 'dart:io';
 import 'dart:convert';
 import '../../../theme/app_theme.dart';
@@ -12,6 +13,8 @@ import '../../../widgets/address_input_widget.dart';
 import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
 import '../../../services/customer_service.dart';
+import '../../../services/photo_file_service.dart';
+import '../../../widgets/in_app_camera_screen.dart';
 
 class RequestServiceFlow extends StatefulWidget {
   const RequestServiceFlow({super.key});
@@ -106,6 +109,9 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
   @override
   void dispose() {
+    for (final photo in _laundryPhotos) {
+      PhotoFileService.deleteTemporary(photo);
+    }
     _formHouseStreetCtrl.dispose();
     _formCustomBarangayCtrl.dispose();
     _formLandmarkCtrl.dispose();
@@ -115,12 +121,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   }
 
   Future<void> _pickImageFromCamera() async {
-    if (_laundryPhotos.length >= _maxPhotos) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Maximum $_maxPhotos photos allowed')),
-      );
-      return;
-    }
+    if (!_canAddPhoto()) return;
 
     // Explain why the camera is needed before the OS prompt appears.
     if (!mounted) return;
@@ -129,18 +130,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
     }
 
     try {
-      final XFile? photo = await _imagePicker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 85,
+      final photo = await Navigator.of(context).push<File>(
+        MaterialPageRoute(builder: (_) => const InAppCameraScreen()),
       );
-
-      if (photo != null) {
-        setState(() {
-          _laundryPhotos.add(File(photo.path));
-        });
-      }
+      if (photo != null && mounted) await _addPhoto(photo);
     } on PlatformException catch (e) {
       if (!mounted) return;
       if (PermissionManager.isPickerPermissionCode(e.code)) {
@@ -159,12 +152,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   }
 
   Future<void> _pickImageFromGallery() async {
-    if (_laundryPhotos.length >= _maxPhotos) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Maximum $_maxPhotos photos allowed')),
-      );
-      return;
-    }
+    if (!_canAddPhoto()) return;
 
     // Explain why the photo library is needed before the OS prompt appears.
     if (!mounted) return;
@@ -181,9 +169,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
       );
 
       if (image != null) {
-        setState(() {
-          _laundryPhotos.add(File(image.path));
-        });
+        await _addPhoto(File(image.path));
       }
     } on PlatformException catch (e) {
       if (!mounted) return;
@@ -202,10 +188,47 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
     }
   }
 
+  bool _canAddPhoto() {
+    if (_laundryPhotos.length < _maxPhotos) return true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Maximum $_maxPhotos photos allowed')),
+    );
+    return false;
+  }
+
+  Future<void> _addPhoto(File source) async {
+    try {
+      final prepared = await PhotoFileService.prepareForUpload(source);
+      if (!mounted) {
+        await PhotoFileService.deleteTemporary(prepared);
+        return;
+      }
+      if (_laundryPhotos.length >= _maxPhotos) {
+        await PhotoFileService.deleteTemporary(prepared);
+        return;
+      }
+      setState(() => _laundryPhotos.add(prepared));
+    } on PhotoTooLargeException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not prepare this photo. Please try another.')),
+        );
+      }
+    }
+  }
+
   void _removePhoto(int index) {
+    final photo = _laundryPhotos[index];
     setState(() {
       _laundryPhotos.removeAt(index);
     });
+    PhotoFileService.deleteTemporary(photo);
   }
 
   void _showPhotoSourceSelector() {
@@ -701,11 +724,14 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.file(
-            _laundryPhotos[index],
-            width: double.infinity,
-            height: double.infinity,
-            fit: BoxFit.cover,
+          child: GestureDetector(
+            onTap: () => _showPreparedPhoto(index),
+            child: Image.file(
+              _laundryPhotos[index],
+              width: double.infinity,
+              height: double.infinity,
+              fit: BoxFit.cover,
+            ),
           ),
         ),
         Positioned(
@@ -744,6 +770,66 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             Text(
               'Add Photo',
               style: TextStyle(fontSize: 11, color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPreparedPhoto(int index) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 4,
+                child: Image.file(_laundryPhotos[index], fit: BoxFit.contain),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton.icon(
+                    onPressed: () async {
+                      try {
+                        await Gal.putImage(_laundryPhotos[index].path);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Photo saved to your gallery.')),
+                          );
+                        }
+                      } catch (_) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Could not save the photo. Check gallery permission and try again.')),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.download_outlined),
+                    label: const Text('Save to gallery'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.white),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                      _removePhoto(index);
+                    },
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Delete'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1323,6 +1409,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                         : null,
                     addons: addons,
                   );
+
+                  for (final photo in _laundryPhotos) {
+                    await PhotoFileService.deleteTemporary(photo);
+                  }
 
                   // Close loading dialog
                   if (!mounted) return;
