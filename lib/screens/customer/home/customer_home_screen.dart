@@ -11,6 +11,7 @@ import '../orders/customer_orders_screen.dart';
 import '../notifications/customer_notifications_screen.dart';
 import '../orders/customer_order_details_screen.dart';
 import '../../../widgets/legal_consent_banner.dart';
+import '../../../widgets/home_header.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -97,104 +98,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   Widget _buildHeader() {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Hello, Customer!',
-                style: AppTheme.lightTheme.textTheme.headlineMedium,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                'Your laundry is our priority. 🫧',
-                style: AppTheme.lightTheme.textTheme.bodyMedium,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppTheme.softGray,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
-              ),
-              child: IconButton(
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => CustomerNotificationsScreen(
-                        onNotificationsCleared: () {
-                          _loadUnreadCount(); // Reload count after clearing
-                        },
-                      ),
-                    ),
-                  );
-                  _loadUnreadCount(); // Reload count when returning
-                },
-                padding: EdgeInsets.zero,
-                icon: Icon(
-                  Icons.notifications_none_rounded, 
-                  color: _unreadNotificationsCount > 0 ? AppTheme.errorRed : AppTheme.textDark, 
-                  size: 22
-                ),
-                tooltip: 'Notifications',
-              ),
-            ),
-            if (_unreadNotificationsCount > 0)
-              Positioned(
-                top: -2,
-                right: -2,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.errorRed,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                  child: Text(
-                    '$_unreadNotificationsCount',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      height: 1.0,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(width: 8),
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: AppTheme.softGray,
-            shape: BoxShape.circle,
-          ),
-          padding: const EdgeInsets.all(2),
-          child: ClipOval(
-            child: Image.asset(
-              'assets/images/logo.jpg',
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => const Icon(Icons.person),
+    return HomeHeader(
+      title: 'Hello, Customer!',
+      subtitle: 'Your laundry is our priority. 🫧',
+      unreadCount: _unreadNotificationsCount,
+      onNotificationTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CustomerNotificationsScreen(
+              onNotificationsCleared: () {
+                _loadUnreadCount(); // Reload count after clearing
+              },
             ),
           ),
-        ),
-      ],
+        );
+        _loadUnreadCount(); // Reload count when returning
+      },
     );
   }
 

@@ -10,6 +10,7 @@ import '../../../widgets/cached_tile_provider.dart';
 import '../route/rider_route_screen_new.dart';
 import '../jobs/rider_job_details_screen.dart';
 import '../notifications/rider_notifications_screen.dart';
+import '../../../widgets/home_header.dart';
 
 class RiderHomeScreen extends StatefulWidget {
   final ValueChanged<int>? onSelectTab;
@@ -163,84 +164,11 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   }
 
   Widget _buildHeader() {
-    return Row(
-      children: [
-        Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            color: AppTheme.softGray,
-            shape: BoxShape.circle,
-          ),
-          padding: const EdgeInsets.all(4),
-          child: ClipOval(
-            child: Image.asset(
-              'assets/images/logo.jpg',
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => const Icon(Icons.person),
-            ),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Infinity Wash',
-                style: AppTheme.lightTheme.textTheme.titleMedium,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const Text(
-                'RIDER',
-                style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: _showNotifications,
-          child: Stack(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppTheme.softGray,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  Icons.notifications_outlined, 
-                  color: _unreadCount > 0 ? AppTheme.errorRed : AppTheme.textDark, 
-                  size: 24
-                ),
-              ),
-              if (_unreadCount > 0)
-                Positioned(
-                  right: 4,
-                  top: 4,
-                  child: Container(
-                    width: 18,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      color: AppTheme.errorRed,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '$_unreadCount',
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ],
+    return HomeHeader(
+      title: 'Hi, Rider!',
+      subtitle: 'Ready for today\'s deliveries? 🛵',
+      unreadCount: _unreadCount,
+      onNotificationTap: _showNotifications,
     );
   }
 

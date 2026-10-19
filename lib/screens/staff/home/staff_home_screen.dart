@@ -10,6 +10,7 @@ import '../orders/rfid_checker_screen.dart';
 import '../notifications/staff_notifications_screen.dart';
 import '../../../services/order_service.dart';
 import '../../../services/notification_service.dart';
+import '../../../widgets/home_header.dart';
 
 class StaffHomeScreen extends StatefulWidget {
   const StaffHomeScreen({super.key});
@@ -136,89 +137,16 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Container(
-          width: 60,
-          height: 60,
-          decoration: BoxDecoration(
-            color: AppTheme.softGray,
-            shape: BoxShape.circle,
-            border: Border.all(color: AppTheme.textDark, width: 1.5),
-          ),
-          padding: const EdgeInsets.all(2),
-          child: ClipOval(
-            child: Image.asset(
-              'assets/images/logo.jpg',
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => const Icon(Icons.person),
-            ),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Hi, Staff!',
-                style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                'Let\'s keep things moving today. ✨',
-                style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                  fontSize: 13,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            IconButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const StaffNotificationsScreen()),
-                ).then((_) => _loadUnreadCount()); // Reload count when returning
-              },
-              icon: Icon(
-                Icons.notifications_none, 
-                size: 28,
-                color: _unreadNotificationCount > 0 ? AppTheme.errorRed : AppTheme.textDark,
-              ),
-            ),
-            if (_unreadNotificationCount > 0)
-              Positioned(
-                right: 12,
-                top: 12,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.errorRed,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
-                  ),
-                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                  child: Text(
-                    _unreadNotificationCount > 9 ? '9+' : '$_unreadNotificationCount',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ],
+    return HomeHeader(
+      title: 'Hi, Staff!',
+      subtitle: 'Let\'s keep things moving today. ✨',
+      unreadCount: _unreadNotificationCount,
+      onNotificationTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const StaffNotificationsScreen()),
+        ).then((_) => _loadUnreadCount()); // Reload count when returning
+      },
     );
   }
 
