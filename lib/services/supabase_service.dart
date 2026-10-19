@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/dispatch_job.dart';
@@ -229,25 +230,28 @@ class SupabaseService {
     }
   }
   
-  /// Subscribe to rider location updates (for customer side)
-  Stream<LatLng?> subscribeToRiderLocation(String riderId) {
-    return client
-        .from('rider_locations')
-        .stream(primaryKey: ['rider_id'])
-        .eq('rider_id', riderId)
-        .map((data) {
-          if (data.isEmpty) return null;
-          
-          final location = data.first;
-          final lat = location['latitude'] as num?;
-          final lng = location['longitude'] as num?;
-          
-          if (lat != null && lng != null) {
-            return LatLng(lat.toDouble(), lng.toDouble());
-          }
-          
-          return null;
-        });
+  /// Poll rider location updates (for customer side fallback)
+  Stream<LatLng?> subscribeToRiderLocation(String riderId, {Duration interval = const Duration(seconds: 60)}) {
+    final controller = StreamController<LatLng?>();
+    Timer? timer;
+
+    void fetch() async {
+      if (controller.isClosed) return;
+      try {
+        final loc = await getRiderLocation(riderId);
+        if (!controller.isClosed) controller.add(loc);
+      } catch (_) {}
+    }
+
+    fetch();
+    timer = Timer.periodic(interval, (_) => fetch());
+
+    controller.onCancel = () {
+      timer?.cancel();
+      controller.close();
+    };
+
+    return controller.stream;
   }
   
   /// Get rider's current location (one-time fetch)

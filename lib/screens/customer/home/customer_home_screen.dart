@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
-import '../../../utils/app_error.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/service_request_service.dart';
 import '../../../services/customer_service.dart';
@@ -29,7 +28,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   // Recent activity state
   bool _loadingRecentOrders = false;
   List<LaundryOrder> _recentOrders = [];
-  String? _errorMessage;
 
   @override
   void initState() {
@@ -49,7 +47,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Future<void> _loadRecentOrders() async {
     setState(() {
       _loadingRecentOrders = true;
-      _errorMessage = null;
     });
 
     try {
@@ -63,13 +60,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         _recentOrders = orders; // Full list for active order detection; recent activity uses .take(3)
         _loadingRecentOrders = false;
       });
-      print('✅ Loaded ${orders.length} recent orders for home screen');
+      debugPrint('✅ Loaded ${orders.length} recent orders for home screen');
     } catch (e) {
       setState(() {
         _loadingRecentOrders = false;
-        _errorMessage = mapErrorToMessage(e);
       });
-      print('❌ Error loading recent orders: $e');
+      debugPrint('❌ Error loading recent orders: $e');
     }
   }
 
@@ -504,9 +500,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 AppTheme.teamMemberOrange,
                 AppTheme.teamMemberIconOrange,
                 onTap: () {
+                  final activeOrder = _recentOrders.cast<LaundryOrder?>().firstWhere(
+                    (o) =>
+                        o != null &&
+                        (o.status == OrderStatus.out_for_delivery ||
+                            o.status == OrderStatus.pending_pickup),
+                    orElse: () => null,
+                  );
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const DeliveryTrackingScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => DeliveryTrackingScreen(
+                        initialOrderId: activeOrder?.id,
+                      ),
+                    ),
                   );
                 },
               ),

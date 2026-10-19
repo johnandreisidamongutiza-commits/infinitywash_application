@@ -123,7 +123,11 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
     if (type == 'delivery') {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const DeliveryTrackingScreen()),
+        MaterialPageRoute(
+          builder: (context) => DeliveryTrackingScreen(
+            initialOrderId: notif.relatedOrderId,
+          ),
+        ),
       );
     } else if (type == 'order' || type == 'order_update') {
       Navigator.push(

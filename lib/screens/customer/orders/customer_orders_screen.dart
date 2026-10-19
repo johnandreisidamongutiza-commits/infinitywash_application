@@ -20,6 +20,7 @@ import '../../shared/gcash_qr_payment_screen.dart';
 import 'request_service_flow.dart';
 import 'customer_order_details_screen.dart';
 import '../chats/customer_chat_detail_screen.dart';
+import '../delivery/order_delivery_tracking_screen.dart';
 
 class CustomerOrdersScreen extends StatefulWidget {
   const CustomerOrdersScreen({super.key});
@@ -29,7 +30,7 @@ class CustomerOrdersScreen extends StatefulWidget {
 }
 
 class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   final ServiceRequestService _serviceRequestService = ServiceRequestService();
   final CustomerService _customerService = CustomerService();
@@ -146,6 +147,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 3, vsync: this, initialIndex: 1);
 
     // Attach scroll listeners for infinite pagination
@@ -165,6 +167,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _autoRefreshTimer?.cancel();
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
@@ -173,6 +176,16 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
     _activeScroll.dispose();
     _historyScroll.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _autoRefreshTimer?.cancel();
+      _autoRefreshTimer = null;
+    } else if (state == AppLifecycleState.resumed) {
+      _startAutoRefresh();
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -838,6 +851,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: null,
         onPressed: () async {
           final result = await Navigator.push(
             context,
@@ -1711,6 +1725,47 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                                   ),
                                 ),
                               ],
+                            ),
+                          ),
+                        ],
+                        if (order.status == OrderStatus.out_for_delivery ||
+                            (order.status == OrderStatus.pending_pickup &&
+                                order.collectionMethod == CollectionMethod.riderPickup)) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 38,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => OrderDeliveryTrackingScreen(
+                                      orderId: order.id,
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.navigation_rounded, size: 15),
+                              label: Text(
+                                order.status == OrderStatus.pending_pickup
+                                    ? 'Track Pickup Rider'
+                                    : 'Track Delivery on Map',
+                                style: GoogleFonts.lexend(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: order.status == OrderStatus.pending_pickup
+                                    ? Colors.orange.shade800
+                                    : const Color(0xFF7B1FA2),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
                             ),
                           ),
                         ],

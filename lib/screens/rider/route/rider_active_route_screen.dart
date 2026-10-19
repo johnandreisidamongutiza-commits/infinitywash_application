@@ -16,6 +16,7 @@ import '../../../widgets/cached_tile_provider.dart';
 import '../jobs/rider_job_details_screen.dart';
 import '../payments/rider_payment_process_screen.dart';
 import '../../../widgets/address_input_widget.dart';
+import '../../../state/rider_location_provider.dart';
 
 /// Active Route Tracking Screen
 /// Shows rider's live location centered on map with rotating arrow pointing to next destination
@@ -33,6 +34,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   final RoutingService _routingService = RoutingService();
   final RiderService _riderService = RiderService();
   final GpsProvider _gpsProvider = GpsProvider();
+  final RiderLocationProvider _locationProvider = RiderLocationProvider();
 
   LatLng? _currentLocation;
   double _currentBearing = 0.0; // Direction rider is facing/moving
@@ -69,6 +71,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   @override
   void dispose() {
     _locationSubscription?.cancel();
+    _locationProvider.stopUploading();
     _gpsProvider.stopTracking();
     super.dispose();
   }
@@ -78,6 +81,19 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
       _gpsProvider.attachDialogContext(context);
       await _gpsProvider.initialize();
       await _gpsProvider.startTracking();
+
+      // Start uploading rider location to Supabase for customer tracking
+      final riderId = SupabaseService.client.auth.currentUser?.id;
+      if (riderId != null) {
+        final currentJobId = _remainingJobs.isNotEmpty ? _remainingJobs.first.id : null;
+        _locationProvider.startUploading(
+          riderId: riderId,
+          dispatchJobId: currentJobId,
+          locationStream: _gpsProvider.locationStream
+              .where((loc) => loc.latitude != null && loc.longitude != null)
+              .map((loc) => LatLng(loc.latitude!, loc.longitude!)),
+        );
+      }
 
       _locationSubscription = _gpsProvider.locationStream.listen((location) {
         if (mounted && location.latitude != null && location.longitude != null) {
@@ -900,8 +916,19 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
       );
 
       if (_remainingJobs.isEmpty) {
+        _locationProvider.stopUploading();
         _showCompletionDialog();
       } else {
+        final riderId = SupabaseService.client.auth.currentUser?.id;
+        if (riderId != null) {
+          _locationProvider.startUploading(
+            riderId: riderId,
+            dispatchJobId: _remainingJobs.first.id,
+            locationStream: _gpsProvider.locationStream
+                .where((loc) => loc.latitude != null && loc.longitude != null)
+                .map((loc) => LatLng(loc.latitude!, loc.longitude!)),
+          );
+        }
         await _calculateRoute();
       }
     } catch (e) {

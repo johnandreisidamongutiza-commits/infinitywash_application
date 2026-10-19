@@ -10,6 +10,7 @@ import '../../../widgets/star_rating.dart';
 import '../../../widgets/order_timeline_view.dart';
 import 'request_service_flow.dart';
 import '../chats/customer_chat_detail_screen.dart';
+import '../delivery/order_delivery_tracking_screen.dart';
 
 class CustomerOrderDetailsScreen extends StatefulWidget {
   final LaundryOrder order;
@@ -20,7 +21,8 @@ class CustomerOrderDetailsScreen extends StatefulWidget {
   State<CustomerOrderDetailsScreen> createState() => _CustomerOrderDetailsScreenState();
 }
 
-class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen> {
+class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
+    with WidgetsBindingObserver {
   final FeedbackService _feedbackService = FeedbackService();
   final CustomerService _customerService = CustomerService();
   final OrderService _orderService = OrderService();
@@ -30,7 +32,6 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
   bool _isLoadingFeedback = true;
   bool _isSubmitting = false;
   int _selectedRating = 0;
-  String? _error;
   
   // Order refresh management
   LaundryOrder? _latestOrder;
@@ -38,43 +39,75 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
   bool _wasUpdated = false;
   Timer? _autoRefreshTimer;
 
+  bool _isTerminalOrder(LaundryOrder? order) {
+    if (order == null) return false;
+    return order.status == OrderStatus.completed ||
+        order.status == OrderStatus.cancelled ||
+        order.status == OrderStatus.rejected;
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _latestOrder = widget.order;
     _loadFeedback();
-    _refreshOrder();
-    _startAutoRefresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _refreshOrder();
+        _startAutoRefresh();
+      }
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _commentController.dispose();
     _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
-  /// Start auto-refresh timer (30 seconds for order detail view)
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // Pause polling when app is in background to save API requests
+      _autoRefreshTimer?.cancel();
+      _autoRefreshTimer = null;
+    } else if (state == AppLifecycleState.resumed) {
+      // Resume polling when returning to foreground if order is still active
+      if (!_isTerminalOrder(_latestOrder)) {
+        _refreshOrder();
+        _startAutoRefresh();
+      }
+    }
+  }
+
+  /// Start auto-refresh timer (60 seconds for order detail view)
   void _startAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+
+    // Do not poll if the order is already in a terminal state
+    if (_isTerminalOrder(_latestOrder)) {
+      return;
+    }
+
     _autoRefreshTimer = Timer.periodic(
-      const Duration(seconds: 30),
+      const Duration(seconds: 60),
       (timer) {
         if (mounted && !_isRefreshing) {
           _refreshOrder();
         }
       },
     );
-    print('✅ Started customer order detail auto-refresh timer (30s interval)');
   }
 
   Future<void> _refreshOrder() async {
+    if (!mounted) return;
     try {
       setState(() => _isRefreshing = true);
 
-      // Fetch this one order by id. This previously pulled up to 100 orders
-      // belonging to *any* customer, every 30 seconds, and scanned them in Dart
-      // for the matching row: wasteful, and it dragged other customers' details
-      // into the client. Falls back to the order already on screen on failure.
+      // Fetch this one order by id.
       final updated =
           await _orderService.getOrderById(widget.order.id) ?? _latestOrder;
 
@@ -89,6 +122,12 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
           _latestOrder = updated;
           _isRefreshing = false;
         });
+
+        // Stop polling if the order reached a terminal status
+        if (_isTerminalOrder(updated)) {
+          _autoRefreshTimer?.cancel();
+          _autoRefreshTimer = null;
+        }
 
         // Show notification if amount or status changed
         if ((oldTotal != null && newTotal != null && oldTotal != newTotal) ||
@@ -139,7 +178,6 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     } catch (e) {
       setState(() {
         _isLoadingFeedback = false;
-        _error = 'Failed to load feedback';
       });
     }
   }
@@ -279,6 +317,10 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                 ),
               
               _buildHeader(order),
+              if (_hasActiveDelivery(order)) ...[
+                const SizedBox(height: 16),
+                _buildLiveTrackingBanner(order),
+              ],
               const SizedBox(height: 24),
               OrderTimelineView(order: order),
               const SizedBox(height: 24),
@@ -736,6 +778,35 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
   Widget _buildActionButtons(LaundryOrder order) {
     return Column(
       children: [
+        if (_hasActiveDelivery(order)) ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => OrderDeliveryTrackingScreen(orderId: order.id),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.navigation_rounded, size: 18),
+              label: const Text(
+                'Track Live Delivery',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentBlue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
@@ -826,8 +897,94 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
         return 'Rejected';
       case OrderStatus.cancelled:
         return 'Cancelled';
-      default:
-        return 'Unknown';
     }
+  }
+
+  bool _hasActiveDelivery(LaundryOrder order) {
+    return order.status == OrderStatus.out_for_delivery ||
+        (order.status == OrderStatus.pending_pickup &&
+            order.collectionMethod == CollectionMethod.riderPickup) ||
+        (order.status == OrderStatus.ready &&
+            order.returnMethod == ReturnMethod.delivery);
+  }
+
+  Widget _buildLiveTrackingBanner(LaundryOrder order) {
+    final isPickup = order.status == OrderStatus.pending_pickup;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OrderDeliveryTrackingScreen(orderId: order.id),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3E5F5),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF7B1FA2).withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF7B1FA2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isPickup ? Icons.shopping_bag : Icons.two_wheeler,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isPickup ? 'Rider Pickup Active' : 'Laundry Out for Delivery',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Color(0xFF4A148C),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Track rider live location & arrival on the map.',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textDark),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7B1FA2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Track',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
