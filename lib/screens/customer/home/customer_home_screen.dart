@@ -12,6 +12,10 @@ import '../notifications/customer_notifications_screen.dart';
 import '../orders/customer_order_details_screen.dart';
 import '../../../widgets/legal_consent_banner.dart';
 import '../../../widgets/home_header.dart';
+import '../../../services/profile_service.dart';
+import '../../../services/profile_local_db.dart';
+import '../../../services/supabase_service.dart';
+import '../profile/options/account_details_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -24,7 +28,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final NotificationService _notificationService = NotificationService();
   final ServiceRequestService _serviceRequestService = ServiceRequestService();
   final CustomerService _customerService = CustomerService();
+  final ProfileService _profileService = ProfileService();
   int _unreadNotificationsCount = 0;
+  String? _avatarUrl;
+  String? _localAvatarPath;
   
   // Recent activity state
   bool _loadingRecentOrders = false;
@@ -33,8 +40,33 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _loadUserProfile();
     _loadUnreadCount();
     _loadRecentOrders();
+  }
+
+  Future<void> _loadUserProfile() async {
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    if (userId != null) {
+      try {
+        final cached = await ProfileLocalDatabase.instance.getAvatar(userId);
+        if (cached != null && mounted) {
+          setState(() {
+            _avatarUrl = cached.avatarUrl;
+            _localAvatarPath = cached.localPath;
+          });
+        }
+      } catch (_) {}
+    }
+
+    try {
+      final profile = await _profileService.getProfile();
+      if (mounted) {
+        setState(() {
+          _avatarUrl = profile['avatar_url'] as String?;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadUnreadCount() async {
@@ -101,7 +133,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return HomeHeader(
       title: 'Hello, Customer!',
       subtitle: 'Your laundry is our priority. 🫧',
+      avatarUrl: _avatarUrl,
+      localAvatarPath: _localAvatarPath,
       unreadCount: _unreadNotificationsCount,
+      onAvatarTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const CustomerAccountDetailsScreen(),
+          ),
+        );
+        _loadUserProfile();
+      },
       onNotificationTap: () async {
         await Navigator.push(
           context,
@@ -114,6 +157,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ),
         );
         _loadUnreadCount(); // Reload count when returning
+        _loadUserProfile();
       },
     );
   }

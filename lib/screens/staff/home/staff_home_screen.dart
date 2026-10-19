@@ -11,6 +11,10 @@ import '../notifications/staff_notifications_screen.dart';
 import '../../../services/order_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../widgets/home_header.dart';
+import '../../../services/profile_service.dart';
+import '../../../services/profile_local_db.dart';
+import '../../../services/supabase_service.dart';
+import '../profile/options/account_details_screen.dart';
 
 class StaffHomeScreen extends StatefulWidget {
   const StaffHomeScreen({super.key});
@@ -22,9 +26,12 @@ class StaffHomeScreen extends StatefulWidget {
 class _StaffHomeScreenState extends State<StaffHomeScreen> {
   final OrderService _orderService = OrderService();
   final NotificationService _notificationService = NotificationService();
+  final ProfileService _profileService = ProfileService();
   TodayQueueCounts _queueCounts = const TodayQueueCounts();
   List<LaundryOrder> _processingOrdersList = [];
   int _unreadNotificationCount = 0;
+  String? _avatarUrl;
+  String? _localAvatarPath;
   bool _isLoading = true;
   String? _error;
   Timer? _autoRefreshTimer;
@@ -32,11 +39,36 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _loadUserProfile();
     _loadOrders();
     _loadUnreadCount();
     _startAutoRefresh();
     // One-time backlog cleanup: purge laundry photos from completed/cancelled orders to reclaim storage
     _orderService.purgeCompletedOrdersPhotos();
+  }
+
+  Future<void> _loadUserProfile() async {
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    if (userId != null) {
+      try {
+        final cached = await ProfileLocalDatabase.instance.getAvatar(userId);
+        if (cached != null && mounted) {
+          setState(() {
+            _avatarUrl = cached.avatarUrl;
+            _localAvatarPath = cached.localPath;
+          });
+        }
+      } catch (_) {}
+    }
+
+    try {
+      final profile = await _profileService.getProfile();
+      if (mounted) {
+        setState(() {
+          _avatarUrl = profile['avatar_url'] as String?;
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -140,12 +172,26 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
     return HomeHeader(
       title: 'Hi, Staff!',
       subtitle: 'Let\'s keep things moving today. ✨',
+      avatarUrl: _avatarUrl,
+      localAvatarPath: _localAvatarPath,
       unreadCount: _unreadNotificationCount,
+      onAvatarTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const AccountDetailsScreen(),
+          ),
+        );
+        _loadUserProfile();
+      },
       onNotificationTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => const StaffNotificationsScreen()),
-        ).then((_) => _loadUnreadCount()); // Reload count when returning
+        ).then((_) {
+          _loadUnreadCount();
+          _loadUserProfile();
+        });
       },
     );
   }

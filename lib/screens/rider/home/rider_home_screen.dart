@@ -11,6 +11,10 @@ import '../route/rider_route_screen_new.dart';
 import '../jobs/rider_job_details_screen.dart';
 import '../notifications/rider_notifications_screen.dart';
 import '../../../widgets/home_header.dart';
+import '../../../services/profile_service.dart';
+import '../../../services/profile_local_db.dart';
+import '../../../services/supabase_service.dart';
+import '../profile/options/account_details_screen.dart';
 
 class RiderHomeScreen extends StatefulWidget {
   final ValueChanged<int>? onSelectTab;
@@ -24,7 +28,10 @@ class RiderHomeScreen extends StatefulWidget {
 class _RiderHomeScreenState extends State<RiderHomeScreen> {
   final NotificationService _notificationService = NotificationService();
   final RiderService _riderService = RiderService();
+  final ProfileService _profileService = ProfileService();
   int _unreadCount = 0;
+  String? _avatarUrl;
+  String? _localAvatarPath;
   bool _isLoading = true;
   List<DispatchJob> _pickupJobs = [];
   List<DispatchJob> _deliveryJobs = [];
@@ -34,8 +41,33 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _loadUserProfile();
     _loadUnreadCount();
     _loadOrders();
+  }
+
+  Future<void> _loadUserProfile() async {
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    if (userId != null) {
+      try {
+        final cached = await ProfileLocalDatabase.instance.getAvatar(userId);
+        if (cached != null && mounted) {
+          setState(() {
+            _avatarUrl = cached.avatarUrl;
+            _localAvatarPath = cached.localPath;
+          });
+        }
+      } catch (_) {}
+    }
+
+    try {
+      final profile = await _profileService.getProfile();
+      if (mounted) {
+        setState(() {
+          _avatarUrl = profile['avatar_url'] as String?;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadUnreadCount() async {
@@ -167,8 +199,22 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     return HomeHeader(
       title: 'Hi, Rider!',
       subtitle: 'Ready for today\'s deliveries? 🛵',
+      avatarUrl: _avatarUrl,
+      localAvatarPath: _localAvatarPath,
       unreadCount: _unreadCount,
-      onNotificationTap: _showNotifications,
+      onAvatarTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const RiderAccountDetailsScreen(),
+          ),
+        );
+        _loadUserProfile();
+      },
+      onNotificationTap: () {
+        _showNotifications();
+        _loadUserProfile();
+      },
     );
   }
 

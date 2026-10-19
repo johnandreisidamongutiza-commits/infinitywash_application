@@ -91,16 +91,6 @@ class _EditableProfileAvatarState extends State<EditableProfileAvatar> {
     } catch (_) {}
   }
 
-  String _getInitials() {
-    final rawName = widget.name?.trim() ?? '';
-    if (rawName.isEmpty) return 'U';
-    final parts = rawName.split(RegExp(r'\s+'));
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    }
-    return rawName.substring(0, rawName.length >= 2 ? 2 : 1).toUpperCase();
-  }
-
   void _showImageSourcePicker() {
     if (!widget.isEditable || _isUploading) return;
 
@@ -318,23 +308,24 @@ class _EditableProfileAvatarState extends State<EditableProfileAvatar> {
   }
 
   Widget _buildFallbackContent() {
-    final initials = _getInitials();
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppTheme.primaryBlue, AppTheme.accentBlue],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: AppTheme.softGray,
         shape: BoxShape.circle,
       ),
-      alignment: Alignment.center,
-      child: Text(
-        initials,
-        style: GoogleFonts.lexend(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-          fontSize: widget.radius * 0.45,
+      child: ClipOval(
+        child: Image.asset(
+          'assets/images/logo.jpg',
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => Container(
+            color: AppTheme.softGray,
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.person,
+              color: AppTheme.textDark,
+              size: widget.radius * 0.8,
+            ),
+          ),
         ),
       ),
     );

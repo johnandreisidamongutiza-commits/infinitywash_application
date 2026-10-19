@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
@@ -28,6 +29,9 @@ class HomeHeader extends StatelessWidget {
   /// Optional network avatar URL.
   final String? avatarUrl;
 
+  /// Optional local avatar file path.
+  final String? localAvatarPath;
+
   /// Asset path used as default or fallback avatar image.
   final String avatarAsset;
 
@@ -49,6 +53,7 @@ class HomeHeader extends StatelessWidget {
     required this.onNotificationTap,
     this.onAvatarTap,
     this.avatarUrl,
+    this.localAvatarPath,
     this.avatarAsset = 'assets/images/logo.jpg',
     this.avatarSize = 48.0,
     this.titleStyle,
@@ -118,6 +123,50 @@ class HomeHeader extends StatelessWidget {
   }
 
   Widget _buildAvatar(BuildContext context) {
+    Widget imageWidget;
+    final hasLocal = localAvatarPath != null &&
+        localAvatarPath!.trim().isNotEmpty &&
+        File(localAvatarPath!).existsSync();
+    final hasRemote = avatarUrl != null && avatarUrl!.trim().isNotEmpty;
+
+    if (hasLocal) {
+      imageWidget = Image.file(
+        File(localAvatarPath!),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Image.asset(
+          avatarAsset,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              const Icon(Icons.person, color: AppTheme.textDark),
+        ),
+      );
+    } else if (hasRemote) {
+      imageWidget = CachedNetworkImage(
+        imageUrl: avatarUrl!,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => const Center(
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+        errorWidget: (context, url, error) => Image.asset(
+          avatarAsset,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              const Icon(Icons.person, color: AppTheme.textDark),
+        ),
+      );
+    } else {
+      imageWidget = Image.asset(
+        avatarAsset,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            const Icon(Icons.person, color: AppTheme.textDark),
+      );
+    }
+
     Widget avatarWidget = Container(
       width: avatarSize,
       height: avatarSize,
@@ -130,32 +179,7 @@ class HomeHeader extends StatelessWidget {
         ),
       ),
       padding: const EdgeInsets.all(2),
-      child: ClipOval(
-        child: avatarUrl != null && avatarUrl!.trim().isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: avatarUrl!,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => const Center(
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-                errorWidget: (context, url, error) => Image.asset(
-                  avatarAsset,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      const Icon(Icons.person, color: AppTheme.textDark),
-                ),
-              )
-            : Image.asset(
-                avatarAsset,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    const Icon(Icons.person, color: AppTheme.textDark),
-              ),
-      ),
+      child: ClipOval(child: imageWidget),
     );
 
     if (onAvatarTap != null) {
