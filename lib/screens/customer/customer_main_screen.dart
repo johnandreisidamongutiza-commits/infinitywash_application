@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import 'home/customer_home_screen.dart';
 import 'orders/customer_orders_screen.dart';
-import 'delivery/delivery_tracking_screen.dart';
 import 'chats/customer_chats_screen.dart';
 import 'profile/customer_profile_screen.dart';
 
@@ -21,7 +20,6 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
     final List<Widget> screens = [
       const CustomerHomeScreen(key: ValueKey('customer_home')),
       const CustomerOrdersScreen(key: ValueKey('customer_orders')),
-      const DeliveryTrackingScreen(key: ValueKey('customer_delivery')),
       const CustomerChatsScreen(key: ValueKey('customer_chats')),
       const CustomerProfileScreen(key: ValueKey('customer_profile')),
     ];
@@ -62,11 +60,6 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
               icon: Icon(Icons.assignment_outlined),
               activeIcon: Icon(Icons.assignment),
               label: 'Orders',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.delivery_dining_outlined),
-              activeIcon: Icon(Icons.delivery_dining),
-              label: 'Delivery',
             ),
             BottomNavigationBarItem(
               icon: Stack(

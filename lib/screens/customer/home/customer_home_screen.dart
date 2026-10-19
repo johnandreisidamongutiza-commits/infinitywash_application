@@ -6,7 +6,7 @@ import '../../../services/customer_service.dart';
 import '../../../models/order.dart';
 
 import '../orders/request_service_flow.dart';
-import '../delivery/delivery_tracking_screen.dart';
+import '../delivery/order_delivery_tracking_screen.dart';
 import '../orders/customer_orders_screen.dart';
 import '../notifications/customer_notifications_screen.dart';
 import '../orders/customer_order_details_screen.dart';
@@ -507,14 +507,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                             o.status == OrderStatus.pending_pickup),
                     orElse: () => null,
                   );
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => DeliveryTrackingScreen(
-                        initialOrderId: activeOrder?.id,
+                  if (activeOrder != null) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => OrderDeliveryTrackingScreen(
+                          orderId: activeOrder.id,
+                        ),
                       ),
-                    ),
-                  );
+                    );
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const CustomerOrdersScreen(),
+                      ),
+                    );
+                  }
                 },
               ),
             ),

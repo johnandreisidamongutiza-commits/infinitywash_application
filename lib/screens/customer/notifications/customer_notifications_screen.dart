@@ -5,7 +5,7 @@ import '../../../utils/app_error.dart';
 import '../../../models/notification_model.dart';
 import '../../../services/notification_service.dart';
 import '../orders/customer_orders_screen.dart';
-import '../delivery/delivery_tracking_screen.dart';
+import '../delivery/order_delivery_tracking_screen.dart';
 
 class CustomerNotificationsScreen extends StatefulWidget {
   final VoidCallback? onNotificationsCleared;
@@ -121,14 +121,21 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
     
     final type = notif.type;
     if (type == 'delivery') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DeliveryTrackingScreen(
-            initialOrderId: notif.relatedOrderId,
+      if (notif.relatedOrderId != null) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => OrderDeliveryTrackingScreen(
+              orderId: notif.relatedOrderId!,
+            ),
           ),
-        ),
-      );
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const CustomerOrdersScreen()),
+        );
+      }
     } else if (type == 'order' || type == 'order_update') {
       Navigator.push(
         context,
