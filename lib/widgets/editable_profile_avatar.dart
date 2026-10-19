@@ -91,6 +91,85 @@ class _EditableProfileAvatarState extends State<EditableProfileAvatar> {
     } catch (_) {}
   }
 
+  void _viewProfilePicture() {
+    Widget imageWidget;
+    if (_localFilePath != null && _localFilePath!.isNotEmpty) {
+      final file = File(_localFilePath!);
+      if (file.existsSync()) {
+        imageWidget = Image.file(
+          file,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) => Image.asset(
+            'assets/images/logo.jpg',
+            fit: BoxFit.contain,
+          ),
+        );
+      } else {
+        imageWidget = Image.asset('assets/images/logo.jpg', fit: BoxFit.contain);
+      }
+    } else if (_currentAvatarUrl != null && _currentAvatarUrl!.trim().isNotEmpty) {
+      imageWidget = CachedNetworkImage(
+        imageUrl: _currentAvatarUrl!,
+        fit: BoxFit.contain,
+        placeholder: (context, url) => const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+        errorWidget: (context, url, error) => Image.asset(
+          'assets/images/logo.jpg',
+          fit: BoxFit.contain,
+        ),
+      );
+    } else {
+      imageWidget = Image.asset(
+        'assets/images/logo.jpg',
+        fit: BoxFit.contain,
+      );
+    }
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.85),
+      builder: (dialogCtx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(dialogCtx).size.width * 0.9,
+                    maxHeight: MediaQuery.of(dialogCtx).size.height * 0.7,
+                  ),
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 4.0,
+                    child: imageWidget,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.5),
+                shape: const CircleBorder(),
+                child: IconButton(
+                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 24),
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.of(dialogCtx).pop(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showImageSourcePicker() {
     if (!widget.isEditable || _isUploading) return;
 
@@ -100,95 +179,117 @@ class _EditableProfileAvatarState extends State<EditableProfileAvatar> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              'Change Profile Picture',
-              style: GoogleFonts.lexend(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textDark,
-              ),
-            ),
-            const SizedBox(height: 18),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.accentBlue.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.camera_alt_rounded, color: AppTheme.accentBlue),
-              ),
-              title: Text(
-                'Take Photo',
-                style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickAndUpload(ImageSource.camera);
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.purple.shade50,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.photo_library_rounded, color: Colors.purple.shade700),
-              ),
-              title: Text(
-                'Choose from Gallery',
-                style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickAndUpload(ImageSource.gallery);
-              },
-            ),
-            if (hasAvatar) ...[
-              const Divider(height: 16),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
+      builder: (ctx) => Material(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        clipBehavior: Clip.antiAlias,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
-                    color: AppTheme.errorRed.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  child: const Icon(Icons.delete_outline_rounded, color: AppTheme.errorRed),
                 ),
-                title: Text(
-                  'Remove Photo',
+                const SizedBox(height: 18),
+                Text(
+                  'Profile Picture',
                   style: GoogleFonts.lexend(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.errorRed,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textDark,
                   ),
                 ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _removeAvatar();
-                },
-              ),
-            ],
-          ],
+                const SizedBox(height: 18),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.visibility_outlined, color: AppTheme.accentBlue),
+                  ),
+                  title: Text(
+                    'View Picture',
+                    style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _viewProfilePicture();
+                  },
+                ),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.camera_alt_rounded, color: Colors.teal.shade700),
+                  ),
+                  title: Text(
+                    'Take Photo',
+                    style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickAndUpload(ImageSource.camera);
+                  },
+                ),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.photo_library_rounded, color: Colors.purple.shade700),
+                  ),
+                  title: Text(
+                    'Choose from Gallery',
+                    style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickAndUpload(ImageSource.gallery);
+                  },
+                ),
+                if (hasAvatar) ...[
+                  const Divider(height: 16),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.errorRed.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.delete_outline_rounded, color: AppTheme.errorRed),
+                    ),
+                    title: Text(
+                      'Remove Photo',
+                      style: GoogleFonts.lexend(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.errorRed,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _removeAvatar();
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -400,7 +501,7 @@ class _EditableProfileAvatarState extends State<EditableProfileAvatar> {
     );
 
     return GestureDetector(
-      onTap: widget.isEditable ? _showImageSourcePicker : null,
+      onTap: widget.isEditable ? _showImageSourcePicker : _viewProfilePicture,
       child: Stack(
         alignment: Alignment.center,
         children: [
