@@ -349,8 +349,8 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     }
 
     final statusColor = widget.job.status == 'in_progress'
-        ? Colors.green.shade600
-        : (widget.job.status == 'pending' ? AppTheme.accentBlue : AppTheme.textDark);
+        ? AppTheme.statusActive
+        : (widget.job.status == 'pending' ? AppTheme.statusActive : AppTheme.statusCompleted);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),

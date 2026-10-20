@@ -27,74 +27,54 @@ class AppTheme {
   static const Color teamMemberOrange = Color(0xFFFFF3E0);
   static const Color teamMemberIconOrange = Color(0xFFFF9800);
 
-  // ── Semantic Status Colors (Calibrated HSL Palette) ─────────────────────
-  // Online Request / Pending Approval (Clean Ocean Cyan / Sky Blue)
-  static const Color statusRequest = Color(0xFF0284C7);
-  static const Color statusRequestBg = Color(0xFFE0F2FE);
-  static const Color statusRequestBorder = Color(0xFFBAE6FD);
+  // ── Option C: Unified Brand-Status Styling ─────────────────────────────
+  // 1. All Active Orders: Signature Brand Blue Palette
+  static const Color statusActive = Color(0xFF0284C7);
+  static const Color statusActiveBg = Color(0xFFE0F2FE);
+  static const Color statusActiveBorder = Color(0xFFBAE6FD);
 
-  // Pending Pickup / Waiting (Warm Honey Amber)
-  static const Color statusPending = Color(0xFFD97706);
-  static const Color statusPendingBg = Color(0xFFFEF3C7);
-  static const Color statusPendingBorder = Color(0xFFFDE68A);
-
-  // Processing (Ocean Azure Blue)
-  static const Color statusProcessing = Color(0xFF0284C7);
-  static const Color statusProcessingBg = Color(0xFFE0F2FE);
-  static const Color statusProcessingBorder = Color(0xFFBAE6FD);
-
-  // Ready (Fresh Mint / Emerald)
-  static const Color statusReady = Color(0xFF059669);
-  static const Color statusReadyBg = Color(0xFFD1FAE5);
-  static const Color statusReadyBorder = Color(0xFFA7F3D0);
-
-  // Out for Delivery (Modern Indigo)
-  static const Color statusDelivery = Color(0xFF4F46E5);
-  static const Color statusDeliveryBg = Color(0xFFEEF2FF);
-  static const Color statusDeliveryBorder = Color(0xFFC7D2FE);
-
-  // Completed (Cool Slate)
+  // 2. Completed / Archived Orders: Neutral Slate Palette
   static const Color statusCompleted = Color(0xFF64748B);
   static const Color statusCompletedBg = Color(0xFFF1F5F9);
   static const Color statusCompletedBorder = Color(0xFFE2E8F0);
 
-  // Rejected / Cancelled (Muted Rose Coral)
+  // 3. Rejected / Cancelled Orders: Muted Rose Alert Palette
   static const Color statusError = Color(0xFFE11D48);
   static const Color statusErrorBg = Color(0xFFFFE4E6);
   static const Color statusErrorBorder = Color(0xFFFECDD3);
 
-  /// Returns the harmonious semantic style for a given [OrderStatus].
+  // Backward compatibility aliases
+  static const Color statusRequest = statusActive;
+  static const Color statusRequestBg = statusActiveBg;
+  static const Color statusRequestBorder = statusActiveBorder;
+  static const Color statusPending = statusActive;
+  static const Color statusPendingBg = statusActiveBg;
+  static const Color statusPendingBorder = statusActiveBorder;
+  static const Color statusProcessing = statusActive;
+  static const Color statusProcessingBg = statusActiveBg;
+  static const Color statusProcessingBorder = statusActiveBorder;
+  static const Color statusReady = statusActive;
+  static const Color statusReadyBg = statusActiveBg;
+  static const Color statusReadyBorder = statusActiveBorder;
+  static const Color statusDelivery = statusActive;
+  static const Color statusDeliveryBg = statusActiveBg;
+  static const Color statusDeliveryBorder = statusActiveBorder;
+
+  /// Returns the unified semantic style for a given [OrderStatus].
+  /// All active in-progress orders share the signature brand blue palette.
+  /// Completed orders use a calm slate gray.
+  /// Cancelled/rejected orders use a muted rose tone.
   static StatusStyle statusStyleFor(OrderStatus status) {
     switch (status) {
       case OrderStatus.pending_approval:
-        return const StatusStyle(
-          primary: statusRequest,
-          background: statusRequestBg,
-          border: statusRequestBorder,
-        );
       case OrderStatus.pending_pickup:
-        return const StatusStyle(
-          primary: statusPending,
-          background: statusPendingBg,
-          border: statusPendingBorder,
-        );
       case OrderStatus.processing:
-        return const StatusStyle(
-          primary: statusProcessing,
-          background: statusProcessingBg,
-          border: statusProcessingBorder,
-        );
       case OrderStatus.ready:
-        return const StatusStyle(
-          primary: statusReady,
-          background: statusReadyBg,
-          border: statusReadyBorder,
-        );
       case OrderStatus.out_for_delivery:
         return const StatusStyle(
-          primary: statusDelivery,
-          background: statusDeliveryBg,
-          border: statusDeliveryBorder,
+          primary: statusActive,
+          background: statusActiveBg,
+          border: statusActiveBorder,
         );
       case OrderStatus.completed:
         return const StatusStyle(

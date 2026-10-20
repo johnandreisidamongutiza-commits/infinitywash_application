@@ -759,26 +759,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   /// Get status color for order status
-  Color _getStatusColor(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.pending_approval:
-        return Colors.orange;
-      case OrderStatus.pending_pickup:
-        return Colors.blue;
-      case OrderStatus.processing:
-        return AppTheme.accentBlue;
-      case OrderStatus.ready:
-        return AppTheme.accentBlue;
-      case OrderStatus.out_for_delivery:
-        return Colors.purple;
-      case OrderStatus.completed:
-        return Colors.green.shade700;
-      case OrderStatus.rejected:
-        return Colors.red;
-      case OrderStatus.cancelled:
-        return Colors.grey;
-    }
-  }
+  Color _getStatusColor(OrderStatus status) => AppTheme.statusColor(status);
 
   /// Get status icon for order status
   IconData _getStatusIcon(OrderStatus status) {

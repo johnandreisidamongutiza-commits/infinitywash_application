@@ -1098,7 +1098,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.orange.withValues(alpha: 0.25),
+          color: AppTheme.borderGray,
           width: 1,
         ),
         boxShadow: [
@@ -1127,21 +1127,6 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Top accent bar ──
-              Container(
-                height: 4,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.orange.withValues(alpha: 0.8),
-                      Colors.amber.withValues(alpha: 0.6),
-                    ],
-                  ),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
-                  ),
-                ),
-              ),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -1509,7 +1494,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                           _buildActionBanner(
                             icon: Icons.local_shipping_outlined,
                             text: 'Waiting for rider to pick up your laundry',
-                            color: Colors.orange,
+                            color: AppTheme.statusActive,
                           ),
                         ],
                         if (order.status == OrderStatus.out_for_delivery) ...[
@@ -1517,7 +1502,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                           _buildActionBanner(
                             icon: Icons.delivery_dining,
                             text: 'Your laundry is on the way!',
-                            color: const Color(0xFF7B1FA2),
+                            color: AppTheme.statusActive,
                           ),
                         ],
 
@@ -1757,9 +1742,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                                 ),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: order.status == OrderStatus.pending_pickup
-                                    ? Colors.orange.shade800
-                                    : const Color(0xFF7B1FA2),
+                                backgroundColor: AppTheme.statusActive,
                                 foregroundColor: Colors.white,
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
@@ -2239,19 +2222,20 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   }
 
   Widget _buildStatusBadge(OrderStatus status) {
-    final color = _statusColor(status);
+    final style = AppTheme.statusStyleFor(status);
     final label = _statusLabel(status);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: style.background,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: style.border, width: 1),
       ),
       child: Text(
         label.toUpperCase(),
         style: GoogleFonts.lexend(
-          color: color,
+          color: style.primary,
           fontSize: 9,
           fontWeight: FontWeight.w700,
         ),

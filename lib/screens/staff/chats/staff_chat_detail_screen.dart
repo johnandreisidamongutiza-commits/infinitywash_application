@@ -372,16 +372,12 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'completed':
-        return Colors.green;
-      case 'processing':
-      case 'ready':
-        return AppTheme.teamMemberIconOrange;
-      case 'pending':
-        return AppTheme.accentBlue;
-      case 'out for delivery':
-        return Colors.purple;
+        return AppTheme.statusCompleted;
+      case 'rejected':
+      case 'cancelled':
+        return AppTheme.statusError;
       default:
-        return AppTheme.textLight;
+        return AppTheme.statusActive;
     }
   }
 

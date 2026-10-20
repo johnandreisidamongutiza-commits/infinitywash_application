@@ -233,20 +233,20 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
     if (delivery.isCompleted) {
       statusLabel = isPickup ? 'Picked Up' : 'Delivered';
-      statusColor = Colors.green.shade700;
-      statusBg = Colors.green.shade50;
+      statusColor = AppTheme.statusCompleted;
+      statusBg = AppTheme.statusCompletedBg;
     } else if (delivery.isInProgress) {
       statusLabel = isPickup ? 'Rider Heading to You' : 'Out for Delivery';
-      statusColor = const Color(0xFF7B1FA2);
-      statusBg = const Color(0xFFF3E5F5);
+      statusColor = AppTheme.statusActive;
+      statusBg = AppTheme.statusActiveBg;
     } else if (delivery.hasAssignedRider) {
       statusLabel = 'Rider Assigned';
-      statusColor = AppTheme.accentBlue;
-      statusBg = AppTheme.lightBlue;
+      statusColor = AppTheme.statusActive;
+      statusBg = AppTheme.statusActiveBg;
     } else {
       statusLabel = 'Finding Rider...';
-      statusColor = Colors.orange.shade800;
-      statusBg = Colors.orange.shade50;
+      statusColor = AppTheme.statusActive;
+      statusBg = AppTheme.statusActiveBg;
     }
 
     return Container(
