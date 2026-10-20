@@ -5,7 +5,10 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
+import '../../../services/firebase_chat_service.dart';
+import '../../../services/supabase_service.dart';
 import '../../../widgets/order_timeline_view.dart';
+import '../chats/staff_chat_detail_screen.dart';
 import 'check_in_request_screen.dart';
 
 class OrderStatusScreen extends StatefulWidget {
@@ -811,6 +814,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   ],
                 ),
               ),
+              IconButton(
+                icon: const Icon(Icons.chat_bubble_outline,
+                    size: 20, color: AppTheme.accentBlue),
+                tooltip: 'Chat Customer',
+                onPressed: _openCustomerChat,
+              ),
               if (phone != null && phone.isNotEmpty)
                 IconButton(
                   icon: const Icon(Icons.copy, size: 18, color: AppTheme.accentBlue),
@@ -831,6 +840,48 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _openCustomerChat() async {
+    try {
+      String? customerId;
+      String? avatarUrl;
+      final phone = _currentOrder.customerPhone;
+
+      if (phone != null && phone.trim().isNotEmpty) {
+        final res = await SupabaseService.client
+            .from('profiles')
+            .select('id, first_name, last_name, avatar_url')
+            .eq('phone', phone.trim())
+            .maybeSingle();
+
+        if (res != null) {
+          customerId = res['id']?.toString();
+          avatarUrl = res['avatar_url']?.toString();
+        }
+      }
+
+      customerId ??= 'cust_${_currentOrder.id}';
+
+      final conv = await FirebaseChatService.instance.getOrCreateSupportChat(
+        customerId: customerId,
+        customerName: _currentOrder.customerName,
+        customerPhone: phone,
+        customerAvatar: avatarUrl,
+        orderId: _currentOrder.id,
+      );
+
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => StaffChatDetailScreen(conversation: conv),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error opening chat for customer: $e');
+    }
   }
 
   Widget _buildLogisticsCard() {

@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/empty_state_widget.dart';
+import '../../../models/chat_model.dart';
+import '../../../services/firebase_chat_service.dart';
+import '../../../services/profile_service.dart';
 import 'rider_chat_detail_screen.dart';
 
 class RiderChatsScreen extends StatefulWidget {
@@ -10,131 +14,225 @@ class RiderChatsScreen extends StatefulWidget {
 }
 
 class _RiderChatsScreenState extends State<RiderChatsScreen> {
+  final FirebaseChatService _chatService = FirebaseChatService.instance;
+  final ProfileService _profileService = ProfileService();
   final TextEditingController _searchController = TextEditingController();
+
   String _searchQuery = '';
+  bool _isSearching = false;
+  String _currentRiderId = '';
+  String _currentRiderName = 'Rider';
+  bool _isProfileLoaded = false;
 
-  // Mock data - in production, this would come from a database/API
-  final List<ChatPreview> _chats = [
-    ChatPreview(
-      customerId: '1',
-      customerName: 'Maria Santos',
-      lastMessage: 'Thanks! See you soon',
-      timestamp: '2m',
-      unreadCount: 1,
-      orderId: 'IW-105',
-    ),
-    ChatPreview(
-      customerId: '2',
-      customerName: 'Juan Dela Cruz',
-      lastMessage: 'I\'ll be ready at 2pm',
-      timestamp: '1h',
-      unreadCount: 0,
-      orderId: 'IW-106',
-    ),
-    ChatPreview(
-      customerId: '3',
-      customerName: 'Ana Reyes',
-      lastMessage: 'Can you come earlier?',
-      timestamp: '3h',
-      unreadCount: 0,
-      orderId: 'IW-107',
-    ),
-    ChatPreview(
-      customerId: '4',
-      customerName: 'Pedro Garcia',
-      lastMessage: 'Got it, thanks!',
-      timestamp: 'Yesterday',
-      unreadCount: 0,
-      orderId: 'IW-104',
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileAndEnsureDispatchChat();
+  }
 
-  List<ChatPreview> get _filteredChats {
-    if (_searchQuery.isEmpty) return _chats;
-    return _chats.where((chat) => 
-      chat.customerName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-      (chat.orderId?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false)
-    ).toList();
+  Future<void> _loadProfileAndEnsureDispatchChat() async {
+    try {
+      final profile = await _profileService.getProfile();
+      final riderId = profile['id']?.toString() ?? '';
+      final first = profile['first_name']?.toString() ?? '';
+      final last = profile['last_name']?.toString() ?? '';
+      final name = '$first $last'.trim();
+      final phone = profile['phone']?.toString();
+      final avatar = profile['avatar_url']?.toString();
+
+      if (mounted) {
+        setState(() {
+          _currentRiderId = riderId;
+          _currentRiderName = name.isNotEmpty ? name : 'Delivery Rider';
+          _isProfileLoaded = true;
+        });
+      }
+
+      // Ensure that InfinityWash Dispatch channel exists for this rider
+      if (riderId.isNotEmpty) {
+        await _chatService.getOrCreateRiderStaffChat(
+          riderId: riderId,
+          riderName: _currentRiderName,
+          riderPhone: phone,
+          riderAvatar: avatar,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error loading rider profile for chats: $e');
+      if (mounted) setState(() => _isProfileLoaded = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Chats'),
+    if (!_isProfileLoaded) {
+      return const Scaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              setState(() {
-                _searchQuery = '';
-                _searchController.clear();
-              });
-              _showSearchDialog();
-            },
-          ),
-        ],
+        body: Center(
+          child: CircularProgressIndicator(color: AppTheme.accentBlue),
+        ),
+      );
+    }
+
+    return StreamBuilder<List<ChatConversation>>(
+      stream: _chatService.streamConversations(
+        currentUserId: _currentRiderId,
+        currentRole: 'rider',
       ),
-      body: _filteredChats.isEmpty && _searchQuery.isNotEmpty
-          ? _buildEmptySearch()
-          : _chats.isEmpty
-              ? _buildEmptyState()
-              : ListView.separated(
-                  padding: const EdgeInsets.all(24),
-                  itemCount: _filteredChats.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) => _buildChatCard(_filteredChats[index]),
+      builder: (context, snapshot) {
+        final conversations = snapshot.data ?? [];
+        final filtered = _filterChats(conversations);
+
+        return Scaffold(
+          backgroundColor: Colors.white,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            centerTitle: true,
+            title: _isSearching
+                ? TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      hintText: 'Search chats or order ID...',
+                      border: InputBorder.none,
+                      hintStyle:
+                          TextStyle(color: AppTheme.textLight, fontSize: 14),
+                    ),
+                    onChanged: (val) => setState(() => _searchQuery = val),
+                  )
+                : const Text(
+                    'Chats',
+                    style: TextStyle(
+                      color: AppTheme.textDark,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+            actions: [
+              IconButton(
+                icon: Icon(
+                  _isSearching ? Icons.close : Icons.search,
+                  color: AppTheme.textDark,
                 ),
+                onPressed: () {
+                  setState(() {
+                    _isSearching = !_isSearching;
+                    _searchQuery = '';
+                    _searchController.clear();
+                  });
+                },
+              ),
+            ],
+          ),
+          body: SafeArea(
+            child: Column(
+              children: [
+                Expanded(
+                  child: filtered.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                          itemCount: filtered.length,
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            return _buildChatCard(filtered[index]);
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildChatCard(ChatPreview chat) {
+  List<ChatConversation> _filterChats(List<ChatConversation> chats) {
+    if (_searchQuery.trim().isEmpty) return chats;
+    final q = _searchQuery.trim().toLowerCase();
+    return chats.where((c) {
+      final name =
+          c.getOtherParticipantName(_currentRiderId, 'rider').toLowerCase();
+      final role =
+          c.getOtherParticipantRole(_currentRiderId, 'rider').toLowerCase();
+      final order = (c.orderId ?? '').toLowerCase();
+      final lastMsg = c.lastMessage.toLowerCase();
+      return name.contains(q) ||
+          role.contains(q) ||
+          order.contains(q) ||
+          lastMsg.contains(q);
+    }).toList();
+  }
+
+  Widget _buildChatCard(ChatConversation conversation) {
+    final bool isDispatch =
+        conversation.chatType == ChatType.riderStaff;
+    final otherName =
+        conversation.getOtherParticipantName(_currentRiderId, 'rider');
+    final otherRole =
+        conversation.getOtherParticipantRole(_currentRiderId, 'rider');
+    final otherPhone =
+        conversation.getOtherParticipantPhone(_currentRiderId, 'rider');
+    final int unread =
+        conversation.getUnreadCount(_currentRiderId, 'rider');
+    final bool hasUnread = unread > 0;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
+          _chatService.markAsRead(
+            chatId: conversation.id,
+            currentUserId: _currentRiderId,
+            currentRole: 'rider',
+          );
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => RiderChatDetailScreen(
-                customerName: chat.customerName,
-                customerId: chat.customerId,
-                orderId: chat.orderId,
+                conversation: conversation,
+                customerName: otherName,
+                customerId: '',
+                orderId: conversation.orderId,
+                phoneNumber: otherPhone,
+                isDispatchChat: isDispatch,
               ),
             ),
           );
         },
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: AppStyles.cardDecoration,
+          padding: const EdgeInsets.all(14),
+          decoration: AppStyles.cardDecoration.copyWith(
+            border: hasUnread
+                ? Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3))
+                : null,
+          ),
           child: Row(
             children: [
-              // Avatar
               Container(
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  color: AppTheme.lightBlue,
+                  color: isDispatch
+                      ? AppTheme.accentBlue.withValues(alpha: 0.12)
+                      : AppTheme.lightBlue,
                   shape: BoxShape.circle,
                 ),
-                child: Center(
-                  child: Text(
-                    chat.customerName[0].toUpperCase(),
-                    style: const TextStyle(
-                      color: AppTheme.accentBlue,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                    ),
-                  ),
+                child: Icon(
+                  isDispatch ? Icons.support_agent : Icons.person,
+                  color: AppTheme.accentBlue,
+                  size: 26,
                 ),
               ),
               const SizedBox(width: 12),
-              // Message Info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -142,48 +240,107 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          chat.customerName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
+                        Flexible(
+                          child: Text(
+                            otherName,
+                            style: TextStyle(
+                              fontWeight:
+                                  hasUnread ? FontWeight.bold : FontWeight.w600,
+                              fontSize: 15,
+                              color: AppTheme.textDark,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         Text(
-                          chat.timestamp,
+                          conversation.timeAgo,
                           style: TextStyle(
-                            color: chat.unreadCount > 0 ? AppTheme.accentBlue : AppTheme.textLight,
                             fontSize: 11,
-                            fontWeight: chat.unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
+                            color: hasUnread
+                                ? AppTheme.accentBlue
+                                : AppTheme.textLight,
+                            fontWeight: hasUnread
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isDispatch
+                                ? AppTheme.accentBlue.withValues(alpha: 0.1)
+                                : AppTheme.lightBlue,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            otherRole,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.accentBlue,
+                            ),
+                          ),
+                        ),
+                        if (conversation.orderId != null &&
+                            conversation.orderId!.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.softGray,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '#${conversation.orderId}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textDark,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 6),
                     Row(
                       children: [
                         Expanded(
                           child: Text(
-                            chat.lastMessage,
+                            conversation.lastMessage.isEmpty
+                                ? 'No messages yet'
+                                : conversation.lastMessage,
                             style: TextStyle(
                               fontSize: 13,
-                              color: chat.unreadCount > 0 ? AppTheme.textDark : AppTheme.textLight,
-                              fontWeight: chat.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
+                              color: hasUnread
+                                  ? AppTheme.textDark
+                                  : AppTheme.textLight,
+                              fontWeight: hasUnread
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (chat.unreadCount > 0) ...[
+                        if (hasUnread) ...[
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
-                              color: AppTheme.errorRed,
+                              color: AppTheme.accentBlue,
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              '${chat.unreadCount}',
+                              '$unread',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 10,
@@ -194,17 +351,6 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
                         ],
                       ],
                     ),
-                    if (chat.orderId != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Order ${chat.orderId}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppTheme.accentBlue,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -217,122 +363,35 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.chat_bubble_outline,
-              size: 100,
-              color: AppTheme.textLight.withValues(alpha: 0.2),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'No conversations yet',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
-                color: AppTheme.textLight,
+      child: EmptyStateWidget(
+        icon: Icons.chat_bubble_outline,
+        title: 'No Conversations Yet',
+        subtitle:
+            'Assigned customer orders and dispatch support will appear here.',
+        actionLabel: 'Chat Dispatch',
+        onAction: () async {
+          final profile = await _profileService.getProfile();
+          final conv = await _chatService.getOrCreateRiderStaffChat(
+            riderId: _currentRiderId,
+            riderName: _currentRiderName,
+            riderPhone: profile['phone']?.toString(),
+            riderAvatar: profile['avatar_url']?.toString(),
+          );
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => RiderChatDetailScreen(
+                  conversation: conv,
+                  customerName: 'InfinityWash Dispatch',
+                  customerId: '',
+                  isDispatchChat: true,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Your customer messages will appear here.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.textLight),
-            ),
-          ],
-        ),
+            );
+          }
+        },
       ),
     );
   }
-
-  Widget _buildEmptySearch() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.search_off,
-              size: 80,
-              color: AppTheme.textLight.withValues(alpha: 0.2),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'No results found',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
-                color: AppTheme.textLight,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No chats match "$_searchQuery"',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppTheme.textLight),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showSearchDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Search Chats'),
-        content: TextField(
-          controller: _searchController,
-          decoration: const InputDecoration(
-            hintText: 'Enter customer name or order ID',
-            prefixIcon: Icon(Icons.search),
-          ),
-          autofocus: true,
-          onChanged: (value) {
-            setState(() {
-              _searchQuery = value;
-            });
-            Navigator.pop(context);
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _searchQuery = '';
-                _searchController.clear();
-              });
-              Navigator.pop(context);
-            },
-            child: const Text('Clear'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-}
-
-class ChatPreview {
-  final String customerId;
-  final String customerName;
-  final String lastMessage;
-  final String timestamp;
-  final int unreadCount;
-  final String? orderId;
-
-  ChatPreview({
-    required this.customerId,
-    required this.customerName,
-    required this.lastMessage,
-    required this.timestamp,
-    required this.unreadCount,
-    this.orderId,
-  });
 }

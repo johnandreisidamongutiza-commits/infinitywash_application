@@ -1,12 +1,14 @@
-import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../theme/app_theme.dart';
-import '../../../models/staff_chat.dart';
-import '../../../services/chat_service.dart';
+import '../../../models/chat_model.dart';
+import '../../../services/firebase_chat_service.dart';
+import '../../../services/profile_service.dart';
 import '../../../widgets/top_notification.dart';
 
 class StaffChatDetailScreen extends StatefulWidget {
-  final StaffConversation conversation;
+  final ChatConversation conversation;
 
   const StaffChatDetailScreen({
     super.key,
@@ -18,29 +20,47 @@ class StaffChatDetailScreen extends StatefulWidget {
 }
 
 class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
-  final ChatService _chatService = ChatService();
+  final FirebaseChatService _chatService = FirebaseChatService.instance;
+  final ProfileService _profileService = ProfileService();
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  late List<StaffChatMessage> _messages;
-  bool _isTyping = false;
+  final ImagePicker _imagePicker = ImagePicker();
+
+  String _currentStaffId = '';
+  String _currentStaffName = 'Staff Member';
+  bool _isUploadingImage = false;
 
   @override
   void initState() {
     super.initState();
-    _loadMessages();
+    _loadCurrentProfile();
     _markAsRead();
   }
 
-  void _loadMessages() {
-    _messages = _chatService.getMessages(widget.conversation.id);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  Future<void> _loadCurrentProfile() async {
+    try {
+      final profile = await _profileService.getProfile();
+      if (mounted) {
+        setState(() {
+          _currentStaffId = profile['id']?.toString() ?? '';
+          final first = profile['first_name']?.toString() ?? '';
+          final last = profile['last_name']?.toString() ?? '';
+          final fullName = '$first $last'.trim();
+          _currentStaffName = fullName.isNotEmpty ? fullName : 'Staff Member';
+        });
+      }
+    } catch (_) {}
   }
 
   void _markAsRead() {
-    _chatService.markAsRead(widget.conversation.id);
+    _chatService.markAsRead(
+      chatId: widget.conversation.id,
+      currentUserId: _currentStaffId,
+      currentRole: 'staff',
+    );
   }
 
-  void _sendMessage([String? quickText]) {
+  Future<void> _sendMessage([String? quickText]) async {
     final text = quickText ?? _textController.text.trim();
     if (text.isEmpty) return;
 
@@ -48,70 +68,67 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
       _textController.clear();
     }
 
-    setState(() {
-      _chatService.sendMessage(
-        conversationId: widget.conversation.id,
+    try {
+      await _chatService.sendMessage(
+        chatId: widget.conversation.id,
+        senderId: _currentStaffId.isNotEmpty ? _currentStaffId : 'staff',
+        senderName: _currentStaffName,
+        senderRole: 'staff',
         text: text,
-        isFromStaff: true,
+        participants: widget.conversation.participants,
       );
-      _messages = _chatService.getMessages(widget.conversation.id);
-    });
-
-    _scrollToBottom();
-    _simulateReply(text);
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        showTopNotification(
+          context,
+          message: 'Failed to send message: $e',
+          icon: Icons.error_outline,
+          backgroundColor: AppTheme.errorRed,
+        );
+      }
+    }
   }
 
-  void _simulateReply(String staffMessage) {
-    setState(() => _isTyping = true);
+  Future<void> _pickAndSendImage() async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
 
-    Timer(const Duration(milliseconds: 1800), () {
-      if (!mounted) return;
+      setState(() => _isUploadingImage = true);
 
-      String replyText = _generateReply(staffMessage);
+      final file = File(picked.path);
+      final downloadUrl = await _chatService.uploadChatImage(
+        file,
+        widget.conversation.id,
+      );
 
-      setState(() {
-        _isTyping = false;
-        _chatService.sendMessage(
-          conversationId: widget.conversation.id,
-          text: replyText,
-          isFromStaff: false,
-        );
-        _messages = _chatService.getMessages(widget.conversation.id);
-      });
+      await _chatService.sendMessage(
+        chatId: widget.conversation.id,
+        senderId: _currentStaffId.isNotEmpty ? _currentStaffId : 'staff',
+        senderName: _currentStaffName,
+        senderRole: 'staff',
+        text: '',
+        attachmentUrl: downloadUrl,
+        attachmentType: 'image',
+        participants: widget.conversation.participants,
+      );
 
       _scrollToBottom();
-    });
-  }
-
-  String _generateReply(String staffMessage) {
-    final isCustomer = widget.conversation.participant.type == ChatParticipantType.customer;
-    final lower = staffMessage.toLowerCase();
-
-    if (isCustomer) {
-      if (lower.contains('ready') || lower.contains('4:00') || lower.contains('completed')) {
-        return 'Thank you for the update! I\'ll be waiting.';
-      } else if (lower.contains('address') || lower.contains('noted')) {
-        return 'Great, thank you for confirming!';
-      } else if (lower.contains('delay') || lower.contains('sorry')) {
-        return 'No problem, I understand. Thanks for letting me know.';
-      } else if (lower.contains('pickup') || lower.contains('collect')) {
-        return 'What time can I come to pick it up?';
-      } else {
-        return 'Okay, got it. Thanks!';
+    } catch (e) {
+      if (mounted) {
+        showTopNotification(
+          context,
+          message: 'Failed to upload photo: $e',
+          icon: Icons.error_outline,
+          backgroundColor: AppTheme.errorRed,
+        );
       }
-    } else {
-      // Rider responses
-      if (lower.contains('pick') || lower.contains('deliver')) {
-        return 'Copy that! On my way now.';
-      } else if (lower.contains('customer') || lower.contains('contact')) {
-        return 'I\'ll try calling the customer again.';
-      } else if (lower.contains('address') || lower.contains('location')) {
-        return 'Understood. I have the updated location.';
-      } else if (lower.contains('complete') || lower.contains('done')) {
-        return 'Order delivered successfully!';
-      } else {
-        return 'Acknowledged. Will do!';
-      }
+    } finally {
+      if (mounted) setState(() => _isUploadingImage = false);
     }
   }
 
@@ -128,12 +145,13 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
   }
 
   List<String> get _quickReplyTemplates {
-    final isCustomer = widget.conversation.participant.type == ChatParticipantType.customer;
+    final isCustomer =
+        widget.conversation.chatType == ChatType.customerSupport;
 
     if (isCustomer) {
       return [
         'Your order is ready for pickup',
-        'Order will be completed by 4:00 PM',
+        'Order will be completed soon',
         'Address change noted',
         'Please confirm your delivery address',
       ];
@@ -149,7 +167,11 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isCustomer = widget.conversation.participant.type == ChatParticipantType.customer;
+    final otherName = widget.conversation.getOtherParticipantName('', 'staff');
+    final otherRole = widget.conversation.getOtherParticipantRole('', 'staff');
+    final otherPhone = widget.conversation.getOtherParticipantPhone('', 'staff');
+    final isCustomer =
+        widget.conversation.chatType == ChatType.customerSupport;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -157,43 +179,26 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
         backgroundColor: Colors.white,
         elevation: 0.5,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: AppTheme.textDark),
+          icon: const Icon(Icons.arrow_back_ios_new,
+              size: 20, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
         title: Row(
           children: [
-            Stack(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: isCustomer
-                        ? AppTheme.accentBlue.withValues(alpha: 0.1)
-                        : AppTheme.lightBlue,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    isCustomer ? Icons.person : Icons.delivery_dining,
-                    color: AppTheme.accentBlue,
-                    size: 22,
-                  ),
-                ),
-                if (widget.conversation.participant.isOnline)
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: Colors.green,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                    ),
-                  ),
-              ],
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: isCustomer
+                    ? AppTheme.accentBlue.withValues(alpha: 0.1)
+                    : AppTheme.lightBlue,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isCustomer ? Icons.person : Icons.delivery_dining,
+                color: AppTheme.accentBlue,
+                size: 22,
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -201,7 +206,7 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    widget.conversation.participant.name,
+                    otherName,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
@@ -210,8 +215,9 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    widget.conversation.participant.role,
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                    otherRole,
+                    style: const TextStyle(
+                        fontSize: 11, color: AppTheme.textLight),
                   ),
                 ],
               ),
@@ -219,90 +225,88 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            onPressed: () {
-              final phone = widget.conversation.participant.phone ?? '0912-345-6789';
-              showTopNotification(
-                context,
-                message: 'Calling ${widget.conversation.participant.name} ($phone)...',
-                icon: Icons.phone,
-                backgroundColor: AppTheme.accentBlue,
-              );
-            },
-            icon: const Icon(Icons.phone_outlined, color: AppTheme.accentBlue),
-            tooltip: 'Call',
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: AppTheme.textDark),
-            onSelected: (val) {
-              if (val == 'order' && widget.conversation.orderId != null) {
+          if (otherPhone != null && otherPhone.isNotEmpty)
+            IconButton(
+              onPressed: () {
                 showTopNotification(
                   context,
-                  message: 'Opening order ${widget.conversation.orderId}...',
-                  icon: Icons.receipt_long,
+                  message: 'Calling $otherName ($otherPhone)...',
+                  icon: Icons.phone,
                   backgroundColor: AppTheme.accentBlue,
                 );
-              } else if (val == 'block') {
-                showTopNotification(
-                  context,
-                  message: '${widget.conversation.participant.name} has been blocked.',
-                  icon: Icons.block,
-                  backgroundColor: AppTheme.errorRed,
-                );
-              }
-            },
-            itemBuilder: (ctx) => [
-              if (widget.conversation.orderId != null)
-                PopupMenuItem(
-                  value: 'order',
-                  child: Row(
-                    children: [
-                      const Icon(Icons.receipt_long, size: 18, color: AppTheme.accentBlue),
-                      const SizedBox(width: 10),
-                      Text('View Order ${widget.conversation.orderId}'),
-                    ],
-                  ),
-                ),
-              const PopupMenuItem(
-                value: 'block',
-                child: Row(
-                  children: [
-                    Icon(Icons.block, size: 18, color: AppTheme.errorRed),
-                    SizedBox(width: 10),
-                    Text('Block Contact'),
-                  ],
-                ),
-              ),
-            ],
-          ),
+              },
+              icon: const Icon(Icons.phone_outlined,
+                  color: AppTheme.accentBlue),
+              tooltip: 'Call',
+            ),
         ],
       ),
       body: SafeArea(
         child: Column(
           children: [
-            // Order Context Banner (if associated with order)
-            if (widget.conversation.orderId != null) _buildOrderContextBanner(),
-
-            // Message Stream
+            if (widget.conversation.orderId != null &&
+                widget.conversation.orderId!.isNotEmpty)
+              _buildOrderContextBanner(),
             Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                itemCount: _messages.length + (_isTyping ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (index == _messages.length && _isTyping) {
-                    return _buildTypingIndicator();
+              child: StreamBuilder<List<ChatMessage>>(
+                stream: _chatService.streamMessages(widget.conversation.id),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      !snapshot.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: AppTheme.accentBlue,
+                      ),
+                    );
                   }
-                  return _buildMessageBubble(_messages[index]);
+
+                  final messages = snapshot.data ?? [];
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (_scrollController.hasClients) {
+                      _scrollController.jumpTo(
+                        _scrollController.position.maxScrollExtent,
+                      );
+                    }
+                  });
+
+                  return ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      return _buildMessageBubble(messages[index]);
+                    },
+                  );
                 },
               ),
             ),
-
-            // Quick Reply Templates
+            if (_isUploadingImage)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                color: AppTheme.softGray,
+                child: const Row(
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.accentBlue,
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Uploading photo...',
+                      style: TextStyle(
+                          fontSize: 12, color: AppTheme.textLight),
+                    ),
+                  ],
+                ),
+              ),
             _buildQuickTemplatesBar(),
-
-            // Bottom Input Bar
-            _buildInputBar(),
+            _buildInputBar(otherName),
           ],
         ),
       ),
@@ -311,93 +315,57 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
 
   Widget _buildOrderContextBanner() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: AppTheme.softGray.withValues(alpha: 0.8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.softGray,
+        border: Border(
+          bottom: BorderSide(
+              color: AppTheme.borderGray.withValues(alpha: 0.5)),
+        ),
+      ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: AppTheme.accentBlue.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.local_laundry_service,
-              color: AppTheme.accentBlue,
-              size: 16,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Order ${widget.conversation.orderId}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    color: AppTheme.textDark,
-                  ),
-                ),
-                if (widget.conversation.orderStatus != null)
-                  Text(
-                    'Status: ${widget.conversation.orderStatus}',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
-                  ),
-              ],
-            ),
-          ),
-          if (widget.conversation.orderStatus != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: _getStatusColor(widget.conversation.orderStatus!).withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                widget.conversation.orderStatus!,
-                style: TextStyle(
-                  fontSize: 10,
+          Row(
+            children: [
+              const Icon(Icons.receipt_long,
+                  size: 16, color: AppTheme.accentBlue),
+              const SizedBox(width: 6),
+              Text(
+                'Linked Order #${widget.conversation.orderId}',
+                style: const TextStyle(
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: _getStatusColor(widget.conversation.orderStatus!),
+                  color: AppTheme.textDark,
                 ),
               ),
-            ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
-        return AppTheme.statusCompleted;
-      case 'rejected':
-      case 'cancelled':
-        return AppTheme.statusError;
-      default:
-        return AppTheme.statusActive;
-    }
-  }
-
-  Widget _buildMessageBubble(StaffChatMessage message) {
-    final isStaff = message.isFromStaff;
+  Widget _buildMessageBubble(ChatMessage message) {
+    final isStaff = message.senderRole == 'staff';
+    final isMe = message.senderId == _currentStaffId;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment: isStaff ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isStaff ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isStaff) ...[
             CircleAvatar(
               radius: 14,
-              backgroundColor: widget.conversation.participant.type == ChatParticipantType.customer
+              backgroundColor: widget.conversation.chatType ==
+                      ChatType.customerSupport
                   ? AppTheme.accentBlue.withValues(alpha: 0.1)
                   : AppTheme.lightBlue,
               child: Icon(
-                widget.conversation.participant.type == ChatParticipantType.customer
+                widget.conversation.chatType == ChatType.customerSupport
                     ? Icons.person
                     : Icons.delivery_dining,
                 size: 16,
@@ -419,36 +387,65 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
                 ),
               ),
               child: Column(
-                crossAxisAlignment: isStaff ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    isStaff ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    message.text,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isStaff ? Colors.white : AppTheme.textDark,
-                      height: 1.3,
+                  if (isStaff && !isMe) ...[
+                    Text(
+                      message.senderName,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white70,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _formatTime(message.timestamp),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isStaff ? Colors.white70 : AppTheme.textLight,
+                    const SizedBox(height: 2),
+                  ],
+                  if (message.attachmentUrl != null) ...[
+                    GestureDetector(
+                      onTap: () => _viewFullImage(message.attachmentUrl!),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(
+                          message.attachmentUrl!,
+                          width: 200,
+                          height: 180,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, progress) {
+                            if (progress == null) return child;
+                            return Container(
+                              width: 200,
+                              height: 180,
+                              color: Colors.black12,
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppTheme.accentBlue,
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
-                      if (isStaff) ...[
-                        const SizedBox(width: 4),
-                        Icon(
-                          message.isRead ? Icons.done_all : Icons.done,
-                          size: 12,
-                          color: Colors.white70,
-                        ),
-                      ],
-                    ],
+                    ),
+                    if (message.text.isNotEmpty) const SizedBox(height: 6),
+                  ],
+                  if (message.text.isNotEmpty)
+                    Text(
+                      message.text,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isStaff ? Colors.white : AppTheme.textDark,
+                        height: 1.3,
+                      ),
+                    ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatTime(message.timestamp),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isStaff ? Colors.white70 : AppTheme.textLight,
+                    ),
                   ),
                 ],
               ),
@@ -459,42 +456,25 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
     );
   }
 
-  Widget _buildTypingIndicator() {
-    final isCustomer = widget.conversation.participant.type == ChatParticipantType.customer;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 14,
-            backgroundColor: isCustomer
-                ? AppTheme.accentBlue.withValues(alpha: 0.1)
-                : AppTheme.lightBlue,
-            child: const Icon(Icons.more_horiz, size: 16, color: AppTheme.textLight),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppTheme.softGray,
-              borderRadius: BorderRadius.circular(14),
+  void _viewFullImage(String url) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          alignment: Alignment.topRight,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.network(url, fit: BoxFit.contain),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${widget.conversation.participant.name} is typing...',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontStyle: FontStyle.italic,
-                    color: AppTheme.textLight,
-                  ),
-                ),
-              ],
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 28),
+              onPressed: () => Navigator.pop(context),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -529,7 +509,7 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
     );
   }
 
-  Widget _buildInputBar() {
+  Widget _buildInputBar(String otherName) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       decoration: BoxDecoration(
@@ -541,15 +521,9 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
       child: Row(
         children: [
           IconButton(
-            onPressed: () {
-              showTopNotification(
-                context,
-                message: 'Image attachment feature coming soon!',
-                icon: Icons.camera_alt_outlined,
-                backgroundColor: AppTheme.accentBlue,
-              );
-            },
-            icon: const Icon(Icons.camera_alt_outlined, color: AppTheme.textLight),
+            onPressed: _isUploadingImage ? null : _pickAndSendImage,
+            icon: const Icon(Icons.camera_alt_outlined,
+                color: AppTheme.textLight),
             tooltip: 'Attach photo',
           ),
           Expanded(
@@ -563,8 +537,9 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
                 controller: _textController,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
-                  hintText: 'Message ${widget.conversation.participant.name}...',
-                  hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textLight),
+                  hintText: 'Message $otherName...',
+                  hintStyle: const TextStyle(
+                      fontSize: 13, color: AppTheme.textLight),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
@@ -580,7 +555,8 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
             ),
             child: IconButton(
               onPressed: () => _sendMessage(),
-              icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+              icon: const Icon(Icons.send_rounded,
+                  color: Colors.white, size: 18),
               tooltip: 'Send',
             ),
           ),
@@ -590,7 +566,8 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
   }
 
   String _formatTime(DateTime time) {
-    final hour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
+    final hour =
+        time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
     final period = time.hour >= 12 ? 'PM' : 'AM';
     final minute = time.minute.toString().padLeft(2, '0');
     return '$hour:$minute $period';

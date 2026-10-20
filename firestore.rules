@@ -39,6 +39,15 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     
+    // Chats and messaging (used across Customer, Rider, and Staff)
+    match /chats/{chatId} {
+      allow read, write: if true;
+
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+    }
+
     // Deny all other collections by default
     match /{document=**} {
       allow read, write: if false;

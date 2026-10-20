@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
-import '../../services/chat_service.dart';
+import '../../services/firebase_chat_service.dart';
 import 'home/staff_home_screen.dart';
 import 'orders/orders_screen.dart';
 import 'chats/staff_chats_screen.dart';
@@ -17,15 +17,25 @@ class StaffMainScreen extends StatefulWidget {
 class _StaffMainScreenState extends State<StaffMainScreen> {
   int _currentIndex = 0;
   int _previousIndex = 0;
-  final ChatService _chatService = ChatService();
   
   // Key to access OrdersScreen state
   final GlobalKey<OrdersScreenState> _ordersScreenKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
-    final unreadCount = _chatService.getTotalUnreadCount();
+    return StreamBuilder<int>(
+      stream: FirebaseChatService.instance.streamTotalUnreadCount(
+        currentUserId: '',
+        currentRole: 'staff',
+      ),
+      builder: (context, snapshot) {
+        final unreadCount = snapshot.data ?? 0;
+        return _buildScaffold(unreadCount);
+      },
+    );
+  }
 
+  Widget _buildScaffold(int unreadCount) {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
