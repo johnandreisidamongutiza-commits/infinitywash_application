@@ -1670,23 +1670,8 @@ class OrdersScreenState extends State<OrdersScreen>
               _loadActiveStatusCounts();
             }
           },
-          child: IntrinsicHeight(
-            child: Row(
-              children: [
-                // ── Left status accent (refined 3.5px line) ──
-                Container(
-                  width: 3.5,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: const BorderRadius.horizontal(
-                      left: Radius.circular(16),
-                    ),
-                  ),
-                ),
-                // ── Card content ──
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1818,10 +1803,6 @@ class OrdersScreenState extends State<OrdersScreen>
                       ],
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

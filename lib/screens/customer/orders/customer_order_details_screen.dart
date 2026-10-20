@@ -543,20 +543,25 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: order.paymentStatus == PaymentStatus.paid
-                  ? Colors.green.withValues(alpha: 0.08)
-                  : Colors.orange.withValues(alpha: 0.08),
+                  ? AppTheme.statusCompletedBg
+                  : AppTheme.statusActiveBg,
               borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: order.paymentStatus == PaymentStatus.paid
+                    ? AppTheme.statusCompletedBorder
+                    : AppTheme.statusActiveBorder,
+              ),
             ),
             child: Row(
               children: [
                 Icon(
                   order.paymentStatus == PaymentStatus.paid
-                      ? Icons.check_circle
+                      ? Icons.check_circle_outline
                       : Icons.schedule,
                   size: 16,
                   color: order.paymentStatus == PaymentStatus.paid
-                      ? Colors.green
-                      : Colors.orange,
+                      ? AppTheme.statusCompleted
+                      : AppTheme.statusActive,
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -567,8 +572,8 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: order.paymentStatus == PaymentStatus.paid
-                        ? Colors.green
-                        : Colors.orange,
+                        ? AppTheme.statusCompleted
+                        : AppTheme.statusActive,
                   ),
                 ),
               ],

@@ -587,29 +587,29 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           _buildTag(
             icon: isWalkIn ? Icons.storefront : Icons.phone_android,
             label: isWalkIn ? 'Walk-in' : 'Online Booking',
-            color: Colors.blue.shade700,
-            bgColor: Colors.blue.shade50,
+            color: const Color(0xFF475569),
+            bgColor: const Color(0xFFF1F5F9),
           ),
           const SizedBox(width: 8),
           _buildTag(
             icon: isRiderPickup ? Icons.two_wheeler : Icons.input,
             label: isRiderPickup ? 'Rider Pickup' : 'Drop-off',
-            color: isRiderPickup ? Colors.purple.shade700 : Colors.teal.shade700,
-            bgColor: isRiderPickup ? Colors.purple.shade50 : Colors.teal.shade50,
+            color: const Color(0xFF475569),
+            bgColor: const Color(0xFFF1F5F9),
           ),
           const SizedBox(width: 8),
           _buildTag(
             icon: isDelivery ? Icons.local_shipping : Icons.shopping_bag_outlined,
             label: isDelivery ? 'Home Delivery' : 'Shop Pickup',
-            color: isDelivery ? Colors.indigo.shade700 : Colors.amber.shade900,
-            bgColor: isDelivery ? Colors.indigo.shade50 : Colors.amber.shade50,
+            color: const Color(0xFF475569),
+            bgColor: const Color(0xFFF1F5F9),
           ),
           const SizedBox(width: 8),
           _buildTag(
-            icon: isPaid ? Icons.check_circle : Icons.schedule,
+            icon: isPaid ? Icons.check_circle_outline : Icons.schedule,
             label: isPaid ? 'Paid' : 'Unpaid',
-            color: isPaid ? Colors.green.shade700 : Colors.orange.shade800,
-            bgColor: isPaid ? Colors.green.shade50 : Colors.orange.shade50,
+            color: isPaid ? AppTheme.statusCompleted : const Color(0xFF64748B),
+            bgColor: isPaid ? AppTheme.statusCompletedBg : const Color(0xFFF1F5F9),
           ),
         ],
       ),
@@ -658,52 +658,52 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     if (_isPendingPickup) {
       icon = Icons.two_wheeler;
-      color = AppTheme.statusPending;
-      bgColor = AppTheme.statusPendingBg;
+      color = AppTheme.statusActive;
+      bgColor = AppTheme.statusActiveBg;
       title = 'Waiting for Rider Pickup';
       subtitle = 'Rider has been dispatched to collect the laundry from customer.';
     } else if (_currentOrder.needsCheckIn) {
       icon = Icons.scale_outlined;
-      color = const Color(0xFF0284C7);
-      bgColor = const Color(0xFFF0F9FF);
+      color = AppTheme.statusActive;
+      bgColor = AppTheme.statusActiveBg;
       title = 'Check-In & Weighing Required';
       subtitle = 'Laundry has arrived at the shop. Please weigh and assign RFID tags.';
     } else if (_currentStatus == OrderStatus.processing) {
       icon = Icons.local_laundry_service;
-      color = AppTheme.accentBlue;
-      bgColor = const Color(0xFFEFF6FF);
+      color = AppTheme.statusActive;
+      bgColor = AppTheme.statusActiveBg;
       title = 'Processing: Washing & Drying';
       subtitle = 'Clothes are being processed in-store by laundry staff.';
     } else if (_currentStatus == OrderStatus.ready) {
       if (_needsDelivery) {
         icon = Icons.inventory_2_outlined;
-        color = Colors.indigo.shade700;
-        bgColor = Colors.indigo.shade50;
+        color = AppTheme.statusActive;
+        bgColor = AppTheme.statusActiveBg;
         title = 'Ready for Rider Delivery';
         subtitle = 'Laundry is packed and ready to be picked up by delivery rider.';
       } else {
         icon = Icons.shopping_bag_outlined;
-        color = Colors.amber.shade900;
-        bgColor = Colors.amber.shade50;
+        color = AppTheme.statusActive;
+        bgColor = AppTheme.statusActiveBg;
         title = 'Ready for Customer Pickup';
         subtitle = 'Laundry is ready on the shelf waiting for customer claim at counter.';
       }
     } else if (_isOutForDelivery) {
       icon = Icons.local_shipping_outlined;
-      color = Colors.purple.shade700;
-      bgColor = Colors.purple.shade50;
+      color = AppTheme.statusActive;
+      bgColor = AppTheme.statusActiveBg;
       title = 'Out for Delivery';
       subtitle = 'Rider is on the way to deliver the cleaned laundry to customer.';
     } else if (_currentStatus == OrderStatus.completed) {
       icon = Icons.check_circle_outline;
-      color = Colors.green.shade700;
-      bgColor = Colors.green.shade50;
+      color = AppTheme.statusCompleted;
+      bgColor = AppTheme.statusCompletedBg;
       title = 'Order Completed';
       subtitle = 'Laundry was claimed/delivered and payment has been verified.';
     } else {
       icon = Icons.info_outline;
-      color = Colors.grey.shade700;
-      bgColor = Colors.grey.shade100;
+      color = AppTheme.statusError;
+      bgColor = AppTheme.statusErrorBg;
       title = _currentOrder.statusText;
       subtitle = 'Order status updated.';
     }
@@ -890,21 +890,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.amber.shade50,
+                color: const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.amber.shade300, width: 0.8),
+                border: Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.flag_outlined, size: 15, color: Colors.amber.shade900),
+                  const Icon(Icons.flag_outlined, size: 15, color: Color(0xFF475569)),
                   const SizedBox(width: 6),
                   Text(
                     'Landmark: $landmark',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Colors.amber.shade900,
+                      color: Color(0xFF475569),
                     ),
                   ),
                 ],
@@ -965,17 +965,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                 decoration: BoxDecoration(
-                  color: isPaid ? Colors.green.shade50 : Colors.orange.shade50,
+                  color: isPaid ? AppTheme.statusCompletedBg : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: isPaid ? Colors.green.shade300 : Colors.orange.shade300),
+                  border: Border.all(color: isPaid ? AppTheme.statusCompletedBorder : const Color(0xFFCBD5E1)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      isPaid ? Icons.check_circle : Icons.schedule,
+                      isPaid ? Icons.check_circle_outline : Icons.schedule,
                       size: 13,
-                      color: isPaid ? Colors.green.shade700 : Colors.orange.shade800,
+                      color: isPaid ? AppTheme.statusCompleted : const Color(0xFF64748B),
                     ),
                     const SizedBox(width: 4),
                     Text(
@@ -983,7 +983,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: isPaid ? Colors.green.shade700 : Colors.orange.shade800,
+                        color: isPaid ? AppTheme.statusCompleted : const Color(0xFF64748B),
                       ),
                     ),
                   ],
@@ -1063,7 +1063,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   icon: Icons.layers_outlined,
                   label: 'Total Loads',
                   value: loadsCount > 0 ? '$loadsCount loads' : 'Pending',
-                  color: Colors.purple.shade700,
+                  color: AppTheme.accentBlue,
                 ),
               ),
             ],
@@ -1091,7 +1091,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.bold,
-                      color: (rfid != null && rfid.isNotEmpty) ? AppTheme.textDark : Colors.orange.shade800,
+                      color: (rfid != null && rfid.isNotEmpty) ? AppTheme.textDark : const Color(0xFF64748B),
                     ),
                   ),
                 ),
@@ -1266,7 +1266,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: Colors.white),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.statusPending,
+          backgroundColor: AppTheme.accentBlue,
           disabledBackgroundColor: Colors.grey,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1333,7 +1333,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
+          backgroundColor: AppTheme.accentBlue,
           disabledBackgroundColor: Colors.grey,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1342,13 +1342,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     } else if (_isOutForDelivery) {
       actionButton = OutlinedButton.icon(
         onPressed: _isUpdating ? null : _forceCompleteDelivery,
-        icon: const Icon(Icons.warning_amber_rounded, color: Colors.purple, size: 18),
+        icon: const Icon(Icons.warning_amber_rounded, color: AppTheme.accentBlue, size: 18),
         label: Text(
           _isUpdating ? 'Completing...' : 'Force Complete Delivery (Staff Override)',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Colors.purple),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: AppTheme.accentBlue),
         ),
         style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: Colors.purple, width: 1.5),
+          side: const BorderSide(color: AppTheme.accentBlue, width: 1.5),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(vertical: 13),
         ),
@@ -1358,21 +1358,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         padding: const EdgeInsets.symmetric(vertical: 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Colors.green.shade50,
+          color: AppTheme.statusCompletedBg,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.green.shade300),
+          border: Border.all(color: AppTheme.statusCompletedBorder),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+            Icon(Icons.check_circle, color: AppTheme.statusCompleted, size: 20),
             const SizedBox(width: 8),
             Text(
               'Order is Complete',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 15,
-                color: Colors.green.shade800,
+                color: AppTheme.statusCompleted,
               ),
             ),
           ],
