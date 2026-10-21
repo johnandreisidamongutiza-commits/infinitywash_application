@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../utils/app_error.dart';
 import 'supabase_service.dart';
 import 'secure_storage_service.dart';
@@ -106,7 +107,11 @@ class AuthService {
     final user = _auth.currentUser;
     final session = _auth.currentSession;
     if (user == null || session == null) return;
-    await _saveRememberMeData(user: user, session: session, email: user.email ?? '');
+    await _saveRememberMeData(
+      user: user,
+      session: session,
+      email: user.email ?? '',
+    );
   }
 
   /// Completes the customer data required before a Google-authenticated
@@ -119,7 +124,8 @@ class AuthService {
     required String landmark,
   }) async {
     final user = _auth.currentUser;
-    if (user == null) throw StateError('Sign in before completing your profile.');
+    if (user == null)
+      throw StateError('Sign in before completing your profile.');
     final metadata = <String, dynamic>{
       ...?user.userMetadata,
       'first_name': firstName,
@@ -131,7 +137,8 @@ class AuthService {
     };
     await _auth.updateUser(UserAttributes(data: metadata));
     final updatedUser = _auth.currentUser;
-    if (updatedUser == null) throw StateError('Your sign-in expired. Please try again.');
+    if (updatedUser == null)
+      throw StateError('Your sign-in expired. Please try again.');
     await _saveCustomerProfile(updatedUser, updatedUser.email ?? '', metadata);
     final profile = await SupabaseService.client
         .from('profiles')
@@ -149,7 +156,10 @@ class AuthService {
         .select('role, status, first_name, last_name, phone, address')
         .eq('supabase_user_id', user.id)
         .maybeSingle();
-    if (profile == null || profile['role'] != 'customer' || profile['status'] != 'active') return false;
+    if (profile == null ||
+        profile['role'] != 'customer' ||
+        profile['status'] != 'active')
+      return false;
     for (final key in ['first_name', 'last_name', 'phone', 'address']) {
       if ((profile[key] as String? ?? '').trim().isEmpty) return false;
     }
@@ -163,7 +173,7 @@ class AuthService {
   ) async {
     final now = DateTime.now().toIso8601String();
     final client = SupabaseService.client;
-    
+
     // Step 1: Create or update profile
     final profile = await client
         .from('profiles')
@@ -179,8 +189,10 @@ class AuthService {
       'phone': metadata['phone'],
       'address': metadata['address'],
       'landmark': metadata['landmark'],
-      if (metadata['latitude'] is num) 'pin_latitude': (metadata['latitude'] as num).toDouble(),
-      if (metadata['longitude'] is num) 'pin_longitude': (metadata['longitude'] as num).toDouble(),
+      if (metadata['latitude'] is num)
+        'pin_latitude': (metadata['latitude'] as num).toDouble(),
+      if (metadata['longitude'] is num)
+        'pin_longitude': (metadata['longitude'] as num).toDouble(),
       'role': 'customer',
       'status': 'active',
       'updated_at': now,
@@ -188,11 +200,11 @@ class AuthService {
 
     String profileId;
     if (profile == null) {
-      final newProfile = await client.from('profiles').insert({
-        'id': user.id,
-        ...profileData,
-        'created_at': now,
-      }).select('id').single();
+      final newProfile = await client
+          .from('profiles')
+          .insert({'id': user.id, ...profileData, 'created_at': now})
+          .select('id')
+          .single();
       profileId = newProfile['id'] as String;
       print('✅ Profile created: $profileId');
     } else {
@@ -217,28 +229,39 @@ class AuthService {
       if (existingCustomer == null) {
         // Customer doesn't exist yet (shouldn't happen - trigger should create it)
         // Skip creation here, let trigger handle it
-        print('ℹ️ Customer not found - trigger should create it during registration');
+        print(
+          'ℹ️ Customer not found - trigger should create it during registration',
+        );
       } else {
         // Update existing customer with address and landmark
         final existingAddress = existingCustomer['address'] as String? ?? '';
         final existingLandmark = existingCustomer['landmark'] as String? ?? '';
-        
+
         // Only update if address is empty or different
-        if (existingAddress.isEmpty || existingLandmark.isEmpty || 
-            existingAddress != address || existingLandmark != landmark) {
-          await client.from('customers').update({
-            'first_name': metadata['first_name'],
-            'last_name': metadata['last_name'],
-            'phone': metadata['phone'],
-            'email': email,
-            'address': address,
-            'landmark': landmark,
-            if (metadata['latitude'] is num) 'pin_latitude': (metadata['latitude'] as num).toDouble(),
-            if (metadata['longitude'] is num) 'pin_longitude': (metadata['longitude'] as num).toDouble(),
-            'updated_at': now,
-          }).eq('id', existingCustomer['id']);
-          
-          print('✅ Customer updated with address: "$address" and landmark: "$landmark"');
+        if (existingAddress.isEmpty ||
+            existingLandmark.isEmpty ||
+            existingAddress != address ||
+            existingLandmark != landmark) {
+          await client
+              .from('customers')
+              .update({
+                'first_name': metadata['first_name'],
+                'last_name': metadata['last_name'],
+                'phone': metadata['phone'],
+                'email': email,
+                'address': address,
+                'landmark': landmark,
+                if (metadata['latitude'] is num)
+                  'pin_latitude': (metadata['latitude'] as num).toDouble(),
+                if (metadata['longitude'] is num)
+                  'pin_longitude': (metadata['longitude'] as num).toDouble(),
+                'updated_at': now,
+              })
+              .eq('id', existingCustomer['id']);
+
+          print(
+            '✅ Customer updated with address: "$address" and landmark: "$landmark"',
+          );
         } else {
           print('ℹ️ Customer already has correct address and landmark');
         }
@@ -255,11 +278,11 @@ class AuthService {
   Future<void> _validateAccountStatus(String userId) async {
     try {
       print('🔒 Validating account status for user: $userId');
-      
+
       // Try to query with deactivation_reason first (after migration)
       // Fall back to without it if column doesn't exist (before migration)
       Map<String, dynamic>? profile;
-      
+
       try {
         profile = await SupabaseService.client
             .from('profiles')
@@ -268,7 +291,8 @@ class AuthService {
             .maybeSingle();
       } catch (e) {
         // If column doesn't exist, query without deactivation_reason
-        if (e.toString().contains('42703') || e.toString().contains('deactivation_reason does not exist')) {
+        if (e.toString().contains('42703') ||
+            e.toString().contains('deactivation_reason does not exist')) {
           print('⚠️ deactivation_reason column not found, querying without it');
           profile = await SupabaseService.client
               .from('profiles')
@@ -292,7 +316,7 @@ class AuthService {
       final role = profile['role'] as String? ?? 'user';
       final email = profile['email'] as String? ?? '';
       final reason = profile['deactivation_reason'] as String?;
-      
+
       print('🔒 Account status: $status, role: $role, email: $email');
       print('🔒 Deactivation reason from DB: "${reason ?? "NULL"}"');
       print('🔒 Reason is null: ${reason == null}');
@@ -302,27 +326,35 @@ class AuthService {
       if (status == 'deactivated') {
         // Sign out immediately
         await _auth.signOut();
-        
-        print('❌ Account deactivated. Reason: ${reason ?? "No reason provided"}');
-        
+
+        print(
+          '❌ Account deactivated. Reason: ${reason ?? "No reason provided"}',
+        );
+
         // Throw a specific exception with the reason
         if (reason != null && reason.trim().isNotEmpty) {
           throw Exception('ACCOUNT_DEACTIVATED:$reason');
         } else {
-          throw Exception('ACCOUNT_DEACTIVATED:No reason provided. Please contact support for more information.');
+          throw Exception(
+            'ACCOUNT_DEACTIVATED:No reason provided. Please contact support for more information.',
+          );
         }
       } else if (status == 'archived') {
         // Archived accounts are also blocked
         await _auth.signOut();
         print('❌ Account archived');
-        throw Exception('ACCOUNT_DEACTIVATED:This account has been archived. Please contact support.');
+        throw Exception(
+          'ACCOUNT_DEACTIVATED:This account has been archived. Please contact support.',
+        );
       } else if (status != 'active') {
         // Any other non-active status
         await _auth.signOut();
         print('❌ Account status invalid: $status');
-        throw Exception('ACCOUNT_DEACTIVATED:Account status is invalid. Please contact support.');
+        throw Exception(
+          'ACCOUNT_DEACTIVATED:Account status is invalid. Please contact support.',
+        );
       }
-      
+
       print('✅ Account status valid: $status');
     } catch (e) {
       // If it's already our exception, rethrow it
@@ -350,7 +382,7 @@ class AuthService {
       // After successful login, ensure profile exists
       if (response.user != null) {
         await _ensureProfileExists(response.user!);
-        
+
         // Validate account status BEFORE allowing login
         await _validateAccountStatus(response.user!.id);
 
@@ -384,19 +416,21 @@ class AuthService {
       // Check if profile exists
       final profile = await SupabaseService.client
           .from('profiles')
-          .select('id, role, address, landmark, first_name, last_name, phone, email')
+          .select(
+            'id, role, address, landmark, first_name, last_name, phone, email',
+          )
           .eq('supabase_user_id', user.id)
           .maybeSingle();
 
       if (profile != null) {
         print('✅ Profile exists for ${user.email}');
-        
+
         // If this is a customer profile, ensure customer record exists with address
         final role = profile['role'] as String? ?? '';
         if (role.toLowerCase() == 'customer') {
           await _syncCustomerRecord(profile, user.email ?? '');
         }
-        
+
         return;
       }
 
@@ -415,8 +449,10 @@ class AuthService {
         'phone': metadata['phone'] ?? user.phone ?? '',
         'address': metadata['address'] ?? '',
         'landmark': metadata['landmark'] ?? '',
-        if (metadata['latitude'] is num) 'pin_latitude': (metadata['latitude'] as num).toDouble(),
-        if (metadata['longitude'] is num) 'pin_longitude': (metadata['longitude'] as num).toDouble(),
+        if (metadata['latitude'] is num)
+          'pin_latitude': (metadata['latitude'] as num).toDouble(),
+        if (metadata['longitude'] is num)
+          'pin_longitude': (metadata['longitude'] as num).toDouble(),
         'role': metadata['role'] ?? 'customer',
         'status': 'active',
         'created_at': now,
@@ -424,7 +460,7 @@ class AuthService {
       });
 
       print('✅ Profile created automatically on login');
-      
+
       // Create customer record if role is customer
       if ((metadata['role'] ?? 'customer') == 'customer') {
         await _saveCustomerProfile(user, user.email ?? '', metadata);
@@ -436,12 +472,15 @@ class AuthService {
   }
 
   /// Sync customer record with profile data (for existing users with empty address)
-  Future<void> _syncCustomerRecord(Map<String, dynamic> profile, String email) async {
+  Future<void> _syncCustomerRecord(
+    Map<String, dynamic> profile,
+    String email,
+  ) async {
     try {
       final profileId = profile['id'] as String;
       final address = profile['address'] as String? ?? '';
       final landmark = profile['landmark'] as String? ?? '';
-      
+
       // Check if customer record exists
       final customer = await SupabaseService.client
           .from('customers')
@@ -452,7 +491,7 @@ class AuthService {
       if (customer == null) {
         // No customer record exists, create one using idempotent method
         print('⚠️ Customer record missing, creating from profile...');
-        
+
         final customerService = CustomerService();
         await customerService.createOrGetCustomerForProfile(
           profileId: profileId,
@@ -464,27 +503,31 @@ class AuthService {
           landmark: landmark,
           customerType: 'mobile_app',
         );
-        
+
         print('✅ Customer record created/verified with address from profile');
       } else {
         // Customer exists, check if address needs updating
         final customerAddress = customer['address'] as String? ?? '';
         final customerLandmark = customer['landmark'] as String? ?? '';
-        
+
         // If customer address is empty but profile has address, sync it
-        if ((customerAddress.isEmpty || customerLandmark.isEmpty) && address.isNotEmpty) {
+        if ((customerAddress.isEmpty || customerLandmark.isEmpty) &&
+            address.isNotEmpty) {
           print('⚠️ Customer address empty, syncing from profile...');
-          
-          await SupabaseService.client.from('customers').update({
-            'address': address,
-            'landmark': landmark,
-            'first_name': profile['first_name'],
-            'last_name': profile['last_name'],
-            'phone': profile['phone'],
-            'email': email,
-            'updated_at': DateTime.now().toIso8601String(),
-          }).eq('id', customer['id']);
-          
+
+          await SupabaseService.client
+              .from('customers')
+              .update({
+                'address': address,
+                'landmark': landmark,
+                'first_name': profile['first_name'],
+                'last_name': profile['last_name'],
+                'phone': profile['phone'],
+                'email': email,
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', customer['id']);
+
           print('✅ Customer address synced from profile: "$address"');
         }
       }
@@ -532,7 +575,8 @@ class AuthService {
         if (employee == null) return null;
 
         final employeeRole = (employee['role'] as String?)?.toLowerCase() ?? '';
-        final employeeStatus = (employee['status'] as String?)?.toLowerCase() ?? '';
+        final employeeStatus =
+            (employee['status'] as String?)?.toLowerCase() ?? '';
 
         if (employeeRole != role || employeeStatus != 'active') return null;
       }
@@ -567,7 +611,7 @@ class AuthService {
       throw mapError(e, stackTrace: StackTrace.current);
     }
   }
-  
+
   // Note: The new password reset flow uses PasswordResetService
   // which integrates with the password_reset_tokens table
   // See password_reset_service.dart for the complete implementation
@@ -584,12 +628,50 @@ class AuthService {
     }
   }
 
+  /// Re-authenticate and change the password through the rate-limited server
+  /// endpoint. This keeps password changes under one server-side policy.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      final email = user?.email;
+      if (user == null || email == null) {
+        throw const AppError(
+          'You are signed out. Please log in and try again.',
+          type: AppErrorType.auth,
+        );
+      }
+      final result = await SupabaseService.client.functions.invoke(
+        'change-password',
+        body: {
+          'email': email,
+          'current_password': currentPassword,
+          'new_password': newPassword,
+        },
+      );
+      if (result.data is Map && (result.data as Map)['ok'] == true) return;
+      throw const AppError(
+        'Password change failed. Please try again.',
+        type: AppErrorType.server,
+      );
+    } on FunctionException catch (e) {
+      final detail = e.details;
+      final message = detail is Map && detail['error'] is String
+          ? detail['error'] as String
+          : 'Password change failed. Please try again.';
+      throw AppError(message, type: AppErrorType.server, originalError: e);
+    } catch (e) {
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
+    }
+  }
+
   // Update user metadata
   Future<UserResponse> updateUserMetadata(Map<String, dynamic> metadata) async {
     try {
-      final response = await _auth.updateUser(
-        UserAttributes(data: metadata),
-      );
+      final response = await _auth.updateUser(UserAttributes(data: metadata));
       return response;
     } catch (e) {
       throw mapError(e, stackTrace: StackTrace.current);
@@ -611,7 +693,7 @@ class AuthService {
       print('🔐 REMEMBER ME: Starting save process...');
       print('🔐 User ID: ${user.id}');
       print('🔐 Email: $email');
-      
+
       // Fetch profile data to get name
       final profile = await SupabaseService.client
           .from('profiles')
@@ -645,7 +727,7 @@ class AuthService {
         userId: user.id,
         accessToken: session.accessToken,
         refreshToken: session.refreshToken,
-        expiresAt: session.expiresAt != null 
+        expiresAt: session.expiresAt != null
             ? DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)
             : null,
       );
@@ -666,11 +748,12 @@ class AuthService {
   Future<AuthResponse?> tryAutoLogin({String? userId}) async {
     try {
       print('🔄 AUTO-LOGIN: Starting auto-login process...');
-      
+
       // Get user ID - either provided or last auto-login user
-      final targetUserId = userId ?? await _secureStorage.getLastAutoLoginUser();
+      final targetUserId =
+          userId ?? await _secureStorage.getLastAutoLoginUser();
       print('🔄 Target User ID: $targetUserId');
-      
+
       if (targetUserId == null) {
         print('❌ AUTO-LOGIN: No saved user ID found');
         return null;
@@ -685,10 +768,10 @@ class AuthService {
       // Get the access token
       final accessToken = await _secureStorage.getAccessToken(targetUserId);
       final refreshToken = await _secureStorage.getRefreshToken(targetUserId);
-      
+
       print('🔄 Access token present: ${accessToken != null}');
       print('🔄 Refresh token present: ${refreshToken != null}');
-      
+
       if (accessToken == null && refreshToken == null) {
         print('❌ AUTO-LOGIN: No saved session tokens found');
         await _removeRememberMeData(targetUserId);
@@ -699,10 +782,12 @@ class AuthService {
       // Note: Supabase Flutter handles session restoration automatically
       // We just need to verify the current session is valid
       final currentSession = _auth.currentSession;
-      
-      if (hasValidToken && currentSession != null && currentSession.user.id == targetUserId) {
+
+      if (hasValidToken &&
+          currentSession != null &&
+          currentSession.user.id == targetUserId) {
         print('✅ AUTO-LOGIN: Session already active');
-        
+
         // Validate account status before allowing access
         try {
           await _validateAccountStatus(targetUserId);
@@ -712,15 +797,12 @@ class AuthService {
           await _removeRememberMeData(targetUserId);
           return null;
         }
-        
+
         // Session is already active and account is valid
         await _savedAccountsDb.updateLastLogin(targetUserId);
         // Register push for auto-logged-in users too (fire-and-forget).
         PushNotificationService.instance.initializeForCurrentUser();
-        return AuthResponse(
-          user: currentSession.user,
-          session: currentSession,
-        );
+        return AuthResponse(user: currentSession.user, session: currentSession);
       }
 
       // If we have a refresh token, try to refresh the session
@@ -730,7 +812,7 @@ class AuthService {
           final response = await _auth.refreshSession(refreshToken);
           if (response.session != null) {
             print('✅ AUTO-LOGIN: Session refreshed successfully');
-            
+
             // Validate account status before allowing access
             try {
               await _validateAccountStatus(targetUserId);
@@ -740,17 +822,19 @@ class AuthService {
               await _removeRememberMeData(targetUserId);
               return null;
             }
-            
+
             // Update stored tokens with new ones
             await _secureStorage.saveAuthTokens(
               userId: targetUserId,
               accessToken: response.session!.accessToken,
               refreshToken: response.session!.refreshToken,
               expiresAt: response.session!.expiresAt != null
-                  ? DateTime.fromMillisecondsSinceEpoch(response.session!.expiresAt! * 1000)
+                  ? DateTime.fromMillisecondsSinceEpoch(
+                      response.session!.expiresAt! * 1000,
+                    )
                   : null,
             );
-            
+
             await _savedAccountsDb.updateLastLogin(targetUserId);
             // Register push for auto-logged-in users too (fire-and-forget).
             PushNotificationService.instance.initializeForCurrentUser();
@@ -799,7 +883,7 @@ class AuthService {
   // Remove a saved account (called when user explicitly removes it)
   Future<void> removeSavedAccount(String userId) async {
     await _removeRememberMeData(userId);
-    
+
     // If this was the last auto-login user, clear that reference
     final lastAutoLogin = await _secureStorage.getLastAutoLoginUser();
     if (lastAutoLogin == userId) {

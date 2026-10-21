@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "1048960336599-t9m8qgu58fllnihbh1hgtvhutpc0saac.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.infinitywash",
+            "certificate_hash": "d58cc31a46d154020b77a30ca2a1538267cdec14"
+          }
+        },
+        {
           "client_id": "1048960336599-78af8f5j2qpmsfmol1d465k3t6if34kg.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -29,6 +37,13 @@
             {
               "client_id": "1048960336599-78af8f5j2qpmsfmol1d465k3t6if34kg.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "1048960336599-7qokcothkqglsvb4tll3mnhs2o5c39rp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.company.infinitywash"
+              }
             }
           ]
         }

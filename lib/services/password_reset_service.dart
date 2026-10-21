@@ -29,8 +29,15 @@ class PasswordResetService {
   ///
   /// Throws with a user-facing message when the account is unknown, inactive
   /// or rate limited.
-  Future<ResetRequestResult> requestPasswordReset(String email) async {
-    final data = await _invoke({'action': 'request', 'email': email});
+  Future<ResetRequestResult> requestPasswordReset(
+    String email, {
+    required String captchaToken,
+  }) async {
+    final data = await _invoke({
+      'action': 'request',
+      'email': email,
+      'captcha_token': captchaToken,
+    });
     return ResetRequestResult(
       email: (data['email'] as String?) ?? email,
       attemptsLeft: (data['attempts_left'] as num?)?.toInt() ?? 0,
@@ -68,8 +75,11 @@ class PasswordResetService {
 
   /// Resend is the same operation as request (the server invalidates the old
   /// code and enforces the hourly limit).
-  Future<ResetRequestResult> resendResetCode(String email) async {
-    return requestPasswordReset(email);
+  Future<ResetRequestResult> resendResetCode(
+    String email, {
+    required String captchaToken,
+  }) async {
+    return requestPasswordReset(email, captchaToken: captchaToken);
   }
 
   /// Invoke the Edge Function and return its JSON payload.

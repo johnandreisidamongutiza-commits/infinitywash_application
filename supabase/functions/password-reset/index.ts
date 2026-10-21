@@ -15,7 +15,7 @@
 //
 // Deploy:
 //   supabase functions deploy password-reset
-//   supabase secrets set SMTP_HOST=smtp.gmail.com SMTP_PORT=587 \
+//   supabase secrets set SMTP_HOST=smtp.gmail.com SMTP_PORT=465 \
 //     SMTP_USER=you@gmail.com SMTP_PASS=<app-password> \
 //     SMTP_FROM="InfinityWash <you@gmail.com>"
 //
@@ -36,6 +36,25 @@ const CODE_TTL_MINUTES = 15
 const MAX_SENDS_PER_HOUR = 3
 const MAX_VERIFY_ATTEMPTS = 5
 const MIN_PASSWORD_LENGTH = 8
+const MAX_PASSWORD_LENGTH = 72
+
+function validateNewPassword(password: string): string | null {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`
+  }
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return `Password must be no more than ${MAX_PASSWORD_LENGTH} characters long.`
+  }
+  if (
+    !/[A-Z]/.test(password) ||
+    !/[a-z]/.test(password) ||
+    !/[0-9]/.test(password) ||
+    !/[^A-Za-z0-9]/.test(password)
+  ) {
+    return "Password must include an uppercase letter, a lowercase letter, a number, and a symbol."
+  }
+  return null
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -101,19 +120,21 @@ async function sendResetEmail(
   code: string,
   name: string,
 ): Promise<void> {
-  const host = Deno.env.get("SMTP_HOST")
-  const user = Deno.env.get("SMTP_USER")
-  const pass = Deno.env.get("SMTP_PASS")
+  const host = Deno.env.get("SMTP_HOST") ?? "smtp.gmail.com"
+  // InfinityWashSMTP is the existing app-password secret in this project.
+  const user = Deno.env.get("SMTP_USER") ?? "infinitywash001@gmail.com"
+  const pass = Deno.env.get("SMTP_PASS") ?? Deno.env.get("InfinityWashSMTP")
 
   if (!host || !user || !pass) {
-    // Do not fail the flow and NEVER echo the code back to the client.
-    console.error(
-      `[password-reset] SMTP secrets not set; code for ${to} generated but NOT delivered`,
-    )
-    return
+    throw new Error("Email delivery is not configured (Gmail App Password secret is missing)")
   }
 
-  const port = Number(Deno.env.get("SMTP_PORT") ?? "587")
+  // Supabase blocks outbound SMTP on ports 25 and 587. Gmail's implicit TLS
+  // endpoint on 465 is supported; an HTTPS email API is another option.
+  const port = Number(Deno.env.get("SMTP_PORT") ?? "465")
+  if (!Number.isInteger(port) || port < 1 || port > 65535 || port === 25 || port === 587) {
+    throw new Error("SMTP_PORT must be 465; Supabase blocks SMTP ports 25 and 587")
+  }
   const from = Deno.env.get("SMTP_FROM") ?? `InfinityWash <${user}>`
   const senderName = Deno.env.get("SMTP_FROM_NAME") ?? "InfinityWash"
 
@@ -189,7 +210,7 @@ Deno.serve(async (req) => {
     return fail("Method not allowed", 405)
   }
 
-  let body: { action?: string; email?: string; code?: string; new_password?: string }
+  let body: { action?: string; email?: string; code?: string; new_password?: string; captcha_token?: string }
   try {
     body = await req.json()
   } catch {
@@ -214,6 +235,35 @@ Deno.serve(async (req) => {
 
   try {
     if (action === "request") {
+      const captchaToken = (body.captcha_token ?? "").trim()
+      const turnstileSecret = Deno.env.get("TURNSTILE_SECRET_KEY")
+      if (!turnstileSecret) {
+        console.error("[password-reset] TURNSTILE_SECRET_KEY is not configured")
+        return fail("Security check is unavailable. Please try again later.", 503)
+      }
+      if (!captchaToken) return fail("Please complete the security check.", 400)
+      const captchaResponse = await fetch(
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            secret: turnstileSecret,
+            response: captchaToken,
+          }),
+        },
+      )
+      const captchaResult = await captchaResponse.json()
+      const expectedHostname = new URL(Deno.env.get("SUPABASE_URL")!).hostname
+      if (
+        !captchaResponse.ok ||
+        captchaResult.success !== true ||
+        captchaResult.hostname !== expectedHostname ||
+        captchaResult.action !== "password_reset"
+      ) {
+        return fail("Security check failed or expired. Please try again.", 400)
+      }
+
       // 1. Profile + status checks.
       const { data: profile } = await admin
         .from("profiles")
@@ -237,11 +287,25 @@ Deno.serve(async (req) => {
         .from("password_reset_tokens")
         .select("id", { count: "exact", head: true })
         .ilike("email", email)
+        .eq("email_sent", true)
         .gte("created_at", since)
 
       if ((count ?? 0) >= MAX_SENDS_PER_HOUR) {
+        const { data: oldestRequest } = await admin
+          .from("password_reset_tokens")
+          .select("created_at")
+          .ilike("email", email)
+          .eq("email_sent", true)
+          .gte("created_at", since)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle()
+        const retryAt = oldestRequest
+          ? new Date(oldestRequest.created_at).getTime() + 60 * 60 * 1000
+          : Date.now() + 60 * 1000
+        const waitMinutes = Math.max(1, Math.ceil((retryAt - Date.now()) / 60000))
         return fail(
-          `Too many code requests. Please try again later.`,
+          `You've reached the limit of ${MAX_SENDS_PER_HOUR} code requests in one hour. Please wait about ${waitMinutes} minute${waitMinutes == 1 ? "" : "s"} and try again.`,
           429,
         )
       }
@@ -259,7 +323,7 @@ Deno.serve(async (req) => {
       const now = new Date()
       const expiresAt = new Date(now.getTime() + CODE_TTL_MINUTES * 60 * 1000)
 
-      const { error: insertError } = await admin
+      const { data: insertedToken, error: insertError } = await admin
         .from("password_reset_tokens")
         .insert({
           email: profile.email,
@@ -267,15 +331,67 @@ Deno.serve(async (req) => {
           expires_at: expiresAt.toISOString(),
           sent_at: now.toISOString(),
           created_at: now.toISOString(),
+          email_sent: false,
           attempts: 0,
           used: false,
         })
+        .select("id")
+        .single()
       if (insertError) throw insertError
 
       // 5. Deliver the code.
       const fullName =
         [profile.first_name, profile.last_name].filter(Boolean).join(" ")
-      await sendResetEmail(profile.email, code, fullName)
+      try {
+        await sendResetEmail(profile.email, code, fullName)
+      } catch (mailError) {
+        // A code must never remain usable when its email was not accepted.
+        await admin
+          .from("password_reset_tokens")
+          .update({ used: true, email_sent: false })
+          .eq("id", insertedToken?.id ?? "")
+        const mailDetails = mailError as {
+          code?: unknown
+          responseCode?: unknown
+          command?: unknown
+        }
+        const errorCode = typeof mailDetails?.code === "string"
+          ? mailDetails.code
+          : "UNKNOWN"
+        const responseCode = typeof mailDetails?.responseCode === "number"
+          ? mailDetails.responseCode
+          : null
+        const setupError = mailError instanceof Error ? mailError.message : ""
+        console.error("[password-reset] email delivery failed:", JSON.stringify({
+          code: errorCode,
+          responseCode,
+          command: typeof mailDetails?.command === "string"
+            ? mailDetails.command
+            : null,
+        }))
+        const deliveryMessage = setupError.includes("not configured") || setupError.includes("SMTP_PORT")
+          ? "Email delivery is not configured. Check the password-reset SMTP secrets and use port 465."
+          : errorCode === "EAUTH" || responseCode === 535 || responseCode === 534
+          ? "Gmail rejected the SMTP login. Update the InfinityWashSMTP secret with a valid Google App Password for the sender account."
+          : ["ETIMEDOUT", "ESOCKET", "ECONNECTION", "ECONNRESET"].includes(errorCode)
+          ? "The app could not connect to Gmail SMTP on port 465. Check the SMTP connection and try again."
+          : "Gmail could not accept the verification email. Check the password-reset function logs or try again later."
+        return fail(
+          deliveryMessage,
+          503,
+        )
+      }
+
+      // Count only emails that Gmail accepted, never failed attempts.
+      const { error: deliveryMarkError } = await admin
+        .from("password_reset_tokens")
+        .update({ email_sent: true, sent_at: new Date().toISOString() })
+        .eq("id", insertedToken.id)
+      if (deliveryMarkError) {
+        // The email was accepted already; preserve success for the user while
+        // recording the database problem for operators to investigate.
+        console.error("[password-reset] email delivered but status update failed:", deliveryMarkError.code)
+      }
 
       const sentThisHour = (count ?? 0) + 1
       return json({
@@ -332,9 +448,8 @@ Deno.serve(async (req) => {
     if (action === "reset") {
       if (!code) return fail("The verification code is required")
       const newPassword = body.new_password ?? ""
-      if (newPassword.length < MIN_PASSWORD_LENGTH) {
-        return fail(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`)
-      }
+      const passwordError = validateNewPassword(newPassword)
+      if (passwordError) return fail(passwordError)
 
       // Re-validate the code fully — the password step never trusts the client.
       const { data: token } = await admin

@@ -62,8 +62,10 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
 
     if (_currentPasswordController.text.trim() ==
         _newPasswordController.text.trim()) {
-      _showMessage('New password must be different from current password',
-          isError: true);
+      _showMessage(
+        'New password must be different from current password',
+        isError: true,
+      );
       return;
     }
 
@@ -89,14 +91,10 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
         );
       }
 
-      // Re-authenticate with current password to verify it
-      await _authService.signIn(
-        email: user.email!,
-        password: _currentPasswordController.text,
+      await _authService.changePassword(
+        currentPassword: _currentPasswordController.text,
+        newPassword: _newPasswordController.text,
       );
-
-      // Update to new password
-      await _authService.updatePassword(_newPasswordController.text);
 
       if (!mounted) return;
       _showMessage('Password changed successfully!', isError: false);
@@ -296,10 +294,8 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
             prefixIcon: Icons.lock_reset_rounded,
             isPassword: true,
             controller: _confirmPasswordController,
-            validator: (v) => Validators.confirmPassword(
-              v,
-              _newPasswordController.text,
-            ),
+            validator: (v) =>
+                Validators.confirmPassword(v, _newPasswordController.text),
             maxLength: Validators.passwordMax,
             onChanged: (_) => setState(() {}),
           ),
@@ -353,10 +349,7 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
     );
   }
 
-  Widget _buildRequirementItem({
-    required String label,
-    required bool isMet,
-  }) {
+  Widget _buildRequirementItem({required String label, required bool isMet}) {
     final color = isMet ? const Color(0xFF43A047) : AppTheme.textLight;
 
     return Row(
