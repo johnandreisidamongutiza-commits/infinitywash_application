@@ -5,6 +5,7 @@ import '../../../theme/app_theme.dart';
 import '../../../models/chat_model.dart';
 import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
+import '../../../services/supabase_service.dart';
 import '../../../services/order_number_resolver.dart';
 import '../../../widgets/top_notification.dart';
 import '../../../utils/chat_rate_limiter.dart';
@@ -16,6 +17,9 @@ class RiderChatDetailScreen extends StatefulWidget {
   final String customerId;
   final String? orderId;
   final String? phoneNumber;
+  final String? jobType; // 'pickup' | 'delivery'
+  final String? address;
+  final String? landmark;
   final bool isDispatchChat;
 
   const RiderChatDetailScreen({
@@ -26,6 +30,9 @@ class RiderChatDetailScreen extends StatefulWidget {
     required this.customerId,
     this.orderId,
     this.phoneNumber,
+    this.jobType,
+    this.address,
+    this.landmark,
     this.isDispatchChat = false,
   });
 
@@ -166,13 +173,31 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
       } else {
         // Customer chat
         final orderId = widget.orderId ?? 'general';
+        String custId = widget.customerId;
+        String? custPhone = widget.phoneNumber;
+
+        if (custId.isEmpty && orderId != 'general') {
+          try {
+            final orderRes = await SupabaseService.client
+                .from('orders')
+                .select('customer_id, customers(phone_number)')
+                .eq('id', orderId)
+                .maybeSingle();
+            if (orderRes != null) {
+              custId = orderRes['customer_id']?.toString() ?? '';
+              final cust = orderRes['customers'] as Map<String, dynamic>?;
+              custPhone ??= cust?['phone_number']?.toString();
+            }
+          } catch (_) {}
+        }
+
         final conv = await _chatService.getOrCreateOrderChat(
           orderId: orderId,
-          customerId: widget.customerId,
+          customerId: custId,
           customerName: widget.customerName,
           riderId: _currentRiderId,
           riderName: _currentRiderName,
-          customerPhone: widget.phoneNumber,
+          customerPhone: custPhone,
           riderPhone: phone,
           riderAvatar: avatar,
         );
@@ -279,8 +304,12 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
     });
   }
 
+  bool get _isDispatch =>
+      widget.isDispatchChat ||
+      (widget.conversation?.chatType == ChatType.riderStaff);
+
   List<String> get _quickReplies {
-    if (widget.isDispatchChat) {
+    if (_isDispatch) {
       return [
         'Picked up order from shop',
         'Customer not answering door',
@@ -289,11 +318,118 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
       ];
     }
     return [
-      'I am on my way now.',
+      'I am on my way with your laundry.',
       'Arriving in about 10 minutes.',
       'I have arrived at your door/lobby.',
       'Thank you! Have a great day.',
     ];
+  }
+
+  Widget _buildOrderContextBanner(bool isPickup, Color taskColor) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.softGray.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: taskColor.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isPickup
+                  ? Icons.shopping_bag_outlined
+                  : Icons.local_shipping_outlined,
+              size: 16,
+              color: taskColor,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      isPickup ? 'PICKUP TASK' : 'DELIVERY TASK',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: taskColor,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        '#$_resolvedOrderDisplay',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                if (widget.address != null && widget.address!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    widget.address!,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.textLight,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (widget.orderId != null && widget.orderId!.isNotEmpty) ...[
+            const SizedBox(width: 6),
+            InkWell(
+              onTap: () => Navigator.pop(context),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.borderGray),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.map_outlined,
+                        size: 12, color: AppTheme.accentBlue),
+                    SizedBox(width: 4),
+                    Text(
+                      'Job',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.accentBlue,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -302,30 +438,13 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
         ? widget.conversation!.getOtherParticipantName(_currentRiderId, 'rider')
         : widget.customerName;
 
+    final bool isPickup = widget.jobType == 'pickup';
+    final Color taskColor =
+        isPickup ? AppTheme.errorRed : AppTheme.teamMemberIconOrange;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textDark,
-              ),
-            ),
-            if (_resolvedOrderDisplay.isNotEmpty)
-              Text(
-                'Order #$_resolvedOrderDisplay',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppTheme.textLight,
-                ),
-              ),
-          ],
-        ),
         backgroundColor: Colors.white,
         elevation: 0.5,
         leading: IconButton(
@@ -333,25 +452,103 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
               size: 20, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          if (widget.phoneNumber != null && widget.phoneNumber!.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.phone_outlined,
-                  color: AppTheme.accentBlue),
-              onPressed: () {
-                showTopNotification(
-                  context,
-                  message: 'Calling $title (${widget.phoneNumber})...',
-                  icon: Icons.phone,
-                  backgroundColor: AppTheme.accentBlue,
-                );
-              },
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    _isDispatch ? 'InfinityWash Staff' : title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textDark,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (_isDispatch) ...[
+                  const SizedBox(width: 4),
+                  const Icon(Icons.verified,
+                      size: 15, color: AppTheme.primaryBlue),
+                ],
+              ],
             ),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: _isDispatch
+                        ? AppTheme.primaryBlue.withValues(alpha: 0.12)
+                        : Colors.teal.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    _isDispatch ? 'STORE STAFF • Helpdesk' : 'CUSTOMER',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.4,
+                      color: _isDispatch
+                          ? AppTheme.primaryBlue
+                          : Colors.teal.shade800,
+                    ),
+                  ),
+                ),
+                if (!_isDispatch && _resolvedOrderDisplay.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Order #$_resolvedOrderDisplay',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.textLight,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(
+              Icons.phone_outlined,
+              color: _isDispatch ? AppTheme.primaryBlue : AppTheme.accentBlue,
+            ),
+            tooltip: _isDispatch ? 'Call Shop Staff' : 'Call Customer',
+            onPressed: () {
+              final phoneToCall = _isDispatch
+                  ? (widget.phoneNumber ?? '0912-345-6789')
+                  : (widget.phoneNumber ?? 'Customer Phone');
+              showTopNotification(
+                context,
+                message: _isDispatch
+                    ? 'Calling Shop Staff ($phoneToCall)...'
+                    : 'Calling $title ($phoneToCall)...',
+                icon: Icons.phone,
+                backgroundColor:
+                    _isDispatch ? AppTheme.primaryBlue : AppTheme.accentBlue,
+              );
+            },
+          ),
         ],
       ),
       body: SafeArea(
         child: Column(
           children: [
+            // Order Context Banner (Only for customer chats when order context exists)
+            if (!_isDispatch && _resolvedOrderDisplay.isNotEmpty)
+              _buildOrderContextBanner(isPickup, taskColor),
             Expanded(
               child: _isLoading
                   ? const Center(

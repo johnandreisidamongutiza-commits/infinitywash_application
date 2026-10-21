@@ -14,6 +14,7 @@ import '../../../state/rider_location_provider.dart';
 import '../../../widgets/map_loading_overlay.dart';
 import '../../../widgets/cached_tile_provider.dart';
 import '../payments/rider_payment_process_screen.dart';
+import '../chats/rider_chat_detail_screen.dart';
 
 /// Active job tracking screen with real-time location updates
 class RiderJobTrackingScreen extends StatefulWidget {
@@ -52,6 +53,10 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
   
   // Cache job location to avoid repeated calculations
   LatLng? _cachedJobLocation;
+
+  // Customer contact info
+  String? _customerId;
+  String? _customerPhone;
   
   @override
   void initState() {
@@ -63,6 +68,7 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
       _resolveJobCoordinatesIfNeeded();
     }
     _initializeLocation();
+    _loadCustomerInfo();
     
     // Hide loading after 2 seconds
     Future.delayed(const Duration(seconds: 2), () {
@@ -70,6 +76,53 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
         setState(() => _isMapLoading = false);
       }
     });
+  }
+
+  Future<void> _loadCustomerInfo() async {
+    try {
+      final orderRes = await SupabaseService.client
+          .from('orders')
+          .select('customer_id, customers(phone_number)')
+          .eq('id', widget.job.orderId)
+          .maybeSingle();
+
+      if (orderRes != null && mounted) {
+        final cust = orderRes['customers'] as Map<String, dynamic>?;
+        setState(() {
+          _customerId = orderRes['customer_id']?.toString();
+          _customerPhone = cust?['phone_number']?.toString();
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _openCustomerChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RiderChatDetailScreen(
+          customerName: widget.job.customerName ?? 'Customer',
+          customerId: _customerId ?? '',
+          orderId: widget.job.orderId,
+          phoneNumber: _customerPhone,
+          jobType: widget.job.jobType,
+          address: widget.job.address,
+          landmark: widget.job.landmark,
+          isDispatchChat: false,
+        ),
+      ),
+    );
+  }
+
+  void _callCustomer() {
+    final phone = _customerPhone ?? 'Customer phone on file';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Calling ${widget.job.customerName ?? 'Customer'} ($phone)...'),
+        backgroundColor: AppTheme.accentBlue,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _initializeLocation() async {
@@ -737,6 +790,45 @@ class _RiderJobTrackingScreenState extends State<RiderJobTrackingScreen> {
                           'Updates: $_updateCount',
                           style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // Quick Chat & Call Customer Bar
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _openCustomerChat,
+                            icon: const Icon(Icons.chat_bubble_outline, size: 15),
+                            label: Text(
+                              'Chat ${widget.job.customerName?.split(' ').first ?? 'Customer'}',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.teal.shade800,
+                              side: BorderSide(color: Colors.teal.shade200),
+                              backgroundColor: Colors.teal.shade50,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                        if (_customerPhone != null && _customerPhone!.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed: _callCustomer,
+                            icon: const Icon(Icons.phone_outlined, size: 15),
+                            label: const Text('Call', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.accentBlue,
+                              side: BorderSide(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
+                              backgroundColor: AppTheme.lightBlue,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                     // Route status indicator

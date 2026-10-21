@@ -2,10 +2,86 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/empty_state_widget.dart';
 import '../../../models/chat_model.dart';
+import '../../../models/dispatch_job.dart';
 import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
+import '../../../services/rider_service.dart';
+import '../../../services/supabase_service.dart';
 import '../../../services/order_number_resolver.dart';
 import 'rider_chat_detail_screen.dart';
+
+/// Internal model representing an active rider chat entry.
+/// Can be either the persistent Shop Staff line or an active assigned job (Pickup / Delivery).
+class _RiderChatItem {
+  final bool isDispatch;
+  final ChatConversation? conversation;
+  final DispatchJob? job;
+  final DateTime sortTime;
+  final int unreadCount;
+
+  _RiderChatItem.dispatch({
+    required this.conversation,
+    required String currentRiderId,
+  })  : isDispatch = true,
+        job = null,
+        unreadCount =
+            conversation?.getUnreadCount(currentRiderId, 'rider') ?? 0,
+        sortTime = conversation?.lastTimestamp ?? DateTime.now();
+
+  _RiderChatItem.activeJob({
+    required this.job,
+    required this.conversation,
+    required String currentRiderId,
+  })  : isDispatch = false,
+        unreadCount =
+            conversation?.getUnreadCount(currentRiderId, 'rider') ?? 0,
+        sortTime =
+            conversation?.lastTimestamp ?? job?.createdAt ?? DateTime.now();
+
+  String get displayName {
+    if (isDispatch) return 'InfinityWash Staff';
+    return job?.customerName ??
+        conversation?.getOtherParticipantName('', 'rider') ??
+        'Customer';
+  }
+
+  String? get displayPhone =>
+      conversation?.getOtherParticipantPhone('', 'rider');
+
+  String? get orderNumber {
+    if (conversation?.displayOrderNumber != null &&
+        conversation!.displayOrderNumber!.isNotEmpty) {
+      return conversation!.displayOrderNumber;
+    }
+    if (job?.jobNumber != null && job!.jobNumber!.isNotEmpty) {
+      return '#${job!.jobNumber}';
+    }
+    return null;
+  }
+
+  String? get taskType {
+    if (job?.jobType == 'pickup') return 'PICKUP';
+    if (job?.jobType == 'delivery') return 'DELIVERY';
+    return null;
+  }
+
+  Color get taskColor => job?.jobType == 'pickup'
+      ? AppTheme.errorRed
+      : AppTheme.teamMemberIconOrange;
+
+  String? get address => job?.address;
+  String? get landmark => job?.landmark;
+
+  String get lastMessageText {
+    if (conversation != null && conversation!.lastMessage.isNotEmpty) {
+      return conversation!.lastMessage;
+    }
+    if (isDispatch) return 'Tap to contact shop staff';
+    return 'Tap to send a message...';
+  }
+
+  String get timeAgoText => conversation?.timeAgo ?? '';
+}
 
 class RiderChatsScreen extends StatefulWidget {
   const RiderChatsScreen({super.key});
@@ -17,6 +93,7 @@ class RiderChatsScreen extends StatefulWidget {
 class _RiderChatsScreenState extends State<RiderChatsScreen> {
   final FirebaseChatService _chatService = FirebaseChatService.instance;
   final ProfileService _profileService = ProfileService();
+  final RiderService _riderService = RiderService();
   final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = '';
@@ -25,11 +102,20 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
   String _currentRiderName = 'Rider';
   bool _isProfileLoaded = false;
 
+  // Filter tabs: 0: All (Active + Shop Staff), 1: Pickups, 2: Deliveries, 3: Shop Staff
+  int _selectedFilterIndex = 0;
+
+  // Active jobs for today (strictly active pickup / delivery jobs assigned to this rider)
+  List<DispatchJob> _activeJobs = [];
+  Map<String, DispatchJob> _activeJobsByOrderId = {};
+  bool _isLoadingJobs = false;
+
   @override
   void initState() {
     super.initState();
     OrderNumberResolver.changeNotifier.addListener(_onOrderResolved);
     _loadProfileAndEnsureDispatchChat();
+    _loadActiveJobs();
   }
 
   Future<void> _loadProfileAndEnsureDispatchChat() async {
@@ -50,7 +136,7 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
         });
       }
 
-      // Ensure that InfinityWash Dispatch channel exists for this rider
+      // Ensure that InfinityWash Staff channel exists for this rider
       if (riderId.isNotEmpty) {
         await _chatService.getOrCreateRiderStaffChat(
           riderId: riderId,
@@ -65,6 +151,27 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
     }
   }
 
+  Future<void> _loadActiveJobs() async {
+    if (_isLoadingJobs) return;
+    setState(() => _isLoadingJobs = true);
+    try {
+      final pickups = await _riderService.fetchActivePickupJobs();
+      final deliveries = await _riderService.fetchActiveDeliveryJobs();
+      final all = [...pickups, ...deliveries];
+
+      if (mounted) {
+        setState(() {
+          _activeJobs = all;
+          _activeJobsByOrderId = {for (final j in all) j.orderId: j};
+          _isLoadingJobs = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading active jobs in rider chats: $e');
+      if (mounted) setState(() => _isLoadingJobs = false);
+    }
+  }
+
   void _onOrderResolved() {
     if (mounted) setState(() {});
   }
@@ -74,6 +181,72 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
     OrderNumberResolver.changeNotifier.removeListener(_onOrderResolved);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _openActiveJobChat(DispatchJob job, {ChatConversation? existingConversation}) async {
+    // Resolve customer phone / ID if missing
+    String? phone = existingConversation?.getOtherParticipantPhone(_currentRiderId, 'rider');
+    String? custId;
+
+    if (phone == null || phone.isEmpty) {
+      try {
+        final orderRes = await SupabaseService.client
+            .from('orders')
+            .select('customer_id, customers(phone_number)')
+            .eq('id', job.orderId)
+            .maybeSingle();
+        if (orderRes != null) {
+          custId = orderRes['customer_id']?.toString();
+          final cust = orderRes['customers'] as Map<String, dynamic>?;
+          phone = cust?['phone_number']?.toString();
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RiderChatDetailScreen(
+          conversation: existingConversation,
+          customerName: job.customerName ?? 'Customer',
+          customerId: custId ?? '',
+          orderId: job.orderId,
+          phoneNumber: phone,
+          jobType: job.jobType,
+          address: job.address,
+          landmark: job.landmark,
+          isDispatchChat: false,
+        ),
+      ),
+    ).then((_) => _loadActiveJobs());
+  }
+
+  void _onItemTap(_RiderChatItem item) {
+    if (item.conversation != null) {
+      _chatService.markAsRead(
+        chatId: item.conversation!.id,
+        currentUserId: _currentRiderId,
+        currentRole: 'rider',
+      );
+    }
+
+    if (item.isDispatch) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RiderChatDetailScreen(
+            conversation: item.conversation,
+            customerName: 'InfinityWash Staff',
+            customerId: '',
+            isDispatchChat: true,
+          ),
+        ),
+      ).then((_) => _loadActiveJobs());
+    } else if (item.job != null) {
+      _openActiveJobChat(item.job!, existingConversation: item.conversation);
+    }
   }
 
   @override
@@ -94,7 +267,95 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
       ),
       builder: (context, snapshot) {
         final conversations = snapshot.data ?? [];
-        final filtered = _filterChats(conversations);
+
+        // 1. Shop Staff channel (Pinned)
+        final dispatchConv = conversations
+            .where((c) => c.chatType == ChatType.riderStaff)
+            .firstOrNull;
+        final dispatchItem = dispatchConv != null
+            ? _RiderChatItem.dispatch(
+                conversation: dispatchConv,
+                currentRiderId: _currentRiderId,
+              )
+            : null;
+
+        // 2. Active Customer Conversations:
+        // STRICT FILTER: Only match conversations whose orderId is in _activeJobsByOrderId.
+        // Past / completed deliveries are completely excluded!
+        final activeConvByOrderId = <String, ChatConversation>{};
+        for (final c in conversations) {
+          if (c.chatType == ChatType.customerRider &&
+              c.orderId != null &&
+              _activeJobsByOrderId.containsKey(c.orderId)) {
+            activeConvByOrderId[c.orderId!] = c;
+          }
+        }
+
+        // 3. Create active items for all currently assigned jobs (with or without messages yet)
+        final List<_RiderChatItem> activeJobItems = [];
+        for (final job in _activeJobs) {
+          final conv = activeConvByOrderId[job.orderId];
+          activeJobItems.add(_RiderChatItem.activeJob(
+            job: job,
+            conversation: conv,
+            currentRiderId: _currentRiderId,
+          ));
+        }
+
+        // Sort active jobs: unread messages first, then most recent activity
+        activeJobItems.sort((a, b) {
+          if (a.unreadCount > 0 && b.unreadCount == 0) return -1;
+          if (a.unreadCount == 0 && b.unreadCount > 0) return 1;
+          return b.sortTime.compareTo(a.sortTime);
+        });
+
+        final pickupCount =
+            activeJobItems.where((i) => i.job?.jobType == 'pickup').length;
+        final deliveryCount =
+            activeJobItems.where((i) => i.job?.jobType == 'delivery').length;
+
+        // 4. Apply Tab Filter
+        List<_RiderChatItem> displayItems;
+        if (_selectedFilterIndex == 1) {
+          // Pickups only
+          displayItems = activeJobItems
+              .where((i) => i.job?.jobType == 'pickup')
+              .toList();
+        } else if (_selectedFilterIndex == 2) {
+          // Deliveries only
+          displayItems = activeJobItems
+              .where((i) => i.job?.jobType == 'delivery')
+              .toList();
+        } else if (_selectedFilterIndex == 3) {
+          // Shop Staff only
+          displayItems = dispatchItem != null ? [dispatchItem] : [];
+        } else {
+          // All: Pinned Shop Staff first, followed by active route jobs
+          displayItems = [
+            ?dispatchItem,
+            ...activeJobItems,
+          ];
+        }
+
+        // 5. Apply Search Query
+        if (_searchQuery.trim().isNotEmpty) {
+          final q = _searchQuery.trim().toLowerCase();
+          displayItems = displayItems.where((item) {
+            final name = item.displayName.toLowerCase();
+            final orderNum = (item.orderNumber ?? '').toLowerCase();
+            final addr = (item.address ?? '').toLowerCase();
+            final last = item.lastMessageText.toLowerCase();
+            final task = (item.taskType ?? '').toLowerCase();
+            return name.contains(q) ||
+                orderNum.contains(q) ||
+                addr.contains(q) ||
+                last.contains(q) ||
+                task.contains(q);
+          }).toList();
+        }
+
+        final int totalActiveCount =
+            activeJobItems.length + (dispatchItem != null ? 1 : 0);
 
         return Scaffold(
           backgroundColor: Colors.white,
@@ -107,7 +368,7 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
                     controller: _searchController,
                     autofocus: true,
                     decoration: const InputDecoration(
-                      hintText: 'Search chats or order ID...',
+                      hintText: 'Search active customer, order, or staff...',
                       border: InputBorder.none,
                       hintStyle:
                           TextStyle(color: AppTheme.textLight, fontSize: 14),
@@ -115,7 +376,7 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
                     onChanged: (val) => setState(() => _searchQuery = val),
                   )
                 : const Text(
-                    'Chats',
+                    'Active Chats',
                     style: TextStyle(
                       color: AppTheme.textDark,
                       fontWeight: FontWeight.bold,
@@ -138,22 +399,38 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
             ],
           ),
           body: SafeArea(
-            child: Column(
-              children: [
-                Expanded(
-                  child: filtered.isEmpty
-                      ? _buildEmptyState()
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                          itemCount: filtered.length,
-                          separatorBuilder: (context, index) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            return _buildChatCard(filtered[index]);
-                          },
-                        ),
-                ),
-              ],
+            child: RefreshIndicator(
+              onRefresh: () async {
+                await _loadActiveJobs();
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Filter Chips (All | Pickups | Deliveries | Shop Staff)
+                  _buildFilterChips(
+                    totalCount: totalActiveCount,
+                    pickupCount: pickupCount,
+                    deliveryCount: deliveryCount,
+                    dispatchUnread: dispatchItem?.unreadCount ?? 0,
+                  ),
+
+                  // Active Route List
+                  Expanded(
+                    child: displayItems.isEmpty
+                        ? _buildEmptyState()
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                            itemCount: displayItems.length,
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final item = displayItems[index];
+                              return _buildChatItemCard(item);
+                            },
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -161,183 +438,345 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
     );
   }
 
-  List<ChatConversation> _filterChats(List<ChatConversation> chats) {
-    if (_searchQuery.trim().isEmpty) return chats;
-    final q = _searchQuery.trim().toLowerCase();
-    return chats.where((c) {
-      final name =
-          c.getOtherParticipantName(_currentRiderId, 'rider').toLowerCase();
-      final role =
-          c.getOtherParticipantRole(_currentRiderId, 'rider').toLowerCase();
-      final order = (c.orderId ?? '').toLowerCase();
-      final lastMsg = c.lastMessage.toLowerCase();
-      return name.contains(q) ||
-          role.contains(q) ||
-          order.contains(q) ||
-          lastMsg.contains(q);
-    }).toList();
+  Widget _buildFilterChips({
+    required int totalCount,
+    required int pickupCount,
+    required int deliveryCount,
+    required int dispatchUnread,
+  }) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildFilterChip('All', 0, count: totalCount),
+            const SizedBox(width: 8),
+            _buildFilterChip('Pickups', 1, count: pickupCount),
+            const SizedBox(width: 8),
+            _buildFilterChip('Deliveries', 2, count: deliveryCount),
+            const SizedBox(width: 8),
+            _buildFilterChip('Shop Staff', 3,
+                count: dispatchUnread > 0 ? dispatchUnread : null,
+                isUnreadBadge: dispatchUnread > 0),
+          ],
+        ),
+      ),
+    );
   }
 
-  Widget _buildChatCard(ChatConversation conversation) {
-    final bool isDispatch =
-        conversation.chatType == ChatType.riderStaff;
-    final otherName =
-        conversation.getOtherParticipantName(_currentRiderId, 'rider');
-    final otherRole =
-        conversation.getOtherParticipantRole(_currentRiderId, 'rider');
-    final otherPhone =
-        conversation.getOtherParticipantPhone(_currentRiderId, 'rider');
-    final int unread =
-        conversation.getUnreadCount(_currentRiderId, 'rider');
-    final bool hasUnread = unread > 0;
+  Widget _buildFilterChip(
+    String label,
+    int index, {
+    int? count,
+    bool isUnreadBadge = false,
+  }) {
+    final isSelected = _selectedFilterIndex == index;
+
+    return GestureDetector(
+      onTap: () => setState(() => _selectedFilterIndex = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.accentBlue : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected
+                ? AppTheme.accentBlue
+                : AppTheme.borderGray.withValues(alpha: 0.6),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? Colors.white : AppTheme.textDark,
+              ),
+            ),
+            if (count != null && count > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: isUnreadBadge
+                      ? AppTheme.errorRed
+                      : isSelected
+                          ? Colors.white.withValues(alpha: 0.25)
+                          : AppTheme.softGray,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: isUnreadBadge
+                        ? Colors.white
+                        : isSelected
+                            ? Colors.white
+                            : AppTheme.textDark,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatItemCard(_RiderChatItem item) {
+    final bool isDispatch = item.isDispatch;
+    final bool hasUnread = item.unreadCount > 0;
+    final initials = _getInitials(item.displayName);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          _chatService.markAsRead(
-            chatId: conversation.id,
-            currentUserId: _currentRiderId,
-            currentRole: 'rider',
-          );
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => RiderChatDetailScreen(
-                conversation: conversation,
-                customerName: otherName,
-                customerId: '',
-                orderId: conversation.orderId,
-                phoneNumber: otherPhone,
-                isDispatchChat: isDispatch,
-              ),
-            ),
-          );
-        },
+        onTap: () => _onItemTap(item),
         borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: AppStyles.cardDecoration.copyWith(
-            border: hasUnread
-                ? Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3))
-                : null,
+            border: Border.all(
+              color: isDispatch
+                  ? AppTheme.primaryBlue.withValues(alpha: 0.35)
+                  : hasUnread
+                      ? AppTheme.accentBlue.withValues(alpha: 0.45)
+                      : AppTheme.borderGray.withValues(alpha: 0.5),
+              width: isDispatch || hasUnread ? 1.5 : 1,
+            ),
+            color: isDispatch
+                ? AppTheme.primaryBlue.withValues(alpha: 0.03)
+                : Colors.white,
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: isDispatch
-                      ? AppTheme.accentBlue.withValues(alpha: 0.12)
-                      : AppTheme.lightBlue,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isDispatch ? Icons.support_agent : Icons.person,
-                  color: AppTheme.accentBlue,
-                  size: 26,
-                ),
+              // Avatar with distinctive role badge
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: isDispatch
+                          ? AppTheme.primaryBlue
+                          : item.taskColor.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: isDispatch
+                          ? const Icon(
+                              Icons.storefront,
+                              color: Colors.white,
+                              size: 24,
+                            )
+                          : Text(
+                              initials,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: item.taskColor,
+                              ),
+                            ),
+                    ),
+                  ),
+                  if (isDispatch)
+                    Positioned(
+                      bottom: -2,
+                      right: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.headset_mic,
+                          size: 13,
+                          color: AppTheme.primaryBlue,
+                        ),
+                      ),
+                    ),
+                ],
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Top line: Name + Verified/Pin Icon + Time
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Flexible(
-                          child: Text(
-                            otherName,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  item.displayName,
+                                  style: TextStyle(
+                                    fontWeight: hasUnread || isDispatch
+                                        ? FontWeight.bold
+                                        : FontWeight.w600,
+                                    fontSize: 15,
+                                    color: AppTheme.textDark,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (isDispatch) ...[
+                                const SizedBox(width: 4),
+                                const Icon(Icons.verified,
+                                    size: 15, color: AppTheme.primaryBlue),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (item.timeAgoText.isNotEmpty)
+                          Text(
+                            item.timeAgoText,
                             style: TextStyle(
-                              fontWeight:
-                                  hasUnread ? FontWeight.bold : FontWeight.w600,
-                              fontSize: 15,
-                              color: AppTheme.textDark,
+                              fontSize: 11,
+                              color: hasUnread
+                                  ? AppTheme.accentBlue
+                                  : AppTheme.textLight,
+                              fontWeight: hasUnread
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                             ),
-                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                        Text(
-                          conversation.timeAgo,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: hasUnread
-                                ? AppTheme.accentBlue
-                                : AppTheme.textLight,
-                            fontWeight: hasUnread
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                          ),
-                        ),
                       ],
                     ),
-                    const SizedBox(height: 3),
-                    Row(
+                    const SizedBox(height: 4),
+
+                    // Badges row: Role (CUSTOMER vs SHOP STAFF) + Order # + Task
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
+                        // Distinct Role Chip
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: isDispatch
-                                ? AppTheme.accentBlue.withValues(alpha: 0.1)
-                                : AppTheme.lightBlue,
+                                ? AppTheme.primaryBlue.withValues(alpha: 0.12)
+                                : Colors.teal.shade50,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            otherRole,
-                            style: const TextStyle(
-                              fontSize: 10,
+                            isDispatch ? 'SHOP STAFF' : 'CUSTOMER',
+                            style: TextStyle(
+                              fontSize: 9,
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.accentBlue,
+                              letterSpacing: 0.5,
+                              color: isDispatch
+                                  ? AppTheme.primaryBlue
+                                  : Colors.teal.shade800,
                             ),
                           ),
                         ),
-                        if (conversation.displayOrderNumber != null &&
-                            conversation.displayOrderNumber!.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppTheme.softGray,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                conversation.displayOrderNumber!.startsWith('#')
-                                    ? conversation.displayOrderNumber!
-                                    : '#${conversation.displayOrderNumber}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textDark,
-                                ),
+
+                        // Order Number Pill (Customer chats)
+                        if (item.orderNumber != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.softGray,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              item.orderNumber!.startsWith('#')
+                                  ? item.orderNumber!
+                                  : '#${item.orderNumber}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textDark,
                               ),
                             ),
                           ),
-                        ],
+
+                        // Task Type (Pickup vs Delivery)
+                        if (item.taskType != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: item.taskColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              item.taskType == 'PICKUP'
+                                  ? 'PICKUP'
+                                  : 'DELIVERY',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: item.taskColor,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
+
+                    // Address snippet (if available)
+                    if (item.address != null && item.address!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on_outlined,
+                              size: 12, color: AppTheme.textLight),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              item.address!,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textLight,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
                     const SizedBox(height: 6),
+
+                    // Last message & unread badge
                     Row(
                       children: [
                         Expanded(
                           child: Text(
-                            conversation.lastMessage.isEmpty
-                                ? 'No messages yet'
-                                : conversation.lastMessage,
+                            item.lastMessageText,
                             style: TextStyle(
                               fontSize: 13,
                               color: hasUnread
                                   ? AppTheme.textDark
-                                  : AppTheme.textLight,
+                                  : item.conversation == null
+                                      ? AppTheme.accentBlue
+                                      : AppTheme.textLight,
                               fontWeight: hasUnread
                                   ? FontWeight.w600
-                                  : FontWeight.normal,
+                                  : item.conversation == null
+                                      ? FontWeight.w500
+                                      : FontWeight.normal,
+                              fontStyle: item.conversation == null
+                                  ? FontStyle.italic
+                                  : FontStyle.normal,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -353,7 +792,7 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              '$unread',
+                              '${item.unreadCount}',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 10,
@@ -374,14 +813,40 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
     );
   }
 
+  String _getInitials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts[0].isEmpty) return '?';
+    if (parts.length == 1) return parts[0][0].toUpperCase();
+    return (parts[0][0] + parts.last[0]).toUpperCase();
+  }
+
   Widget _buildEmptyState() {
+    final String label = _selectedFilterIndex == 1
+        ? 'No Active Pickups'
+        : _selectedFilterIndex == 2
+            ? 'No Active Deliveries'
+            : _selectedFilterIndex == 3
+                ? 'No Dispatch Messages'
+                : 'No Active Orders on Route';
+
+    final String subtitle = _selectedFilterIndex == 1
+        ? 'Active pickup jobs assigned to you for today will appear here.'
+        : _selectedFilterIndex == 2
+            ? 'Active delivery jobs assigned to you for today will appear here.'
+            : _selectedFilterIndex == 3
+                ? 'Use Shop Staff to communicate with the laundry shop attendants.'
+                : 'When you accept a pickup or delivery job, customer chats will automatically appear here.';
+
     return Center(
       child: EmptyStateWidget(
-        icon: Icons.chat_bubble_outline,
-        title: 'No Conversations Yet',
-        subtitle:
-            'Assigned customer orders and dispatch support will appear here.',
-        actionLabel: 'Chat Dispatch',
+        icon: _selectedFilterIndex == 1
+            ? Icons.inventory_2_outlined
+            : _selectedFilterIndex == 2
+                ? Icons.local_shipping_outlined
+                : Icons.chat_bubble_outline,
+        title: label,
+        subtitle: subtitle,
+        actionLabel: 'Message Shop Staff',
         onAction: () async {
           final profile = await _profileService.getProfile();
           final conv = await _chatService.getOrCreateRiderStaffChat(
@@ -396,7 +861,7 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
               MaterialPageRoute(
                 builder: (context) => RiderChatDetailScreen(
                   conversation: conv,
-                  customerName: 'InfinityWash Dispatch',
+                  customerName: 'InfinityWash Staff',
                   customerId: '',
                   isDispatchChat: true,
                 ),

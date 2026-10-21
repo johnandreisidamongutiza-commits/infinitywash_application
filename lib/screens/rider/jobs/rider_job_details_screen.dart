@@ -12,6 +12,7 @@ import '../../../state/gps_provider.dart';
 import '../../../widgets/cached_tile_provider.dart';
 import '../../../widgets/address_input_widget.dart';
 import 'rider_job_tracking_screen.dart';
+import '../chats/rider_chat_detail_screen.dart';
 
 /// Details screen for a specific dispatch job
 /// Shows job information, location on map, and action buttons with a modern card-based theme
@@ -44,6 +45,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
   bool _takenByOther = false;
 
   // Extra order metadata fetched from Supabase
+  String? _customerId;
   String? _customerPhone;
   String? _customerNotes;
   String? _paymentStatus;
@@ -61,7 +63,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     try {
       final orderRes = await SupabaseService.client
           .from('orders')
-          .select('customers(pin_latitude, pin_longitude, phone_number), customer_notes, payment_status, total_amount')
+          .select('customer_id, customers(pin_latitude, pin_longitude, phone_number), customer_notes, payment_status, total_amount')
           .eq('id', widget.job.orderId)
           .maybeSingle();
 
@@ -76,6 +78,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
               _resolvedJobLocation = LatLng(lat, lng);
             }
           }
+          _customerId = orderRes['customer_id']?.toString();
           _customerPhone = cust?['phone_number'] as String?;
           _customerNotes = orderRes['customer_notes'] as String?;
           _paymentStatus = orderRes['payment_status'] as String?;
@@ -173,6 +176,24 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     );
   }
 
+  void _openCustomerChat(String customerName) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RiderChatDetailScreen(
+          customerName: customerName,
+          customerId: _customerId ?? '',
+          orderId: widget.job.orderId,
+          phoneNumber: _customerPhone,
+          jobType: widget.job.jobType,
+          address: widget.job.address,
+          landmark: widget.job.landmark,
+          isDispatchChat: false,
+        ),
+      ),
+    );
+  }
+
   void _showContactSheet(String phone, String name) {
     showModalBottomSheet(
       context: context,
@@ -216,7 +237,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                 ),
                 child: const Icon(Icons.phone, color: AppTheme.accentBlue),
               ),
-              title: const Text('Phone Number', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              title: const Text('Phone Call', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
               subtitle: Text(phone, style: const TextStyle(fontSize: 13, color: AppTheme.textLight)),
               trailing: IconButton(
                 icon: const Icon(Icons.copy, size: 18, color: AppTheme.accentBlue),
@@ -226,6 +247,25 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                   _copyToClipboard(phone, 'Phone number copied');
                 },
               ),
+            ),
+            const Divider(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.teal.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.chat_bubble_outline, color: Colors.teal.shade800),
+              ),
+              title: const Text('In-App Chat', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              subtitle: Text('Direct message regarding Order #${widget.job.jobNumber ?? widget.job.orderId}', style: const TextStyle(fontSize: 13, color: AppTheme.textLight)),
+              trailing: const Icon(Icons.chevron_right, color: AppTheme.textLight),
+              onTap: () {
+                Navigator.pop(context);
+                _openCustomerChat(name);
+              },
             ),
             const SizedBox(height: 12),
           ],
@@ -673,19 +713,38 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
               ],
             ),
           ),
-          if (_customerPhone != null && _customerPhone!.isNotEmpty)
-            IconButton(
-              onPressed: () => _showContactSheet(_customerPhone!, customerName),
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: const BoxDecoration(
-                  color: AppTheme.lightBlue,
-                  shape: BoxShape.circle,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: () => _openCustomerChat(customerName),
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade50,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.chat_bubble_outline, size: 18, color: Colors.teal.shade800),
                 ),
-                child: const Icon(Icons.phone, size: 18, color: AppTheme.accentBlue),
+                tooltip: 'Chat Customer',
               ),
-              tooltip: 'Contact Customer',
-            ),
+              if (_customerPhone != null && _customerPhone!.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  onPressed: () => _showContactSheet(_customerPhone!, customerName),
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: const BoxDecoration(
+                      color: AppTheme.lightBlue,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.phone, size: 18, color: AppTheme.accentBlue),
+                  ),
+                  tooltip: 'Contact Customer',
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );

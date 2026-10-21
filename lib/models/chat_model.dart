@@ -157,7 +157,7 @@ class ChatConversation {
       return 'InfinityWash Support';
     }
     if (chatType == ChatType.riderStaff && currentRole == 'rider') {
-      return 'InfinityWash Dispatch';
+      return 'InfinityWash Staff';
     }
 
     // Look for non-self participant
@@ -177,7 +177,7 @@ class ChatConversation {
       return 'Official Store Helpdesk';
     }
     if (chatType == ChatType.riderStaff && currentRole == 'rider') {
-      return 'Shop Dispatch';
+      return 'Shop Staff';
     }
 
     for (final pId in participants) {

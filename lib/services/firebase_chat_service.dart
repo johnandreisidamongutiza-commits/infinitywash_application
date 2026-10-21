@@ -165,7 +165,7 @@ class FirebaseChatService {
           },
           'participant_names': {
             riderId: riderName,
-            'role:staff': 'InfinityWash Dispatch',
+            'role:staff': 'InfinityWash Staff',
           },
           'participant_avatars': {
             riderId: riderAvatar,
@@ -175,9 +175,9 @@ class FirebaseChatService {
             riderId: riderPhone,
             'role:staff': '0912-345-6789',
           },
-          'last_message': 'Rider dispatch channel opened.',
+          'last_message': 'Shop staff channel opened.',
           'last_sender_id': 'role:staff',
-          'last_sender_name': 'InfinityWash Dispatch',
+          'last_sender_name': 'InfinityWash Staff',
           'last_timestamp': now,
           'unread_counts': {
             riderId: 0,
@@ -200,10 +200,10 @@ class FirebaseChatService {
         chatType: ChatType.riderStaff,
         participants: pList.toList(),
         participantRoles: {riderId: 'rider', 'role:staff': 'staff'},
-        participantNames: {riderId: riderName, 'role:staff': 'InfinityWash Dispatch'},
+        participantNames: {riderId: riderName, 'role:staff': 'InfinityWash Staff'},
         participantAvatars: {riderId: riderAvatar, 'role:staff': null},
         participantPhones: {riderId: riderPhone, 'role:staff': '0912-345-6789'},
-        lastMessage: 'Rider dispatch channel opened.',
+        lastMessage: 'Shop staff channel opened.',
         lastSenderId: 'role:staff',
         lastTimestamp: DateTime.now(),
         unreadCounts: {riderId: 0, 'role:staff': 0},
