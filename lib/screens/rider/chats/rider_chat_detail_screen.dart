@@ -7,6 +7,7 @@ import '../../../models/chat_model.dart';
 import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../widgets/top_notification.dart';
+import '../../../utils/chat_rate_limiter.dart';
 
 class RiderChatDetailScreen extends StatefulWidget {
   final ChatConversation? conversation;
@@ -46,10 +47,83 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
   bool _isLoading = true;
   bool _isUploadingImage = false;
 
+  // Hybrid pagination state (Free tier optimization)
+  final List<ChatMessage> _olderMessages = [];
+  List<ChatMessage> _latestStreamMessages = [];
+  bool _isLoadingOlder = false;
+  bool _hasMoreOlder = true;
+  bool _initialScrollDone = false;
+
+  // Rate limiting for rider quick replies (Rider: 4s cooldown, 20s duplicate window)
+  final ChatRateLimiter _rateLimiter = ChatRateLimiter(
+    cooldownDuration: const Duration(seconds: 4),
+    sameMessageCooldownDuration: const Duration(seconds: 20),
+  );
+  bool _isSendingPremade = false;
+
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
+    _rateLimiter.setTickListener(() {
+      if (mounted) setState(() {});
+    });
     _initChat();
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients &&
+        _scrollController.position.pixels <= 60 &&
+        !_isLoadingOlder &&
+        _hasMoreOlder) {
+      _loadOlderMessages();
+    }
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_isLoadingOlder || !_hasMoreOlder || _resolvedChatId == null) return;
+
+    ChatMessage? oldest;
+    if (_olderMessages.isNotEmpty) {
+      oldest = _olderMessages.first;
+    } else if (_latestStreamMessages.isNotEmpty) {
+      oldest = _latestStreamMessages.first;
+    }
+
+    if (oldest == null) return;
+
+    setState(() => _isLoadingOlder = true);
+
+    try {
+      final earlier = await _chatService.loadEarlierMessages(
+        chatId: _resolvedChatId!,
+        beforeTimestamp: oldest.timestamp,
+        limit: 20,
+      );
+
+      if (mounted) {
+        setState(() {
+          if (earlier.isEmpty) {
+            _hasMoreOlder = false;
+          } else {
+            final existingIds = {
+              ..._olderMessages.map((m) => m.id),
+              ..._latestStreamMessages.map((m) => m.id),
+            };
+            final newUnique =
+                earlier.where((m) => !existingIds.contains(m.id)).toList();
+            if (newUnique.isEmpty || earlier.length < 20) {
+              _hasMoreOlder = false;
+            }
+            _olderMessages.insertAll(0, newUnique);
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading older rider chat messages: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingOlder = false);
+    }
   }
 
   Future<void> _initChat() async {
@@ -279,7 +353,8 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
                       builder: (context, snapshot) {
                         if (snapshot.connectionState ==
                                 ConnectionState.waiting &&
-                            !snapshot.hasData) {
+                            !snapshot.hasData &&
+                            _olderMessages.isEmpty) {
                           return const Center(
                             child: CircularProgressIndicator(
                               color: AppTheme.accentBlue,
@@ -287,22 +362,92 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
                           );
                         }
 
-                        final messages = snapshot.data ?? [];
+                        final streamMessages = snapshot.data ?? [];
+                        _latestStreamMessages = streamMessages;
+
+                        // Merge and deduplicate historical older messages with live stream
+                        final Map<String, ChatMessage> messageMap = {};
+                        for (final m in _olderMessages) {
+                          messageMap[m.id] = m;
+                        }
+                        for (final m in streamMessages) {
+                          messageMap[m.id] = m;
+                        }
+                        final allMessages = messageMap.values.toList()
+                          ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+                        if (!_initialScrollDone &&
+                            streamMessages.length < 20 &&
+                            _olderMessages.isEmpty) {
+                          _hasMoreOlder = false;
+                        }
+
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (_scrollController.hasClients) {
-                            _scrollController.jumpTo(
-                              _scrollController.position.maxScrollExtent,
-                            );
+                            if (!_initialScrollDone) {
+                              _scrollController.jumpTo(
+                                _scrollController.position.maxScrollExtent,
+                              );
+                              _initialScrollDone = true;
+                            } else if (_scrollController.position.pixels >=
+                                _scrollController.position.maxScrollExtent -
+                                    120) {
+                              _scrollToBottom();
+                            }
                           }
                         });
+
+                        final bool showHeader =
+                            _hasMoreOlder || _isLoadingOlder;
+                        final int itemCount =
+                            allMessages.length + (showHeader ? 1 : 0);
 
                         return ListView.builder(
                           controller: _scrollController,
                           padding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 12),
-                          itemCount: messages.length,
+                          itemCount: itemCount,
                           itemBuilder: (context, index) {
-                            return _buildMessageBubble(messages[index]);
+                            if (showHeader && index == 0) {
+                              if (_isLoadingOlder) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 12),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: AppTheme.accentBlue,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              } else {
+                                return Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: TextButton.icon(
+                                      onPressed: _loadOlderMessages,
+                                      icon: const Icon(Icons.history,
+                                          size: 14,
+                                          color: AppTheme.accentBlue),
+                                      label: const Text(
+                                        'Load earlier messages',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: AppTheme.accentBlue,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+
+                            final msgIndex = showHeader ? index - 1 : index;
+                            return _buildMessageBubble(allMessages[msgIndex]);
                           },
                         );
                       },
@@ -468,7 +613,34 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
     );
   }
 
+  Future<void> _handlePremadeReply(String reply) async {
+    if (_isSendingPremade) return;
+
+    if (!_rateLimiter.canSend(reply, onBlocked: (reason) {
+      showTopNotification(
+        context,
+        message: reason,
+        icon: Icons.timer_outlined,
+        backgroundColor: AppTheme.accentBlue,
+      );
+    })) {
+      return;
+    }
+
+    setState(() => _isSendingPremade = true);
+    _rateLimiter.recordSent(reply);
+
+    try {
+      await _sendMessage(reply);
+    } finally {
+      if (mounted) setState(() => _isSendingPremade = false);
+    }
+  }
+
   Widget _buildQuickRepliesBar() {
+    final bool isCooling = _rateLimiter.isInCooldown || _isSendingPremade;
+    final int remaining = _rateLimiter.remainingSeconds;
+
     return Container(
       height: 42,
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -480,18 +652,38 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
         itemBuilder: (context, index) {
           final reply = _quickReplies[index];
           return ActionChip(
+            avatar: isCooling && remaining > 0 && index == 0
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.textLight,
+                    ),
+                  )
+                : null,
             label: Text(
-              reply,
-              style: const TextStyle(fontSize: 12, color: AppTheme.textDark),
+              isCooling && remaining > 0 && index == 0
+                  ? 'Wait ${remaining}s'
+                  : reply,
+              style: TextStyle(
+                fontSize: 12,
+                color: isCooling
+                    ? AppTheme.textLight.withValues(alpha: 0.8)
+                    : AppTheme.textDark,
+              ),
             ),
-            backgroundColor: AppTheme.softGray,
+            backgroundColor: isCooling
+                ? AppTheme.softGray.withValues(alpha: 0.5)
+                : AppTheme.softGray,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
               side: BorderSide(
-                color: AppTheme.borderGray.withValues(alpha: 0.6),
+                color:
+                    AppTheme.borderGray.withValues(alpha: isCooling ? 0.3 : 0.6),
               ),
             ),
-            onPressed: () => _sendMessage(reply),
+            onPressed: () => _handlePremadeReply(reply),
           );
         },
       ),
@@ -564,6 +756,8 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
 
   @override
   void dispose() {
+    _rateLimiter.dispose();
+    _scrollController.removeListener(_onScroll);
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();

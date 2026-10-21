@@ -163,9 +163,9 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        imageQuality: 85,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 80,
       );
 
       if (image != null) {

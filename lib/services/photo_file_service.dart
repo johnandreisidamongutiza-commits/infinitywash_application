@@ -5,17 +5,22 @@ import 'package:path_provider/path_provider.dart';
 
 /// Local image handling shared by laundry request and payment receipt flows.
 class PhotoFileService {
-  static const int maxBytes = 10 * 1024 * 1024;
-  static const int targetBytes = 5 * 1024 * 1024;
+  static const int maxBytes = 5 * 1024 * 1024;
+  static const int targetBytes = 800 * 1024; // ~800 KB target for fast network transfers and compact payloads
 
   /// Compresses a picked or captured image into app-private temporary storage.
   /// The original gallery file is never changed.
-  static Future<File> prepareForUpload(File source) async {
+  static Future<File> prepareForUpload(
+    File source, {
+    int targetBytes = targetBytes,
+    int initialDimension = 1280,
+    int initialQuality = 80,
+  }) async {
     final temporary = await getTemporaryDirectory();
     final outputPath =
         '${temporary.path}${Platform.pathSeparator}infinitywash_${DateTime.now().microsecondsSinceEpoch}.jpg';
-    var quality = 88;
-    var dimension = 1920;
+    var quality = initialQuality;
+    var dimension = initialDimension;
     File? result;
 
     while (quality >= 38) {
@@ -36,9 +41,9 @@ class PhotoFileService {
       result = File(compressed.path);
       if (await result.length() <= targetBytes) return result;
       quality -= 10;
-      if (quality < 48 && dimension > 1280) {
-        dimension = 1280;
-        quality = 75;
+      if (quality < 50 && dimension > 960) {
+        dimension = 960;
+        quality = 70;
       }
     }
 
@@ -50,7 +55,7 @@ class PhotoFileService {
     if (await result.length() > maxBytes) {
       await result.delete();
       throw const PhotoTooLargeException(
-        'This photo is larger than 10 MB after compression. Please choose a smaller photo.',
+        'This photo is larger than 5 MB after compression. Please choose a smaller photo.',
       );
     }
     return result;

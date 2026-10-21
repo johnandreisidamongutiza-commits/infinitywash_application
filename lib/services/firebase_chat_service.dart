@@ -18,7 +18,16 @@ class FirebaseChatService {
 
   CollectionReference get _chatsCollection => _firestore.collection('chats');
 
-  FirebaseChatService._internal();
+  FirebaseChatService._internal() {
+    try {
+      _firestore.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
+    } catch (e) {
+      debugPrint('Firestore settings note: $e');
+    }
+  }
 
   /// Deterministic ID generator for customer <-> staff support
   String getSupportChatId(String customerId) => 'support_$customerId';
@@ -275,19 +284,20 @@ class FirebaseChatService {
     }
   }
 
-  /// Real-time stream of conversations for any user role
+  /// Real-time stream of conversations for any user role.
+  /// Free tier protection: limits staff query to the top [limit] conversations.
   Stream<List<ChatConversation>> streamConversations({
     required String currentUserId,
     required String currentRole,
+    int limit = 30,
   }) {
     Query query;
 
     if (currentRole == 'staff') {
-      // All staff members see all conversations involving the store support pool
-      query = _chatsCollection.where(
-        'participants',
-        arrayContains: 'role:staff',
-      );
+      // All staff members see conversations involving the store support pool, bounded by limit
+      query = _chatsCollection
+          .where('participants', arrayContains: 'role:staff')
+          .limit(limit);
     } else {
       // Customer or Rider sees their own conversations
       query = _chatsCollection.where(
@@ -330,8 +340,9 @@ class FirebaseChatService {
     });
   }
 
-  /// Real-time stream of messages in a single conversation
-  Stream<List<ChatMessage>> streamMessages(String chatId, {int limit = 50}) {
+  /// Real-time stream of latest messages in a single conversation.
+  /// Default limit is set to 20 to preserve Firebase Spark (free tier) quota.
+  Stream<List<ChatMessage>> streamMessages(String chatId, {int limit = 20}) {
     return _chatsCollection
         .doc(chatId)
         .collection('messages')
@@ -346,6 +357,34 @@ class FirebaseChatService {
       debugPrint('⚠️ Chat messages stream notice: $error');
       return <ChatMessage>[];
     });
+  }
+
+  /// Fetches a historical batch of earlier messages before a given timestamp using a one-time get().
+  /// This saves free-tier reads because older messages are NOT continuously re-read by realtime listeners.
+  Future<List<ChatMessage>> loadEarlierMessages({
+    required String chatId,
+    required DateTime beforeTimestamp,
+    int limit = 20,
+  }) async {
+    try {
+      final snapshot = await _chatsCollection
+          .doc(chatId)
+          .collection('messages')
+          .where('timestamp', isLessThan: Timestamp.fromDate(beforeTimestamp))
+          .orderBy('timestamp', descending: true)
+          .limit(limit)
+          .get();
+
+      final list = snapshot.docs
+          .map((doc) => ChatMessage.fromFirestore(doc))
+          .toList();
+
+      // Return chronological order (oldest -> newest)
+      return list.reversed.toList();
+    } catch (e) {
+      debugPrint('⚠️ Error loading earlier messages for $chatId: $e');
+      return [];
+    }
   }
 
   /// Sends a text message or image attachment
