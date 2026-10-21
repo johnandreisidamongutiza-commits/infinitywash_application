@@ -4,6 +4,7 @@ import '../../../widgets/empty_state_widget.dart';
 import '../../../models/chat_model.dart';
 import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
+import '../../../services/order_number_resolver.dart';
 import 'rider_chat_detail_screen.dart';
 
 class RiderChatsScreen extends StatefulWidget {
@@ -27,6 +28,7 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
   @override
   void initState() {
     super.initState();
+    OrderNumberResolver.changeNotifier.addListener(_onOrderResolved);
     _loadProfileAndEnsureDispatchChat();
   }
 
@@ -63,8 +65,13 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
     }
   }
 
+  void _onOrderResolved() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    OrderNumberResolver.changeNotifier.removeListener(_onOrderResolved);
     _searchController.dispose();
     super.dispose();
   }
@@ -287,22 +294,28 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
                             ),
                           ),
                         ),
-                        if (conversation.orderId != null &&
-                            conversation.orderId!.isNotEmpty) ...[
+                        if (conversation.displayOrderNumber != null &&
+                            conversation.displayOrderNumber!.isNotEmpty) ...[
                           const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppTheme.softGray,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              '#${conversation.orderId}',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textDark,
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.softGray,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                conversation.displayOrderNumber!.startsWith('#')
+                                    ? conversation.displayOrderNumber!
+                                    : '#${conversation.displayOrderNumber}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.textDark,
+                                ),
                               ),
                             ),
                           ),

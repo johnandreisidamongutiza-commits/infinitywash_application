@@ -749,7 +749,7 @@ class OrdersScreenState extends State<OrdersScreen>
             elevation: 4,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-            ), 
+            ),
           );
         },
       ),

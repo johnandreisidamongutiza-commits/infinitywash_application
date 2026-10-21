@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/chat_model.dart';
 import 'photo_file_service.dart';
 import 'supabase_service.dart';
+import 'order_number_resolver.dart';
 
 
 class FirebaseChatService {
@@ -46,6 +47,7 @@ class FirebaseChatService {
     String? customerPhone,
     String? customerAvatar,
     String? orderId,
+    String? orderNumber,
   }) async {
     final chatId = getSupportChatId(customerId);
     final docRef = _chatsCollection.doc(chatId);
@@ -58,10 +60,16 @@ class FirebaseChatService {
 
       if (!snapshot.exists) {
         final now = FieldValue.serverTimestamp();
+        final resolvedNumber = orderNumber ??
+            (orderId != null && !OrderNumberResolver.isUuid(orderId)
+                ? orderId
+                : null);
+
         final data = {
           'id': chatId,
           'chat_type': 'customer_support',
           'order_id': orderId,
+          'order_number': resolvedNumber,
           'participants': pList.toList(),
           'participant_roles': {
             customerId: 'customer',
@@ -206,6 +214,7 @@ class FirebaseChatService {
   /// Retrieves or creates a customer <-> assigned rider conversation for an order
   Future<ChatConversation> getOrCreateOrderChat({
     required String orderId,
+    String? orderNumber,
     required String customerId,
     required String customerName,
     required String riderId,
@@ -226,10 +235,16 @@ class FirebaseChatService {
 
       if (!snapshot.exists) {
         final now = FieldValue.serverTimestamp();
+        final resolvedNumber = orderNumber ??
+            (orderId.isNotEmpty && !OrderNumberResolver.isUuid(orderId)
+                ? orderId
+                : null);
+
         final data = {
           'id': chatId,
           'chat_type': 'customer_rider',
           'order_id': orderId,
+          'order_number': resolvedNumber,
           'participants': pList.toList(),
           'participant_roles': {
             customerId: 'customer',
@@ -310,6 +325,18 @@ class FirebaseChatService {
       final list = snapshot.docs
           .map((doc) => ChatConversation.fromFirestore(doc))
           .toList();
+
+      // Trigger background resolution for any legacy UUID orders
+      for (final conv in list) {
+        if (conv.orderId != null &&
+            OrderNumberResolver.isUuid(conv.orderId) &&
+            (conv.orderNumber == null || conv.orderNumber!.isEmpty)) {
+          OrderNumberResolver.resolveAsync(
+            orderId: conv.orderId!,
+            chatId: conv.id,
+          );
+        }
+      }
 
       // Sort newest first in-memory (guarantees fast loading without Firestore composite index errors)
       list.sort((a, b) => b.lastTimestamp.compareTo(a.lastTimestamp));

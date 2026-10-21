@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/chat_model.dart';
+import '../../../models/order.dart';
 import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../widgets/top_notification.dart';
@@ -468,20 +469,26 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.receipt_long,
-                  size: 16, color: AppTheme.accentBlue),
-              const SizedBox(width: 6),
-              Text(
-                'Linked Order #${widget.conversation.orderId}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
+          Expanded(
+            child: Row(
+              children: [
+                const Icon(Icons.receipt_long,
+                    size: 16, color: AppTheme.accentBlue),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Linked Order: ${LaundryOrder.formatDisplayNumber(id: widget.conversation.orderId!)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

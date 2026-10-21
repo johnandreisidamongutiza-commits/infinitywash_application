@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/order_number_resolver.dart';
 
 enum ChatType {
   customerSupport,
@@ -100,6 +101,7 @@ class ChatConversation {
   final String id;
   final ChatType chatType;
   final String? orderId;
+  final String? orderNumber;
   final List<String> participants;
   final Map<String, String> participantRoles;
   final Map<String, String> participantNames;
@@ -117,6 +119,7 @@ class ChatConversation {
     required this.id,
     required this.chatType,
     this.orderId,
+    this.orderNumber,
     required this.participants,
     required this.participantRoles,
     required this.participantNames,
@@ -130,6 +133,24 @@ class ChatConversation {
     this.createdAt,
     this.updatedAt,
   });
+
+  /// Returns the human-readable order number (e.g. REQ-261003-002)
+  String? get displayOrderNumber {
+    if (orderNumber != null &&
+        orderNumber!.trim().isNotEmpty &&
+        !OrderNumberResolver.isUuid(orderNumber)) {
+      return orderNumber!.trim();
+    }
+    if (orderId != null && orderId!.trim().isNotEmpty) {
+      final trimmed = orderId!.trim();
+      if (!OrderNumberResolver.isUuid(trimmed)) return trimmed;
+      return OrderNumberResolver.resolveSync(
+        orderId: trimmed,
+        orderNumber: orderNumber,
+      );
+    }
+    return null;
+  }
 
   String getOtherParticipantName(String currentUserId, String currentRole) {
     if (chatType == ChatType.customerSupport && currentRole != 'staff') {
@@ -253,6 +274,7 @@ class ChatConversation {
       id: doc.id,
       chatType: ChatType.fromDb(data['chat_type'] as String?),
       orderId: data['order_id'] as String?,
+      orderNumber: data['order_number'] as String?,
       participants: participants,
       participantRoles: participantRoles,
       participantNames: participantNames,

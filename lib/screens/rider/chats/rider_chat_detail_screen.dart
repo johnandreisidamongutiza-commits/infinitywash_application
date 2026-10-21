@@ -2,10 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../theme/app_theme.dart';
-import '../../../models/order.dart';
 import '../../../models/chat_model.dart';
 import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
+import '../../../services/order_number_resolver.dart';
 import '../../../widgets/top_notification.dart';
 import '../../../utils/chat_rate_limiter.dart';
 
@@ -60,6 +60,17 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
     sameMessageCooldownDuration: const Duration(seconds: 20),
   );
   bool _isSendingPremade = false;
+
+  /// Resolved human-readable order number for the app bar subtitle.
+  String get _resolvedOrderDisplay {
+    if (widget.conversation != null) {
+      return widget.conversation!.displayOrderNumber ?? '';
+    }
+    if (widget.orderId != null && widget.orderId!.isNotEmpty) {
+      return OrderNumberResolver.resolveSync(orderId: widget.orderId!);
+    }
+    return '';
+  }
 
   @override
   void initState() {
@@ -305,9 +316,9 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
                 color: AppTheme.textDark,
               ),
             ),
-            if (widget.orderId != null && widget.orderId!.isNotEmpty)
+            if (_resolvedOrderDisplay.isNotEmpty)
               Text(
-                'Order #${LaundryOrder.formatDisplayNumber(id: widget.orderId!)}',
+                'Order #$_resolvedOrderDisplay',
                 style: const TextStyle(
                   fontSize: 11,
                   color: AppTheme.textLight,
