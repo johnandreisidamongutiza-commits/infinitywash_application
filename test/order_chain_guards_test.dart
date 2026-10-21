@@ -127,6 +127,51 @@ void main() {
       expect(JobClaimedException().toString(),
           'This job was already taken by another rider.');
     });
+
+    test('riderVisibilityFilter: builds filter for unassigned plus current rider', () {
+      expect(
+        StartJobGuards.riderVisibilityFilter(me),
+        'rider_id.is.null,rider_id.eq.emp-111',
+      );
+      expect(
+        StartJobGuards.riderVisibilityFilter(null),
+        'rider_id.is.null',
+      );
+      expect(
+        StartJobGuards.riderVisibilityFilter(''),
+        'rider_id.is.null',
+      );
+    });
+
+    test('isJobVisibleToRider: unassigned and own jobs are visible, other rider jobs are hidden', () {
+      // Unassigned job is visible to everyone
+      expect(
+        StartJobGuards.isJobVisibleToRider(jobRiderId: null, myEmployeeId: me),
+        isTrue,
+      );
+      expect(
+        StartJobGuards.isJobVisibleToRider(jobRiderId: null, myEmployeeId: other),
+        isTrue,
+      );
+
+      // Job taken by 'me' is visible to 'me'
+      expect(
+        StartJobGuards.isJobVisibleToRider(jobRiderId: me, myEmployeeId: me),
+        isTrue,
+      );
+
+      // Job taken by 'other' is NOT visible to 'me'
+      expect(
+        StartJobGuards.isJobVisibleToRider(jobRiderId: other, myEmployeeId: me),
+        isFalse,
+      );
+
+      // Job taken by anyone is NOT visible if current rider has no employee ID
+      expect(
+        StartJobGuards.isJobVisibleToRider(jobRiderId: other, myEmployeeId: null),
+        isFalse,
+      );
+    });
   });
 
   // =========================================================================

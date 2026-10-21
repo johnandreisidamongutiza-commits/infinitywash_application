@@ -71,6 +71,27 @@ abstract final class StartJobGuards {
 
   /// True when the given claim response means the current rider WON the claim.
   static bool claimWon(List<dynamic> claimedRows) => claimedRows.isNotEmpty;
+
+  /// Builds the PostgREST .or() filter string for rider job visibility.
+  /// Unassigned jobs (`rider_id.is.null`) are visible to all riders.
+  /// Once a job is claimed, it is ONLY visible to the claiming rider (`rider_id.eq.<myEmployeeId>`).
+  static String riderVisibilityFilter(String? myEmployeeId) {
+    return (myEmployeeId != null && myEmployeeId.isNotEmpty)
+        ? 'rider_id.is.null,rider_id.eq.$myEmployeeId'
+        : 'rider_id.is.null';
+  }
+
+  /// In-memory check: whether an active job should be visible to this rider.
+  /// True if unclaimed (NULL) or claimed by the current rider.
+  /// False if claimed by another rider.
+  static bool isJobVisibleToRider({
+    required String? jobRiderId,
+    required String? myEmployeeId,
+  }) {
+    if (jobRiderId == null) return true;
+    if (myEmployeeId != null && jobRiderId == myEmployeeId) return true;
+    return false;
+  }
 }
 
 class RiderService {
@@ -798,18 +819,21 @@ class RiderService {
   // =========================================================================
 
   /// Fetch active pickup jobs (pending or in_progress)
-  /// Shows ALL unassigned jobs (for now, until rider assignment is properly implemented)
+  /// Only shows unassigned jobs (rider_id IS NULL) and jobs taken by the current rider.
+  /// Jobs claimed by another rider are excluded so they do not show to others.
   Future<List<DispatchJob>> fetchActivePickupJobs({int limit = 50}) async {
     try {
       print('📦 Fetching active pickup jobs...');
 
-      // For now, just fetch all active pickup jobs (unassigned OR any rider_id)
-      // This is because the rider assignment system needs to be properly set up
+      final myEmployeeId = await getCurrentRiderEmployeeId();
+      final filter = StartJobGuards.riderVisibilityFilter(myEmployeeId);
+
       final response = await _supabaseClient
           .from('dispatch_jobs')
           .select()
           .eq('job_type', 'pickup')
           .inFilter('status', ['pending', 'in_progress'])
+          .or(filter)
           .order('created_at', ascending: true)  // FIFO - oldest first
           .limit(limit);
 
@@ -818,7 +842,7 @@ class RiderService {
           .toList();
 
       final enrichedJobs = await _enrichJobsWithCoordinates(jobs);
-      print('✅ Fetched ${enrichedJobs.length} active pickup jobs (all unfiltered)');
+      print('✅ Fetched ${enrichedJobs.length} active pickup jobs (unassigned + rider: $myEmployeeId)');
       return enrichedJobs;
     } catch (e) {
       print('❌ Error fetching active pickup jobs: $e');
@@ -827,18 +851,21 @@ class RiderService {
   }
 
   /// Fetch active delivery jobs (pending or in_progress)
-  /// Shows ALL unassigned jobs (for now, until rider assignment is properly implemented)
+  /// Only shows unassigned jobs (rider_id IS NULL) and jobs taken by the current rider.
+  /// Jobs claimed by another rider are excluded so they do not show to others.
   Future<List<DispatchJob>> fetchActiveDeliveryJobs({int limit = 50}) async {
     try {
       print('📦 Fetching active delivery jobs...');
 
-      // For now, just fetch all active delivery jobs (unassigned OR any rider_id)
-      // This is because the rider assignment system needs to be properly set up
+      final myEmployeeId = await getCurrentRiderEmployeeId();
+      final filter = StartJobGuards.riderVisibilityFilter(myEmployeeId);
+
       final response = await _supabaseClient
           .from('dispatch_jobs')
           .select()
           .eq('job_type', 'delivery')
           .inFilter('status', ['pending', 'in_progress'])
+          .or(filter)
           .order('created_at', ascending: true)  // FIFO - oldest first
           .limit(limit);
 
@@ -847,7 +874,7 @@ class RiderService {
           .toList();
 
       final enrichedJobs = await _enrichJobsWithCoordinates(jobs);
-      print('✅ Fetched ${enrichedJobs.length} active delivery jobs (all unfiltered)');
+      print('✅ Fetched ${enrichedJobs.length} active delivery jobs (unassigned + rider: $myEmployeeId)');
       return enrichedJobs;
     } catch (e) {
       print('❌ Error fetching active delivery jobs: $e');
@@ -855,46 +882,29 @@ class RiderService {
     }
   }
 
-  /// Fetch completed pickup jobs (completed today only)
-  /// Shows all completed pickup jobs for debugging (until rider assignment is fixed)
+  /// Fetch completed pickup jobs (completed today by current rider only)
   Future<List<DispatchJob>> fetchCompletedPickupJobs({int limit = 50}) async {
     try {
       print('📦 Fetching completed pickup jobs (today only)...');
+
+      final myEmployeeId = await getCurrentRiderEmployeeId();
+      if (myEmployeeId == null) {
+        print('⚠️ No employee record found for current rider, returning empty completed pickups');
+        return [];
+      }
 
       // Calculate midnight today in LOCAL time, then convert to UTC
       final now = DateTime.now();
       final todayMidnightLocal = DateTime(now.year, now.month, now.day);
       final todayMidnightUtc = todayMidnightLocal.toUtc();
       final todayMidnightUtcString = todayMidnightUtc.toIso8601String();
-      
-      print('   Today midnight LOCAL: $todayMidnightLocal');
-      print('   Today midnight UTC: $todayMidnightUtcString');
-      print('   Current time LOCAL: $now');
-      print('   Current time UTC: ${now.toUtc().toIso8601String()}');
-      
-      // First, check if ANY completed pickup jobs exist (ignoring date and rider)
-      final testResponse = await _supabaseClient
-          .from('dispatch_jobs')
-          .select()
-          .eq('job_type', 'pickup')
-          .eq('status', 'pickup_done')
-          .order('completed_at', ascending: false)
-          .limit(5);
-      
-      print('   TEST: Found ${(testResponse as List).length} total completed pickups (any rider, any date)');
-      if ((testResponse as List).isNotEmpty) {
-        final firstJob = testResponse.first;
-        print('   TEST: First job completed_at = ${firstJob['completed_at']}');
-        print('   TEST: First job status = ${firstJob['status']}');
-        print('   TEST: First job rider_id = ${firstJob['rider_id']}');
-      }
 
-      // For now, fetch ALL completed pickup jobs from today (any rider)
       final response = await _supabaseClient
           .from('dispatch_jobs')
           .select()
           .eq('job_type', 'pickup')
           .eq('status', 'pickup_done')
+          .eq('rider_id', myEmployeeId)
           .gte('completed_at', todayMidnightUtcString)  // Today only
           .order('completed_at', ascending: false)  // Most recent first
           .limit(limit);
@@ -904,12 +914,7 @@ class RiderService {
           .toList();
       final jobs = await _enrichJobsWithCoordinates(rawJobs);
 
-      print('✅ Fetched ${jobs.length} completed pickup jobs (today, all riders)');
-      if (jobs.isEmpty) {
-        print('⚠️ No completed pickup jobs found. Check:');
-        print('   - status = "pickup_done"?');
-        print('   - completed_at >= "$todayMidnightUtcString"?');
-      }
+      print('✅ Fetched ${jobs.length} completed pickup jobs for rider $myEmployeeId (today)');
       return jobs;
     } catch (e) {
       print('❌ Error fetching completed pickup jobs: $e');
@@ -917,27 +922,29 @@ class RiderService {
     }
   }
 
-  /// Fetch completed delivery jobs (completed today only)
-  /// Shows all completed delivery jobs for debugging (until rider assignment is fixed)
+  /// Fetch completed delivery jobs (completed today by current rider only)
   Future<List<DispatchJob>> fetchCompletedDeliveryJobs({int limit = 50}) async {
     try {
       print('📦 Fetching completed delivery jobs (today only)...');
+
+      final myEmployeeId = await getCurrentRiderEmployeeId();
+      if (myEmployeeId == null) {
+        print('⚠️ No employee record found for current rider, returning empty completed deliveries');
+        return [];
+      }
 
       // Calculate midnight today in LOCAL time, then convert to UTC
       final now = DateTime.now();
       final todayMidnightLocal = DateTime(now.year, now.month, now.day);
       final todayMidnightUtc = todayMidnightLocal.toUtc();
       final todayMidnightUtcString = todayMidnightUtc.toIso8601String();
-      
-      print('   Today midnight LOCAL: $todayMidnightLocal');
-      print('   Today midnight UTC: $todayMidnightUtcString');
 
-      // For now, fetch ALL completed delivery jobs from today (any rider)
       final response = await _supabaseClient
           .from('dispatch_jobs')
           .select()
           .eq('job_type', 'delivery')
           .eq('status', 'delivery_done')
+          .eq('rider_id', myEmployeeId)
           .gte('completed_at', todayMidnightUtcString)  // Today only
           .order('completed_at', ascending: false)  // Most recent first
           .limit(limit);
@@ -947,12 +954,7 @@ class RiderService {
           .toList();
       final jobs = await _enrichJobsWithCoordinates(rawJobs);
 
-      print('✅ Fetched ${jobs.length} completed delivery jobs (today, all riders)');
-      if (jobs.isEmpty) {
-        print('⚠️ No completed delivery jobs found. Check:');
-        print('   - status = "delivery_done"?');
-        print('   - completed_at >= "$todayMidnightUtcString"?');
-      }
+      print('✅ Fetched ${jobs.length} completed delivery jobs for rider $myEmployeeId (today)');
       return jobs;
     } catch (e) {
       print('❌ Error fetching completed delivery jobs: $e');
