@@ -94,16 +94,9 @@ class LocationService {
         }
       }
 
-      // Check permission
-      bool hasPermission = await this.hasPermission();
-      if (!hasPermission) {
-        print('⚠️ Location permission not granted');
-        hasPermission = await requestPermission();
-        if (!hasPermission) {
-          print('❌ User declined location permission');
-          return null;
-        }
-      }
+      // Permission prompts are owned by the UI flow, which shows a purpose
+      // explanation first. This service must never trigger a bare OS prompt.
+      if (!await hasPermission()) return null;
 
       // Get location with timeout
       print('📍 Getting current location...');

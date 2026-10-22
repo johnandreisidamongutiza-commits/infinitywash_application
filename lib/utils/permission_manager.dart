@@ -21,15 +21,16 @@ enum AppPermission {
   photos(
     'Allow photo library access?',
     'InfinityWash uses your photo library so you can attach laundry photos '
-        'and payment receipts to your order. Your photos are never shared '
-        'outside the app.',
+        'and payment receipts to your order. Selected images are sent with '
+        'that order or payment submission for processing by authorized staff.',
     'photo library',
   ),
   location(
     'Allow location access?',
-    'Your location is used to pinpoint your delivery address and let '
-        'customers track riders in real time. InfinityWash only reads your '
-        'location while the app is open.',
+    'Your location helps set a delivery pin. If you are a rider, it is also '
+        'shared with the customer while you are handling an active delivery. '
+        'Location is used while InfinityWash is open; you can enter an address '
+        'manually if you prefer not to share it.',
     'location',
   ),
   notifications(
