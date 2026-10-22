@@ -75,11 +75,32 @@ Deno.serve(async (req) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail("Enter a valid email address")
   try {
     const admin = await adminClient()
+    if (action === "check") {
+      const existingUser = await findUserByEmail(admin, email)
+      if (existingUser?.email_confirmed_at) return reply({ status: "registered" })
+      const { data: pending, error } = await admin.from("pending_customer_registrations")
+        .select("email, created_at")
+        .eq("email", email)
+        .maybeSingle()
+      if (error) throw error
+      if (pending && Date.now() - new Date(pending.created_at).getTime() < 60 * 60_000) {
+        return reply({ status: "pending" })
+      }
+      return reply({ status: "new" })
+    }
     if (action === "start" || action === "resend") {
       await admin.from("pending_customer_registrations")
         .delete()
         .lt("created_at", new Date(Date.now() - 60 * 60_000).toISOString())
-      const data = body.registration_data as Record<string, unknown> | undefined
+      let data = body.registration_data as Record<string, unknown> | undefined
+      if (action === "resend") {
+        const { data: pending, error } = await admin.from("pending_customer_registrations")
+          .select("registration_data")
+          .eq("email", email)
+          .maybeSingle()
+        if (error) throw error
+        data = pending?.registration_data as Record<string, unknown> | undefined
+      }
       const consents = data?.legal_acceptances
       if (!data || !String(data.first_name ?? "").trim() || !String(data.last_name ?? "").trim() || !String(data.phone ?? "").trim() || !String(data.address ?? "").trim() || !Array.isArray(consents) || !["terms_of_service", "privacy_policy"].every((key) => consents.some((entry) => entry?.key === key && entry?.version && entry?.hash))) return fail("Complete all registration details and consent first")
       const existingUser = await findUserByEmail(admin, email)
