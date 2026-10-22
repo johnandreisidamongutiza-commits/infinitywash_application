@@ -38,15 +38,16 @@ class _LoginScreenState extends State<LoginScreen> {
   final _authService = AuthService();
   StreamSubscription<AuthState>? _authSubscription;
   bool _handlingGoogleCallback = false;
+  bool _googleSignInInProgress = false;
 
   @override
   void initState() {
     super.initState();
     _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((state) {
       if (CustomerRegistrationScreen.googleSignupInProgress) return;
-      final user = state.session?.user;
       if (state.event == AuthChangeEvent.signedIn &&
-          user?.appMetadata['provider'] == 'google') {
+          (_googleSignInInProgress ||
+              state.session?.user.appMetadata['provider'] == 'google')) {
         _finishGoogleSignIn();
       }
     });
@@ -177,14 +178,19 @@ class _LoginScreenState extends State<LoginScreen> {
       _showMessage('No internet connection. Please check your connection and try again.');
       return;
     }
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _googleSignInInProgress = true;
+    });
     try {
       await GoogleSignInService.signIn();
+      await _finishGoogleSignIn();
     } catch (error) {
       if (mounted && !GoogleSignInService.isCancelled(error)) {
         _showMessage(GoogleSignInService.errorMessage(error));
       }
     } finally {
+      _googleSignInInProgress = false;
       if (mounted) setState(() => _isLoading = false);
     }
   }

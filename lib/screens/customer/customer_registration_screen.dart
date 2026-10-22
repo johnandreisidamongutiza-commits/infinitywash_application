@@ -67,9 +67,9 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   void initState() {
     super.initState();
     _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((state) {
-      final user = state.session?.user;
       if (state.event == AuthChangeEvent.signedIn &&
-          user?.appMetadata['provider'] == 'google') {
+          (CustomerRegistrationScreen.googleSignupInProgress ||
+              state.session?.user.appMetadata['provider'] == 'google')) {
         _finishGoogleRegistration();
       }
     });
@@ -101,6 +101,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     setState(() => _isLoading = true);
     try {
       await GoogleSignInService.signIn();
+      await _finishGoogleRegistration();
     } catch (error) {
       CustomerRegistrationScreen.googleSignupInProgress = false;
       if (mounted && !GoogleSignInService.isCancelled(error)) {
