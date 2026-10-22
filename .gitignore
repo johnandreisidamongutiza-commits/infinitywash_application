@@ -33,6 +33,10 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local Node.js dependencies and Supabase CLI state
+node_modules/
+/supabase/.temp/
+
 # Symbolication related
 app.*.symbols
 

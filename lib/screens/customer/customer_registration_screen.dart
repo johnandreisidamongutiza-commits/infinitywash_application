@@ -16,6 +16,7 @@ import '../../config/location_constants.dart';
 import '../../services/legal_service.dart';
 import '../../services/customer_registration_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/google_sign_in_service.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/save_account_prompt.dart';
 import '../../widgets/legal_consent_checkbox.dart';
@@ -98,17 +99,12 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     CustomerRegistrationScreen.googleSignupInProgress = true;
     setState(() => _isLoading = true);
     try {
-      final launched = await SupabaseService.client.auth.signInWithOAuth(
-        OAuthProvider.google,
-        redirectTo: 'com.example.infinitywash://login-callback/',
-      );
-      if (!launched) {
-        CustomerRegistrationScreen.googleSignupInProgress = false;
-        if (mounted) _showMessage('Could not open Google sign-in. Please try again.');
-      }
+      await GoogleSignInService.signIn();
     } catch (error) {
       CustomerRegistrationScreen.googleSignupInProgress = false;
-      if (mounted) _showMessage(error.toString().replaceFirst('Exception: ', ''));
+      if (mounted && !GoogleSignInService.isCancelled(error)) {
+        _showMessage(GoogleSignInService.errorMessage(error));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

@@ -8,6 +8,7 @@ import '../utils/validators.dart';
 import '../services/connectivity_service.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/auth_service.dart';
+import '../services/google_sign_in_service.dart';
 import '../services/supabase_service.dart';
 import '../utils/save_account_prompt.dart';
 import 'staff/staff_main_screen.dart';
@@ -178,12 +179,11 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     setState(() => _isLoading = true);
     try {
-      await SupabaseService.client.auth.signInWithOAuth(
-        OAuthProvider.google,
-        redirectTo: 'com.example.infinitywash://login-callback/',
-      );
+      await GoogleSignInService.signIn();
     } catch (error) {
-      if (mounted) _showMessage(mapErrorToMessage(error));
+      if (mounted && !GoogleSignInService.isCancelled(error)) {
+        _showMessage(GoogleSignInService.errorMessage(error));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

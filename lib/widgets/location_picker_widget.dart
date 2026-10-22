@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import '../config/location_constants.dart';
 import '../services/geocoding_service.dart';
 import '../services/location_service.dart';
+import '../utils/permission_manager.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_error.dart';
 
@@ -195,6 +196,15 @@ class _LocationPickerWidgetState extends State<LocationPickerWidget> {
 
   Future<void> _locateUser() async {
     if (_isLocating) return;
+    final hasLocationPermission = await PermissionManager.ensure(
+      context,
+      AppPermission.location,
+      check: () => LocationService().hasPermission(),
+      request: () => LocationService().requestPermissionDetailed(),
+    );
+    if (!hasLocationPermission) {
+      return;
+    }
     setState(() {
       _isLocating = true;
       _showSuggestions = false;

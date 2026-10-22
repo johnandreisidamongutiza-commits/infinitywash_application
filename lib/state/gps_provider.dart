@@ -57,8 +57,11 @@ class GpsProvider with ChangeNotifier {
           request: _locationService.requestPermissionDetailed,
         );
       } else if (!_hasPermission) {
-        // No UI context available: fall back to a bare OS request.
-        _hasPermission = await _locationService.requestPermission();
+        // Never show a bare OS prompt. The caller must provide a visible
+        // screen context so the purpose explanation can come first.
+        _errorMessage = 'Open the location feature again to review its access request.';
+        notifyListeners();
+        return;
       }
       if (!_hasPermission) {
         _errorMessage = 'Location permission denied. Please enable it in app settings.';
