@@ -8,15 +8,19 @@ import 'supabase_service.dart';
 class CustomerRegistrationService {
   SupabaseClient get _client => SupabaseService.client;
 
+  Future<Map<String, dynamic>> checkEmail(String email) async {
+    return _invoke({'action': 'check', 'email': email});
+  }
+
   Future<void> requestCode({
     required String email,
-    required Map<String, dynamic> registrationData,
+    Map<String, dynamic>? registrationData,
     bool resend = false,
   }) async {
     await _invoke({
       'action': resend ? 'resend' : 'start',
       'email': email,
-      'registration_data': registrationData,
+      if (registrationData != null) 'registration_data': registrationData,
     });
   }
 

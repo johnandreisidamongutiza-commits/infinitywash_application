@@ -54,6 +54,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   bool _isLoading = false;
   bool _handlingGoogleCallback = false;
   bool _isGoogleRegistration = false;
+  bool _isPendingResume = false;
   int _step = 0;
 
   /// Terms of Service / Privacy Policy consent. Server-enforced: the
@@ -155,7 +156,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
           _houseStreetController.text = (profile['address'] ?? '').toString();
           _landmarkController.text = (profile['landmark'] ?? '').toString();
         }
-        _step = 0;
+        _step = 1;
       });
       _showMessage('${user.email ?? 'Your email'} is connected successfully. Continue to complete your profile.', isError: false);
     } catch (error) {
@@ -186,10 +187,60 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     };
   }
 
+  Future<void> _checkEmailAndContinue() async {
+    if (_formKey.currentState?.validate() != true) return;
+    if (!await ConnectivityService.instance.checkNow()) {
+      _showMessage('No internet connection. Please check your connection and try again.');
+      return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      final result = await _registrationService.checkEmail(_emailController.text.trim());
+      if (!mounted) return;
+      switch (result['status']) {
+        case 'registered':
+          await showDialog<void>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Account already exists'),
+              content: const Text('This email is already connected to an account. Please sign in instead.'),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Go to sign in'),
+                ),
+              ],
+            ),
+          );
+          break;
+        case 'pending':
+          _isPendingResume = true;
+          _step = 6;
+          _showMessage('Your registration is pending. Enter the code sent to your email to continue.', isError: false);
+          break;
+        default:
+          _isPendingResume = false;
+          _step = 1;
+      }
+      setState(() {});
+    } catch (error) {
+      if (mounted) _showMessage(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _nextStep() async {
+    if (_step == 0) {
+      await _checkEmailAndContinue();
+      return;
+    }
     if (_step == 0 || _step == 1 || _step == 2 || _step == 3) {
       if (_formKey.currentState?.validate() != true) return;
-      if (_step == 2) {
+      if (_step == 3) {
         if (_houseStreetController.text.trim().isEmpty) {
           _showMessage('Please enter your house and street address.');
           return;
@@ -199,10 +250,15 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
           return;
         }
       }
-      setState(() => _step = _isGoogleRegistration && _step == 2 ? 4 : _step + 1);
+      setState(() => _step = _isGoogleRegistration && _step == 3 ? 5 : _step + 1);
       return;
     }
-    if (_step != 4) return;
+    if (_step == 4) {
+      if (_formKey.currentState?.validate() != true) return;
+      setState(() => _step = 5);
+      return;
+    }
+    if (_step != 5) return;
     if (!_agreedToLegal) {
       _showMessage('Please read and accept the Terms of Service and Privacy Policy.');
       return;
@@ -253,14 +309,13 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         email: _emailController.text.trim(),
         registrationData: await _registrationData(),
       );
-      if (mounted) setState(() => _step = 5);
+      if (mounted) setState(() => _step = 6);
     } catch (error) {
       if (mounted) {
         final message = error.toString().replaceFirst('Exception: ', '');
         if (message.toLowerCase().contains('already registered') ||
             message.toLowerCase().contains('already in use')) {
-          setState(() => _step = 1);
-          _showMessage('This email already has an account. Change the email or sign in.');
+          _showMessage('This email already has an account. Please sign in instead.');
         } else {
           _showMessage(message);
         }
@@ -275,7 +330,6 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     try {
       await _registrationService.requestCode(
         email: _emailController.text.trim(),
-        registrationData: await _registrationData(),
         resend: true,
       );
       if (mounted) _showMessage('A new code has been sent.', isError: false);
@@ -287,6 +341,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   }
 
   Future<void> _verifyCode() async {
+    if (_isPendingResume && _formKey.currentState?.validate() != true) return;
     if (_otpController.text.trim().length != 6 ||
         int.tryParse(_otpController.text.trim()) == null) {
       _showMessage('Enter the 6-digit code from your email.');
@@ -300,7 +355,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         password: _passwordController.text,
       );
       if (!mounted) return;
-      _showMessage('Email verified. Your account is ready. Please sign in.', isError: false);
+      _showMessage('Email verified. Your account has been created. Please sign in.', isError: false);
       Navigator.pop(context);
     } catch (error) {
       if (mounted) _showMessage(error.toString().replaceFirst('Exception: ', ''));
@@ -434,13 +489,55 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     );
   }
 
+  Widget _buildPasswordChecklist() {
+    final password = _passwordController.text;
+    final confirmation = _confirmPasswordController.text;
+    final hasLetter = RegExp(r'[A-Za-z]').hasMatch(password);
+    final hasNumber = RegExp(r'[0-9]').hasMatch(password);
+    final requirements = <(String, bool)>[
+      ('At least 6 characters', password.length >= 6),
+      ('No more than ${Validators.passwordMax} characters', password.length <= Validators.passwordMax),
+      ('Contains a letter', hasLetter),
+      ('Contains a number', hasNumber),
+      ('Passwords match', confirmation.isNotEmpty && confirmation == password),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: requirements.map((requirement) {
+          final (label, isSatisfied) = requirement;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              children: [
+                Icon(
+                  isSatisfied ? Icons.check_circle : Icons.radio_button_unchecked,
+                  size: 17,
+                  color: isSatisfied ? Colors.green : AppTheme.textLight,
+                ),
+                const SizedBox(width: 8),
+                Text(label, style: const TextStyle(fontSize: 12)),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final titles = ['Your name', 'Contact details', 'Your address', 'Set a password', 'Review and consent', 'Verify your email'];
-    final stepCount = _isGoogleRegistration ? 4 : 5;
-    final displayedStep = _isGoogleRegistration && _step == 4 ? 4 : _step + 1;
-    final progress = _step == 5 ? 1.0 : displayedStep / stepCount;
+    final titles = ['Sign up', 'Your name', 'Contact details', 'Your address', 'Set a password', 'Review and consent', 'Verify your email'];
+    final stepCount = _isGoogleRegistration ? 4 : 6;
+    final displayedStep = _isGoogleRegistration
+        ? (_step == 5 ? 4 : _step)
+        : (_step == 0 ? 1 : (_step == 6 ? 6 : _step));
+    final progress = _step == 6 ? 1.0 : displayedStep / stepCount;
     final pageFields = <Widget>[
+      Column(children: [
+        CustomTextField(label: 'Email Address', hint: 'Enter your email', prefixIcon: Icons.email_outlined, controller: _emailController, keyboardType: TextInputType.emailAddress, validator: Validators.emailField),
+      ]),
       Column(children: [
         CustomTextField(label: 'First Name', hint: 'Juan', prefixIcon: Icons.person_outline, controller: _firstNameController, validator: (v) => Validators.nameField(v, 'First name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
         const SizedBox(height: 18),
@@ -448,18 +545,17 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
       ]),
       Column(children: [
         CustomTextField(label: 'Mobile Number', hint: '09XX-XXX-XXXX', prefixIcon: Icons.phone_android_outlined, controller: _phoneController, keyboardType: TextInputType.phone, inputFormatters: InputFormatters.phone(), validator: Validators.phone),
-        const SizedBox(height: 18),
-        CustomTextField(label: _isGoogleRegistration ? 'Google email (verified)' : 'Email Address', hint: 'Enter your email', prefixIcon: Icons.email_outlined, controller: _emailController, keyboardType: TextInputType.emailAddress, validator: Validators.emailField, enabled: !_isGoogleRegistration),
-        if (_isGoogleRegistration) const Padding(padding: EdgeInsets.only(top: 8), child: Row(children: [Icon(Icons.verified, size: 18, color: Colors.green), SizedBox(width: 6), Text('Email connected successfully. OTP is not needed.') ])),
+        if (_isGoogleRegistration) Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [const Icon(Icons.verified, size: 18, color: Colors.green), const SizedBox(width: 6), Expanded(child: Text('${_emailController.text} is verified by Google. OTP is not needed.'))])),
       ]),
       Column(children: [
         AddressInputWidget(houseStreetController: _houseStreetController, customBarangayController: _customBarangayController, landmarkController: _landmarkController, selectedBarangay: _selectedBarangay, onBarangayChanged: (v) => setState(() => _selectedBarangay = v), helperText: 'Santa Cruz, Laguna only. Select "Other" if outside.', landmarkHint: 'e.g. Near church, blue gate'),
         const SizedBox(height: 16), _buildPinLocationCard(),
       ]),
       Column(children: [
-        CustomTextField(label: 'Password', hint: 'Create a password', prefixIcon: Icons.lock_outline, isPassword: true, controller: _passwordController, validator: Validators.passwordField, maxLength: Validators.passwordMax),
+        CustomTextField(label: 'Password', hint: 'Create a password', prefixIcon: Icons.lock_outline, isPassword: true, controller: _passwordController, onChanged: (_) => setState(() {}), validator: Validators.passwordField, maxLength: Validators.passwordMax),
         const SizedBox(height: 18),
-        CustomTextField(label: 'Confirm Password', hint: 'Repeat your password', prefixIcon: Icons.lock_reset_outlined, isPassword: true, controller: _confirmPasswordController, validator: (v) => Validators.confirmPassword(v, _passwordController.text), maxLength: Validators.passwordMax),
+        CustomTextField(label: 'Confirm Password', hint: 'Repeat your password', prefixIcon: Icons.lock_reset_outlined, isPassword: true, controller: _confirmPasswordController, onChanged: (_) => setState(() {}), validator: (v) => Validators.confirmPassword(v, _passwordController.text), maxLength: Validators.passwordMax),
+        _buildPasswordChecklist(),
       ]),
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('${_firstNameController.text} ${_lastNameController.text}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
@@ -473,8 +569,17 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppTheme.softGray, borderRadius: BorderRadius.circular(12)), child: LegalConsentCheckbox(value: _agreedToLegal, onChanged: (v) => setState(() => _agreedToLegal = v))),
       ]),
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('We sent a 6-digit code to ${_emailController.text.trim()}. Enter it below to activate your account.'),
-        Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _isLoading ? null : () => setState(() { _otpController.clear(); _step = 1; }), child: const Text('Change email'))),
+        Text('We sent a 6-digit code to ${_emailController.text.trim()}. Enter it below to activate your account.'),
+        if (_isPendingResume) ...[
+          const SizedBox(height: 18),
+          const Text('Create a password to finish setting up your account.'),
+          const SizedBox(height: 12),
+          CustomTextField(label: 'Password', hint: 'Create a password', prefixIcon: Icons.lock_outline, isPassword: true, controller: _passwordController, onChanged: (_) => setState(() {}), validator: Validators.passwordField, maxLength: Validators.passwordMax),
+          const SizedBox(height: 18),
+          CustomTextField(label: 'Confirm Password', hint: 'Repeat your password', prefixIcon: Icons.lock_reset_outlined, isPassword: true, controller: _confirmPasswordController, onChanged: (_) => setState(() {}), validator: (v) => Validators.confirmPassword(v, _passwordController.text), maxLength: Validators.passwordMax),
+          _buildPasswordChecklist(),
+        ],
+        Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _isLoading ? null : () => setState(() { _otpController.clear(); _isPendingResume = false; _step = 0; }), child: const Text('Change email'))),
         const SizedBox(height: 22),
         TextFormField(controller: _otpController, keyboardType: TextInputType.number, maxLength: 6, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, letterSpacing: 8, fontWeight: FontWeight.bold), decoration: const InputDecoration(labelText: 'Email verification code', counterText: ''),),
         TextButton(onPressed: _isLoading ? null : _resendCode, child: const Text('Resend code')),
@@ -487,7 +592,11 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: _step == 0 ? () => Navigator.pop(context) : () => setState(() => _step = _step == 5 ? 4 : _step - 1),
+          onPressed: _step == 0
+              ? () => Navigator.pop(context)
+              : () => setState(() => _step = _step == 6
+                  ? (_isPendingResume ? 0 : 5)
+                  : (_step == 5 ? 4 : _step - 1)),
         ),
       ),
       body: SafeArea(
@@ -527,7 +636,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _step == 5
+          _step == 6
                       ? 'Your account becomes active after email verification.'
                       : 'Step $displayedStep of $stepCount · Complete each section to continue.',
                   style: AppTheme.lightTheme.textTheme.bodyMedium,
@@ -538,14 +647,20 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                 pageFields[_step],
                 const SizedBox(height: 24),
                 ElevatedButton(
-                  onPressed: _isLoading ? null : (_step == 5 ? _verifyCode : _nextStep),
+                  onPressed: _isLoading ? null : (_step == 6 ? _verifyCode : _nextStep),
                   child: _isLoading
                       ? const SizedBox(
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(_step == 5 ? 'Verify and create account' : (_step == 4 ? (_isGoogleRegistration ? 'Complete registration' : 'Send verification code') : 'Next')),
+                      : Text(_step == 0
+                          ? 'Continue'
+                          : (_step == 6
+                              ? 'Continue'
+                              : (_step == 5
+                                  ? (_isGoogleRegistration ? 'Complete registration' : 'Send verification code')
+                                  : 'Next'))),
                 ),
                 if (_step == 0) ...[
                   const SizedBox(height: 12),
