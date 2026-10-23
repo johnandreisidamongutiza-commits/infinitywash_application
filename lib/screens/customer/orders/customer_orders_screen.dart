@@ -245,6 +245,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
 
   /// Refreshes all initialized tabs (called after action/sub-screen return)
   Future<void> _refreshAllTabs() async {
+    await _customerService.syncWalkInOrders();
     await Future.wait([
       if (_requestsInitialized) _initRequests(),
       if (_activeInitialized) _initActive(),
@@ -315,6 +316,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
       _activeHasMore = true;
       _errorMessage = null;
     });
+    await _customerService.syncWalkInOrders();
     await _fetchActive(reset: true);
   }
 

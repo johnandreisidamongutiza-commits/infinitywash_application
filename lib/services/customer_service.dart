@@ -597,8 +597,25 @@ class CustomerService {
 
       return response;
     } catch (e) {
-      print('❌ Error getting authenticated customer profile: $e');
+      print('Error getting authenticated customer profile: $e');
       return null;
     }
   }
+
+  /// Automatically sync any unclaimed walk-in orders matching this customer's phone.
+  /// Reassigns past counter orders to this customer profile with zero manual steps.
+  Future<int> syncWalkInOrders() async {
+    try {
+      final customerId = await getCurrentAuthenticatedCustomerId();
+      final result = await _client.rpc(
+        'sync_customer_walkin_orders',
+        params: {'p_customer_id': customerId},
+      );
+      return (result as num?)?.toInt() ?? 0;
+    } catch (_) {
+      // Non-blocking fallback
+      return 0;
+    }
+  }
 }
+
