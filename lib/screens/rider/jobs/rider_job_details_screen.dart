@@ -22,11 +22,21 @@ class RiderJobDetailsScreen extends StatefulWidget {
   /// action panel (Start Job / Skip Order / Continue Tracking) is hidden so
   /// the screen is a read-only information view only.
   final bool readOnly;
+  final String? preloadedCustomerPhone;
+  final String? preloadedPaymentStatus;
+  final double? preloadedTotalAmount;
+  final String? preloadedCustomerNotes;
+  final String? preloadedCustomerId;
 
   const RiderJobDetailsScreen({
     super.key,
     required this.job,
     this.readOnly = false,
+    this.preloadedCustomerPhone,
+    this.preloadedPaymentStatus,
+    this.preloadedTotalAmount,
+    this.preloadedCustomerNotes,
+    this.preloadedCustomerId,
   });
 
   @override
@@ -43,6 +53,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
   bool _isStarting = false;
   bool _isSkipping = false;
   bool _takenByOther = false;
+  bool _isLoadingDetails = true;
 
   // Extra order metadata fetched from Supabase
   String? _customerId;
@@ -56,14 +67,32 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     super.initState();
     _initializeLocation();
     _verifyJobAvailable();
-    _loadOrderDetails();
+
+    final hasPreloaded = widget.preloadedCustomerPhone != null ||
+        widget.preloadedPaymentStatus != null ||
+        widget.preloadedTotalAmount != null ||
+        widget.preloadedCustomerNotes != null ||
+        widget.preloadedCustomerId != null;
+
+    if (hasPreloaded) {
+      _customerPhone = widget.preloadedCustomerPhone;
+      _paymentStatus = widget.preloadedPaymentStatus;
+      _totalAmount = widget.preloadedTotalAmount;
+      _customerNotes = widget.preloadedCustomerNotes;
+      _customerId = widget.preloadedCustomerId;
+      _isLoadingDetails = false;
+      // Silently sync any additional fields or coordinates in the background
+      _loadOrderDetails();
+    } else {
+      _loadOrderDetails();
+    }
   }
 
   Future<void> _loadOrderDetails() async {
     try {
       final orderRes = await SupabaseService.client
           .from('orders')
-          .select('customer_id, customers(pin_latitude, pin_longitude, phone), customer_notes, payment_status, total_amount')
+          .select('customer_id, customers(pin_latitude, pin_longitude, phone), customer_notes, payment_status, total_amount, subtotal, delivery_fee')
           .eq('id', widget.job.orderId)
           .maybeSingle();
 
@@ -72,20 +101,34 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
         final lat = (cust?['pin_latitude'] as num?)?.toDouble();
         final lng = (cust?['pin_longitude'] as num?)?.toDouble();
 
+        // Resolve total amount — fallback to subtotal + delivery_fee if total_amount is 0/null
+        double? resolvedTotal = (orderRes['total_amount'] as num?)?.toDouble();
+        if (resolvedTotal == null || resolvedTotal <= 0) {
+          final subtotal = (orderRes['subtotal'] as num?)?.toDouble() ?? 0;
+          final deliveryFee = (orderRes['delivery_fee'] as num?)?.toDouble() ?? 0;
+          final computed = subtotal + deliveryFee;
+          if (computed > 0) resolvedTotal = computed;
+        }
+
         setState(() {
           if (widget.job.latitude == null || widget.job.longitude == null) {
             if (lat != null && lng != null) {
               _resolvedJobLocation = LatLng(lat, lng);
             }
           }
-          _customerId = orderRes['customer_id']?.toString();
-          _customerPhone = cust?['phone'] as String?;
-          _customerNotes = orderRes['customer_notes'] as String?;
-          _paymentStatus = orderRes['payment_status'] as String?;
-          _totalAmount = (orderRes['total_amount'] as num?)?.toDouble();
+          _customerId = orderRes['customer_id']?.toString() ?? _customerId;
+          _customerPhone = (cust?['phone'] as String?) ?? _customerPhone;
+          _customerNotes = (orderRes['customer_notes'] as String?) ?? _customerNotes;
+          _paymentStatus = (orderRes['payment_status'] as String?) ?? _paymentStatus;
+          _totalAmount = resolvedTotal ?? _totalAmount;
+          _isLoadingDetails = false;
         });
+      } else if (mounted) {
+        setState(() => _isLoadingDetails = false);
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingDetails = false);
+    }
   }
 
   /// If this screen was opened from a stale list, another rider may have
@@ -359,7 +402,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
             // 3. Location & Landmark Card
             _buildLocationCard(address, jobLocation),
 
-            // 4. Job & Order Info Card
+            // 4. Job & Order Info Card (with loading state)
             _buildOrderInfoCard(isPickup),
           ],
         ),
@@ -964,39 +1007,46 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
           ),
           const Divider(height: 18, color: AppTheme.borderGray),
           _buildInfoRowItem('Status', _formatStatus(widget.job.status)),
-          if (_paymentStatus != null) ...[
+
+          // Payment & notes — show loading placeholder or real data
+          if (_isLoadingDetails) ...[
             const Divider(height: 18, color: AppTheme.borderGray),
-            _buildPaymentStatusRow(_paymentStatus!, _totalAmount),
-          ],
-          if (_customerNotes != null && _customerNotes!.isNotEmpty) ...[
-            const Divider(height: 18, color: AppTheme.borderGray),
-            const Text(
-              'Customer Instructions',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppTheme.textLight,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppTheme.softGray,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
-              ),
-              child: Text(
-                _customerNotes!,
-                style: const TextStyle(
+            _buildLoadingPlaceholder(),
+          ] else ...[
+            if (_paymentStatus != null) ...[
+              const Divider(height: 18, color: AppTheme.borderGray),
+              _buildPaymentStatusRow(_paymentStatus!, _totalAmount),
+            ],
+            if (_customerNotes != null && _customerNotes!.isNotEmpty) ...[
+              const Divider(height: 18, color: AppTheme.borderGray),
+              const Text(
+                'Customer Instructions',
+                style: TextStyle(
                   fontSize: 12,
-                  color: AppTheme.textDark,
-                  fontStyle: FontStyle.italic,
-                  height: 1.3,
+                  color: AppTheme.textLight,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-            ),
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.softGray,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+                ),
+                child: Text(
+                  _customerNotes!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.textDark,
+                    fontStyle: FontStyle.italic,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
           ],
         ],
       ),
@@ -1026,8 +1076,36 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     );
   }
 
+  /// Lightweight loading placeholder for async order metadata
+  Widget _buildLoadingPlaceholder() {
+    return Row(
+      children: [
+        SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 1.5,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              AppTheme.accentBlue.withValues(alpha: 0.5),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        const Text(
+          'Loading details…',
+          style: TextStyle(
+            fontSize: 12,
+            color: AppTheme.textLight,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPaymentStatusRow(String status, double? total) {
     final isPaid = status.toLowerCase() == 'paid';
+    final hasAmount = total != null && total > 0;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1058,17 +1136,16 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                 ),
               ),
             ),
-            if (total != null) ...[
-              const SizedBox(width: 6),
-              Text(
-                '₱${total.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
-                ),
+            const SizedBox(width: 6),
+            Text(
+              hasAmount ? '₱${total.toStringAsFixed(2)}' : 'Not set',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: hasAmount ? FontWeight.bold : FontWeight.w500,
+                color: hasAmount ? AppTheme.textDark : AppTheme.textLight,
+                fontStyle: hasAmount ? FontStyle.normal : FontStyle.italic,
               ),
-            ],
+            ),
           ],
         ),
       ],

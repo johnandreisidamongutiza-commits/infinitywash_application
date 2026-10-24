@@ -260,7 +260,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     }
   }
 
-  /// Load extra order metadata (phone, landmark, customer notes) for all route jobs
+  /// Load extra order metadata (phone, landmark, customer notes, payment) for all route jobs
   Future<void> _loadJobsMetadata() async {
     final orderIds = _remainingJobs.map((j) => j.orderId).toSet().toList();
     if (orderIds.isEmpty) return;
@@ -268,7 +268,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     try {
       final ordersRes = await SupabaseService.client
           .from('orders')
-          .select('id, customer_notes, landmark, payment_status, total_amount, customers(phone, landmark, first_name, last_name)')
+          .select('id, customer_id, customer_notes, landmark, payment_status, total_amount, subtotal, delivery_fee, customers(phone, landmark, first_name, last_name)')
           .inFilter('id', orderIds);
 
       if (mounted) {
@@ -280,7 +280,15 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
           final landmark = (row['landmark'] as String?) ?? (cust?['landmark'] as String?);
           final notes = row['customer_notes'] as String?;
           final paymentStatus = row['payment_status'] as String?;
-          final totalAmount = (row['total_amount'] as num?)?.toDouble();
+          final custId = row['customer_id']?.toString();
+
+          double? totalAmount = (row['total_amount'] as num?)?.toDouble();
+          if (totalAmount == null || totalAmount <= 0) {
+            final subtotal = (row['subtotal'] as num?)?.toDouble() ?? 0;
+            final deliveryFee = (row['delivery_fee'] as num?)?.toDouble() ?? 0;
+            final computed = subtotal + deliveryFee;
+            if (computed > 0) totalAmount = computed;
+          }
 
           final first = cust?['first_name'] as String? ?? '';
           final last = cust?['last_name'] as String? ?? '';
@@ -293,6 +301,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
             'payment_status': paymentStatus,
             'total_amount': totalAmount,
             'customer_name': fullName.isNotEmpty ? fullName : null,
+            'customer_id': custId,
           };
         }
         setState(() {
@@ -1795,12 +1804,18 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                             foregroundColor: AppTheme.textDark,
                           ),
                           onPressed: () {
+                            final meta = _jobMetadata[nextJob.orderId];
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => RiderJobDetailsScreen(
                                   job: nextJob,
                                   readOnly: true,
+                                  preloadedCustomerPhone: meta?['phone'] as String?,
+                                  preloadedPaymentStatus: meta?['payment_status'] as String?,
+                                  preloadedTotalAmount: meta?['total_amount'] as double?,
+                                  preloadedCustomerNotes: meta?['notes'] as String?,
+                                  preloadedCustomerId: meta?['customer_id'] as String?,
                                 ),
                               ),
                             );
