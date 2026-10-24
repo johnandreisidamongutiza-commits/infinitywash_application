@@ -61,13 +61,6 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     _totalStops = widget.jobs.length;
     _initializeTracking();
     _loadJobsMetadata();
-
-    // Hide initial map loading after 2 seconds
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() => _isMapLoading = false);
-      }
-    });
   }
 
   @override
@@ -122,6 +115,9 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                   oldLocation: null,
                 );
                 _updateCamera(forceRecenter: true, initialZoom: 17.0);
+                setState(() {
+                  _isMapLoading = false;
+                });
               }
             });
           } else {
@@ -1219,6 +1215,10 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     final landmark = nextJob?.landmark ?? currentMeta?['landmark'];
     final phone = currentMeta?['phone'] as String?;
 
+    if (_currentLocation == null) {
+      return _buildGpsLoadingView();
+    }
+
     return Scaffold(
       body: Stack(
         children: [
@@ -1226,7 +1226,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _currentLocation ?? const LatLng(14.2499596, 121.4027956),
+              initialCenter: _currentLocation!,
               initialZoom: 17.0,
               minZoom: 12.0,
               maxZoom: 19.0,
@@ -2093,6 +2093,80 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Full-screen loading view displayed before GPS position is locked
+  Widget _buildGpsLoadingView() {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textDark),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text(
+          'Starting Route',
+          style: TextStyle(
+            color: AppTheme.textDark,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.gps_fixed_rounded,
+                  size: 56,
+                  color: AppTheme.accentBlue,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.accentBlue),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Acquiring GPS Location...',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Locking onto your live position before loading the navigation map.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.textLight,
+                  height: 1.4,
                 ),
               ),
             ],
