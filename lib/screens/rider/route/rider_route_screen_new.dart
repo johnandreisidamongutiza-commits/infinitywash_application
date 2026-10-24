@@ -993,7 +993,10 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => RiderActiveRouteScreen(jobs: targetJobs),
+                    builder: (context) => RiderActiveRouteScreen(
+                      jobs: targetJobs,
+                      initialRiderLocation: _riderLocation,
+                    ),
                   ),
                 ).then((_) => _loadJobs());
               }
@@ -1235,7 +1238,10 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => RiderActiveRouteScreen(jobs: [job]),
+                            builder: (context) => RiderActiveRouteScreen(
+                              jobs: [job],
+                              initialRiderLocation: _riderLocation,
+                            ),
                           ),
                         ).then((_) => _loadJobs());
                       },

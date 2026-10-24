@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:location/location.dart';
 import 'package:latlong2/latlong.dart';
@@ -83,7 +82,10 @@ class GpsProvider with ChangeNotifier {
   }
 
   /// Start tracking location updates
-  Future<void> startTracking() async {
+  Future<void> startTracking({
+    int? intervalMillis,
+    double? distanceFilterMeters,
+  }) async {
     if (_isTracking) return;
 
     try {
@@ -91,12 +93,16 @@ class GpsProvider with ChangeNotifier {
       _errorMessage = null;
       notifyListeners();
 
-      await _locationService.startLocationUpdates((locationData) {
-        if (locationData.latitude != null && locationData.longitude != null) {
-          _currentLocation = LatLng(locationData.latitude!, locationData.longitude!);
-          notifyListeners();
-        }
-      });
+      await _locationService.startLocationUpdates(
+        (locationData) {
+          if (locationData.latitude != null && locationData.longitude != null) {
+            _currentLocation = LatLng(locationData.latitude!, locationData.longitude!);
+            notifyListeners();
+          }
+        },
+        intervalMillis: intervalMillis,
+        distanceFilterMeters: distanceFilterMeters,
+      );
     } catch (e) {
       _isTracking = false;
       _errorMessage = mapErrorToMessage(e);

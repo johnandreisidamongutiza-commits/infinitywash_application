@@ -22,8 +22,13 @@ import '../../../state/rider_location_provider.dart';
 /// Shows rider's live location centered on map with rotating arrow pointing to next destination
 class RiderActiveRouteScreen extends StatefulWidget {
   final List<DispatchJob> jobs;
+  final LatLng? initialRiderLocation;
 
-  const RiderActiveRouteScreen({super.key, required this.jobs});
+  const RiderActiveRouteScreen({
+    super.key,
+    required this.jobs,
+    this.initialRiderLocation,
+  });
 
   @override
   State<RiderActiveRouteScreen> createState() => _RiderActiveRouteScreenState();
@@ -45,11 +50,14 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   late int _totalStops;
 
   StreamSubscription? _locationSubscription;
+  Timer? _gpsTimeoutTimer;
   bool _isLoadingRoute = false;
   bool _isMapLoading = true;
   bool _isCompleting = false;
   bool _followRider = true;
   bool _headingUpMode = true;
+  bool _gpsTimedOut = false;
+  String? _gpsErrorMessage;
 
   // Metadata cache per order: phone, landmark, customer notes
   final Map<String, Map<String, dynamic>> _jobMetadata = {};
@@ -59,12 +67,31 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     super.initState();
     _remainingJobs = List.from(widget.jobs);
     _totalStops = widget.jobs.length;
+
+    // Fast-seed: if rider location was already known on the previous screen, use immediately
+    if (widget.initialRiderLocation != null) {
+      _currentLocation = widget.initialRiderLocation;
+      _calculateRoute().then((_) {
+        if (mounted) {
+          _updateHeading(
+            newLocation: _currentLocation,
+            oldLocation: null,
+          );
+          _updateCamera(forceRecenter: true, initialZoom: 17.0);
+          setState(() {
+            _isMapLoading = false;
+          });
+        }
+      });
+    }
+
     _initializeTracking();
     _loadJobsMetadata();
   }
 
   @override
   void dispose() {
+    _gpsTimeoutTimer?.cancel();
     _locationSubscription?.cancel();
     _locationProvider.stopUploading();
     _gpsProvider.stopTracking();
@@ -72,10 +99,66 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   }
 
   Future<void> _initializeTracking() async {
+    // Start 12-second watchdog timer if we don't have location yet
+    if (_currentLocation == null) {
+      _gpsTimeoutTimer?.cancel();
+      _gpsTimeoutTimer = Timer(const Duration(seconds: 12), () {
+        if (mounted && _currentLocation == null) {
+          setState(() {
+            _gpsTimedOut = true;
+          });
+        }
+      });
+    }
+
     try {
       _gpsProvider.attachDialogContext(context);
       await _gpsProvider.initialize();
-      await _gpsProvider.startTracking();
+
+      if (!_gpsProvider.isServiceEnabled) {
+        if (mounted) {
+          setState(() {
+            _gpsTimedOut = true;
+            _gpsErrorMessage = 'Location service is disabled in device settings.';
+          });
+        }
+        return;
+      }
+
+      if (!_gpsProvider.hasPermission) {
+        if (mounted) {
+          setState(() {
+            _gpsTimedOut = true;
+            _gpsErrorMessage = 'Location permission was denied.';
+          });
+        }
+        return;
+      }
+
+      // Fast seed from provider cache if screen didn't receive initialRiderLocation
+      if (_currentLocation == null && _gpsProvider.currentLocation != null) {
+        final cached = _gpsProvider.currentLocation!;
+        _gpsTimeoutTimer?.cancel();
+        setState(() {
+          _currentLocation = cached;
+          _gpsTimedOut = false;
+        });
+        _calculateRoute().then((_) {
+          if (mounted) {
+            _updateHeading(
+              newLocation: _currentLocation,
+              oldLocation: null,
+            );
+            _updateCamera(forceRecenter: true, initialZoom: 17.0);
+            setState(() {
+              _isMapLoading = false;
+            });
+          }
+        });
+      }
+
+      // Start high-frequency (1s) active navigation tracking
+      await _gpsProvider.startTracking(intervalMillis: 1000, distanceFilterMeters: 0);
 
       // Start uploading rider location to Supabase for customer tracking
       final riderId = SupabaseService.client.auth.currentUser?.id;
@@ -92,12 +175,15 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
 
       _locationSubscription = _gpsProvider.locationStream.listen((location) {
         if (mounted && location.latitude != null && location.longitude != null) {
+          _gpsTimeoutTimer?.cancel();
           final newLocation = LatLng(location.latitude!, location.longitude!);
           final isFirstLocation = _currentLocation == null;
           final oldLocation = _currentLocation;
 
           setState(() {
             _currentLocation = newLocation;
+            _gpsTimedOut = false;
+            _gpsErrorMessage = null;
           });
 
           _updateHeading(
@@ -126,9 +212,17 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         }
       });
 
-      await _calculateRoute();
+      if (_currentLocation != null) {
+        await _calculateRoute();
+      }
     } catch (e) {
       debugPrint('❌ Error initializing tracking: $e');
+      if (mounted && _currentLocation == null) {
+        setState(() {
+          _gpsTimedOut = true;
+          _gpsErrorMessage = 'Error connecting to GPS: $e';
+        });
+      }
     }
   }
 
@@ -2102,6 +2196,46 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     );
   }
 
+  /// Fallback option: allow rider to start route from shop hub if GPS is not yet acquired indoors
+  void _useShopLocationFallback() {
+    _gpsTimeoutTimer?.cancel();
+    setState(() {
+      _currentLocation = LocationConstants.shopLocation;
+      _gpsTimedOut = false;
+      _isMapLoading = true;
+    });
+
+    _calculateRoute().then((_) {
+      if (mounted) {
+        _updateHeading(
+          newLocation: _currentLocation,
+          oldLocation: null,
+        );
+        _updateCamera(forceRecenter: true, initialZoom: 17.0);
+        setState(() {
+          _isMapLoading = false;
+        });
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Starting from Shop Hub. Live GPS will update automatically once signal is detected.'),
+        duration: Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  /// Retry acquiring GPS coordinates
+  void _retryGps() {
+    setState(() {
+      _gpsTimedOut = false;
+      _gpsErrorMessage = null;
+    });
+    _initializeTracking();
+  }
+
   /// Full-screen loading view displayed before GPS position is locked
   Widget _buildGpsLoadingView() {
     return Scaffold(
@@ -2124,55 +2258,156 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         centerTitle: true,
       ),
       body: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppTheme.accentBlue.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.gps_fixed_rounded,
-                  size: 56,
-                  color: AppTheme.accentBlue,
-                ),
-              ),
-              const SizedBox(height: 24),
-              const SizedBox(
-                width: 32,
-                height: 32,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.accentBlue),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Acquiring GPS Location...',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Locking onto your live position before loading the navigation map.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppTheme.textLight,
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+          child: _gpsTimedOut ? _buildGpsTimeoutContent() : _buildGpsSearchingContent(),
         ),
       ),
+    );
+  }
+
+  /// Content while actively searching for GPS signal
+  Widget _buildGpsSearchingContent() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: AppTheme.accentBlue.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.gps_fixed_rounded,
+            size: 56,
+            color: AppTheme.accentBlue,
+          ),
+        ),
+        const SizedBox(height: 24),
+        const SizedBox(
+          width: 32,
+          height: 32,
+          child: CircularProgressIndicator(
+            strokeWidth: 3,
+            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.accentBlue),
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'Acquiring GPS Location...',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textDark,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Locking onto your live position before loading the navigation map.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13,
+            color: AppTheme.textLight,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 32),
+        // Quick shortcut to start from shop hub immediately
+        OutlinedButton.icon(
+          onPressed: _useShopLocationFallback,
+          icon: const Icon(Icons.store_mall_directory_outlined, size: 18),
+          label: const Text('Start from Shop Hub Now'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.accentBlue,
+            side: const BorderSide(color: AppTheme.accentBlue),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Content when GPS search times out or encounters an error
+  Widget _buildGpsTimeoutContent() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: Colors.orange.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.gps_not_fixed_rounded,
+            size: 56,
+            color: Colors.orange,
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'GPS Signal Not Found',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textDark,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          _gpsErrorMessage ??
+              'Unable to acquire satellite coordinates. This usually happens indoors or under heavy roofs.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 13,
+            color: AppTheme.textLight,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 28),
+
+        // Primary action: Start from shop hub
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _useShopLocationFallback,
+            icon: const Icon(Icons.store_mall_directory_rounded, size: 20),
+            label: const Text('Use Shop Hub as Start Point'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accentBlue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              elevation: 0,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Secondary action: Retry GPS
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _retryGps,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Retry GPS'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.textDark,
+              side: BorderSide(color: Colors.grey.shade300),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // Cancel
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel & Go Back', style: TextStyle(color: Colors.grey)),
+        ),
+      ],
     );
   }
 }
