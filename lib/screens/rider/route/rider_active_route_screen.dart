@@ -56,7 +56,6 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   bool _mapReady = false;
   bool _isCompleting = false;
   bool _followRider = true;
-  bool _headingUpMode = true;
   bool _gpsTimedOut = false;
   String? _gpsErrorMessage;
 
@@ -160,8 +159,8 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         });
       }
 
-      // Start high-frequency (1s) active navigation tracking
-      await _gpsProvider.startTracking(intervalMillis: 1000, distanceFilterMeters: 0);
+      // Start active navigation tracking with 6.0m hardware distance filter (prevents stationary/indoor drift)
+      await _gpsProvider.startTracking(intervalMillis: 1000, distanceFilterMeters: 6.0);
       if (!mounted) return;
 
       // Start uploading rider location to Supabase for customer tracking
@@ -184,6 +183,30 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
           final newLocation = LatLng(location.latitude!, location.longitude!);
           final isFirstLocation = _currentLocation == null;
           final oldLocation = _currentLocation;
+
+          // 1. Accuracy gate: reject poor accuracy fixes (> 20m) which are indoor Wi-Fi/cell tower drift
+          final accuracy = location.accuracy;
+          if (!isFirstLocation && accuracy != null && accuracy > 20.0) {
+            return;
+          }
+
+          // 2. Stationary deadband & physics plausibility
+          final speed = location.speed ?? 0.0;
+          final distanceMoved = oldLocation != null
+              ? _calculateDistance(oldLocation, newLocation)
+              : 0.0;
+
+          if (!isFirstLocation) {
+            // Stationary deadband: ignore micro-jitter under 6.0m while holding phone or sitting
+            if (distanceMoved < 6.0) {
+              return;
+            }
+
+            // Physics check: cannot jump > 30m in 1s if stationary or crawling
+            if (speed < 0.8 && distanceMoved > 30.0) {
+              return;
+            }
+          }
 
           setState(() {
             _currentLocation = newLocation;
@@ -314,20 +337,12 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
       }
     }
 
-    // 2. Look ahead along the route for a point at least 10 meters ahead of currentPos
-    for (int i = closestIndex; i < points.length; i++) {
-      final d = _calculateDistance(currentPos, points[i]);
-      if (d >= 10.0) {
-        return _calculateBearing(currentPos, points[i]);
-      }
-    }
-
-    // 3. If within 10 meters of the end, point to the last point
+    // 2. Follow the road segment itself ahead of closest point (smooth road alignment)
     if (closestIndex < points.length - 1) {
-      return _calculateBearing(currentPos, points[points.length - 1]);
+      return _calculateBearing(points[closestIndex], points[closestIndex + 1]);
     }
 
-    // Fallback: segment bearing
+    // 3. Fallback: last segment bearing
     if (points.length >= 2) {
       return _calculateBearing(points[points.length - 2], points[points.length - 1]);
     }
@@ -356,7 +371,12 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     }
     // 3. Otherwise (stationary or starting out), align along the upcoming route polyline!
     else if (_routePoints.isNotEmpty) {
-      calculatedBearing = _getBearingAlongRoute(newLocation, _routePoints);
+      // If we already have a bearing established from prior movement, retain it when stationary
+      if (_currentBearing != 0.0 && speed != null && speed <= 0.8) {
+        calculatedBearing = _currentBearing;
+      } else {
+        calculatedBearing = _getBearingAlongRoute(newLocation, _routePoints);
+      }
     }
     // 4. Fallback: destination bearing
     else if (_remainingJobs.isNotEmpty) {
@@ -372,7 +392,9 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     if (calculatedBearing != null) {
       final diff = (calculatedBearing - _currentBearing).abs();
       final normalizedDiff = diff > 180 ? 360 - diff : diff;
-      if (normalizedDiff > 2.0 && mounted) {
+      // Damping: when moving, require >= 5° change; when stationary, require >= 12° change
+      final threshold = (speed != null && speed > 1.2) ? 5.0 : 12.0;
+      if (normalizedDiff >= threshold && mounted) {
         setState(() {
           _currentBearing = calculatedBearing!;
         });
@@ -395,12 +417,8 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
       }
       final targetZoom = zoom.clamp(12.0, 19.0);
 
-      if (_headingUpMode) {
-        final targetRotation = (360.0 - _currentBearing) % 360.0;
-        _mapController.moveAndRotate(_currentLocation!, targetZoom, targetRotation);
-      } else {
-        _mapController.moveAndRotate(_currentLocation!, targetZoom, 0.0);
-      }
+      // Always maintain stable North-Up orientation (0.0° rotation)
+      _mapController.moveAndRotate(_currentLocation!, targetZoom, 0.0);
     } catch (e) {
       debugPrint('⚠️ Error updating camera: $e');
     }
@@ -1951,7 +1969,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
           width: 64,
           height: 64,
           alignment: Alignment.center,
-          rotate: false,
+          rotate: true, // Keep marker upright even if map rotates
           child: _buildRiderMarkerWidget(),
         ),
       );
@@ -2020,71 +2038,62 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     return markers;
   }
 
-  /// Modern Directional Navigation Puck for the Rider
+  /// Modern Delivery Rider Badge (Option A: Always Upright, Non-Rotating)
   Widget _buildRiderMarkerWidget() {
-    return Transform.rotate(
-      angle: _currentBearing * math.pi / 180,
-      child: SizedBox(
-        width: 64,
-        height: 64,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Outer pulse / accuracy ring
-            Container(
-              width: 54,
-              height: 54,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppTheme.accentBlue.withValues(alpha: 0.15),
-                border: Border.all(
-                  color: AppTheme.accentBlue.withValues(alpha: 0.35),
-                  width: 1.5,
+    return SizedBox(
+      width: 64,
+      height: 64,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Outer subtle pulse / glow ring
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.accentBlue.withValues(alpha: 0.16),
+              border: Border.all(
+                color: AppTheme.accentBlue.withValues(alpha: 0.35),
+                width: 1.5,
+              ),
+            ),
+          ),
+          // Elevated white badge with drop shadow
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Center(
+              // Inner solid brand-blue core with delivery rider scooter icon
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.accentBlue,
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.two_wheeler_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ),
               ),
             ),
-            // Directional forward beam / pointer arrow tip
-            Positioned(
-              top: 1,
-              child: Icon(
-                Icons.arrow_drop_up_rounded,
-                size: 32,
-                color: AppTheme.accentBlue,
-                shadows: [
-                  Shadow(
-                    blurRadius: 4,
-                    color: Colors.black.withValues(alpha: 0.35),
-                    offset: const Offset(0, 1),
-                  ),
-                ],
-              ),
-            ),
-            // Central navigation puck with white border
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: AppTheme.accentBlue,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: const Center(
-                child: Icon(
-                  Icons.navigation_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2100,17 +2109,16 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
-          setState(() {
-            _headingUpMode = !_headingUpMode;
-          });
+          // Snap map rotation back to True North (0.0°) and recenter on rider
           if (_currentLocation != null) {
-            final currentZoom = _mapController.camera.zoom;
-            if (_headingUpMode) {
-              final targetRot = (360.0 - _currentBearing) % 360.0;
-              _mapController.moveAndRotate(_currentLocation!, currentZoom, targetRot);
-            } else {
-              _mapController.moveAndRotate(_currentLocation!, currentZoom, 0.0);
-            }
+            double currentZoom = 17.0;
+            try {
+              currentZoom = _mapController.camera.zoom;
+            } catch (_) {}
+            setState(() {
+              _followRider = true;
+            });
+            _mapController.moveAndRotate(_currentLocation!, currentZoom, 0.0);
           }
         },
         borderRadius: BorderRadius.circular(24),
@@ -2121,8 +2129,8 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
             color: Colors.white,
             shape: BoxShape.circle,
             border: Border.all(
-              color: _headingUpMode ? AppTheme.accentBlue : Colors.grey.shade300,
-              width: _headingUpMode ? 1.5 : 1.0,
+              color: Colors.grey.shade300,
+              width: 1.0,
             ),
             boxShadow: [
               BoxShadow(
@@ -2144,19 +2152,17 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                   color: Colors.red.shade600,
                 ),
               ),
-              // Indicator badge when in North-Up mode
-              if (!_headingUpMode)
-                Positioned(
-                  bottom: 3,
-                  child: Text(
-                    'N',
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red.shade700,
-                    ),
+              Positioned(
+                bottom: 3,
+                child: Text(
+                  'N',
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red.shade700,
                   ),
                 ),
+              ),
             ],
           ),
         ),

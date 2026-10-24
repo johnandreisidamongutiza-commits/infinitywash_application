@@ -109,9 +109,13 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
       await _gpsProvider.initialize();
       _gpsProvider.locationStream.listen((location) {
         if (mounted && location.latitude != null && location.longitude != null) {
-          setState(() {
-            _riderLocation = LatLng(location.latitude!, location.longitude!);
-          });
+          final newLoc = LatLng(location.latitude!, location.longitude!);
+          if (_riderLocation == null ||
+              const Distance().as(LengthUnit.Meter, _riderLocation!, newLoc) >= 6.0) {
+            setState(() {
+              _riderLocation = newLoc;
+            });
+          }
         }
       });
     } catch (e) {
@@ -477,26 +481,9 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                     if (_riderLocation != null)
                       Marker(
                         point: _riderLocation!,
-                        width: 28,
-                        height: 28,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade600,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2.5),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.2),
-                                blurRadius: 4,
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.navigation,
-                            color: Colors.white,
-                            size: 14,
-                          ),
-                        ),
+                        width: 44,
+                        height: 44,
+                        child: _buildRiderMarkerWidget(),
                       ),
                   ],
                 ),
@@ -648,6 +635,66 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Modern Delivery Rider Badge (Option A: Always Upright, Non-Rotating)
+  Widget _buildRiderMarkerWidget() {
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Outer subtle pulse / glow ring
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.accentBlue.withValues(alpha: 0.16),
+              border: Border.all(
+                color: AppTheme.accentBlue.withValues(alpha: 0.35),
+                width: 1.5,
+              ),
+            ),
+          ),
+          // Elevated white badge with drop shadow
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Center(
+              // Inner solid brand-blue core with delivery rider scooter icon
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.accentBlue,
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.two_wheeler_rounded,
+                    color: Colors.white,
+                    size: 14,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -19,8 +19,9 @@ import '../../../widgets/address_input_widget.dart';
 /// Displays real map with route lines from Supabase data
 class RiderRouteScreenNew extends StatefulWidget {
   final VoidCallback? onBackToHome;
+  final bool isActive;
 
-  const RiderRouteScreenNew({super.key, this.onBackToHome});
+  const RiderRouteScreenNew({super.key, this.onBackToHome, this.isActive = false});
 
   @override
   State<RiderRouteScreenNew> createState() => _RiderRouteScreenNewState();
@@ -47,12 +48,17 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
   bool _isLoadingRoute = false;
   bool _isRouteFallback = false;
   bool _isMapLoading = true; // Track map loading state
+  bool _hasLoadedOnce = false; // Lazy-load guard: only fetch jobs when tab first becomes active
 
   @override
   void initState() {
     super.initState();
     _initializeLocation();
-    _loadJobs();
+    // Defer _loadJobs until the Route tab is actually active (lazy-load route polylines)
+    if (widget.isActive) {
+      _hasLoadedOnce = true;
+      _loadJobs();
+    }
     
     // Hide loading after 2 seconds
     Future.delayed(const Duration(seconds: 2), () {
@@ -62,16 +68,31 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
     });
   }
 
+  @override
+  void didUpdateWidget(covariant RiderRouteScreenNew oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Lazy-load: when the tab becomes active, fetch jobs + calculate route
+    if (widget.isActive && !oldWidget.isActive) {
+      _hasLoadedOnce = true;
+      _loadJobs();
+    }
+  }
+
   Future<void> _initializeLocation() async {
     try {
       _gpsProvider.attachDialogContext(context);
       await _gpsProvider.initialize();
-      await _gpsProvider.startTracking();
+      // Use 6.0m distance filter to prevent indoor chair drifting
+      await _gpsProvider.startTracking(intervalMillis: 2000, distanceFilterMeters: 6.0);
       _gpsProvider.locationStream.listen((location) {
         if (mounted && location.latitude != null && location.longitude != null) {
-          setState(() {
-            _riderLocation = LatLng(location.latitude!, location.longitude!);
-          });
+          final newLoc = LatLng(location.latitude!, location.longitude!);
+          if (_riderLocation == null ||
+              const Distance().as(LengthUnit.Meter, _riderLocation!, newLoc) >= 6.0) {
+            setState(() {
+              _riderLocation = newLoc;
+            });
+          }
         }
       });
     } catch (e) {
@@ -641,27 +662,105 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
     required IconData icon,
     required String tooltip,
     required VoidCallback onPressed,
+    String? label,
   }) {
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.8)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: label != null ? 12 : 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: AppTheme.accentBlue),
+              if (label != null) ...[
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Modern Delivery Rider Badge (Option A: Always Upright, Non-Rotating)
+  Widget _buildRiderMarkerWidget() {
+    return SizedBox(
+      width: 52,
+      height: 52,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Outer subtle pulse / glow ring
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.accentBlue.withValues(alpha: 0.16),
+              border: Border.all(
+                color: AppTheme.accentBlue.withValues(alpha: 0.35),
+                width: 1.5,
+              ),
+            ),
+          ),
+          // Elevated white badge with drop shadow
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Center(
+              // Inner solid brand-blue core with delivery rider scooter icon
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.accentBlue,
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.two_wheeler_rounded,
+                    color: Colors.white,
+                    size: 17,
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
-      ),
-      child: IconButton(
-        icon: Icon(icon, size: 18, color: AppTheme.primaryBlue),
-        tooltip: tooltip,
-        onPressed: onPressed,
-        padding: EdgeInsets.zero,
       ),
     );
   }
@@ -1060,33 +1159,13 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
       ),
     ));
 
-    // Rider marker
+    // Rider marker (Option A delivery rider badge)
     if (_riderLocation != null) {
       markers.add(Marker(
         point: _riderLocation!,
-        width: 36,
-        height: 36,
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppTheme.accentBlue.withValues(alpha: 0.25),
-            shape: BoxShape.circle,
-          ),
-          padding: const EdgeInsets.all(4),
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppTheme.accentBlue,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.accentBlue.withValues(alpha: 0.4),
-                  blurRadius: 6,
-                ),
-              ],
-            ),
-            child: const Icon(Icons.navigation, color: Colors.white, size: 14),
-          ),
-        ),
+        width: 52,
+        height: 52,
+        child: _buildRiderMarkerWidget(),
       ));
     }
 

@@ -160,37 +160,77 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
   Widget _buildStartButton() {
     final hasOrders = _pickupJobs.isNotEmpty || _deliveryJobs.isNotEmpty;
-    
-    return ElevatedButton(
-      onPressed: hasOrders ? () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const RiderRouteScreenNew()),
-        ).then((_) => _loadOrders());
-      } : null,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: hasOrders ? AppTheme.accentBlue : AppTheme.borderGray,
-        minimumSize: const Size(double.infinity, 80),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            hasOrders ? Icons.play_arrow : Icons.inbox_outlined, 
-            size: 30,
-            color: hasOrders ? Colors.white : AppTheme.textLight,
+    final totalStops = _pickupJobs.length + _deliveryJobs.length;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: hasOrders
+            ? () {
+                if (widget.onSelectTab != null) {
+                  widget.onSelectTab!(1);
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const RiderRouteScreenNew(isActive: true),
+                    ),
+                  ).then((_) => _loadOrders());
+                }
+              }
+            : null,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          width: double.infinity,
+          height: 64,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: hasOrders
+                ? const LinearGradient(
+                    colors: [AppTheme.accentBlue, Color(0xFF1557A6)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: hasOrders ? null : AppTheme.softGray,
+            boxShadow: hasOrders
+                ? [
+                    BoxShadow(
+                      color: AppTheme.accentBlue.withValues(alpha: 0.35),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
+                    ),
+                  ]
+                : null,
           ),
-          const SizedBox(width: 12),
-          Text(
-            hasOrders ? 'Start Route' : 'No Orders Available',
-            style: TextStyle(
-              color: hasOrders ? Colors.white : AppTheme.textLight,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: hasOrders ? 0.2 : 0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  hasOrders ? Icons.navigation_rounded : Icons.inbox_outlined,
+                  size: 22,
+                  color: hasOrders ? Colors.white : AppTheme.textLight,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Text(
+                hasOrders ? 'Start Route ($totalStops ${totalStops == 1 ? 'Stop' : 'Stops'})' : 'No Orders Available',
+                style: TextStyle(
+                  color: hasOrders ? Colors.white : AppTheme.textLight,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

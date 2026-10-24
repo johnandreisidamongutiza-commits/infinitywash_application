@@ -41,6 +41,7 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
           ),
           RiderRouteScreenNew(
             onBackToHome: () => setState(() => _currentIndex = 0),
+            isActive: _currentIndex == 1,
           ),
           RiderPaymentScreen(
             key: _paymentScreenKey,
