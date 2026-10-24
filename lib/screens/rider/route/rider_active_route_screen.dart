@@ -48,6 +48,8 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   bool _isLoadingRoute = false;
   bool _isMapLoading = true;
   bool _isCompleting = false;
+  bool _followRider = true;
+  bool _headingUpMode = true;
 
   // Metadata cache per order: phone, landmark, customer notes
   final Map<String, Map<String, dynamic>> _jobMetadata = {};
@@ -99,26 +101,31 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         if (mounted && location.latitude != null && location.longitude != null) {
           final newLocation = LatLng(location.latitude!, location.longitude!);
           final isFirstLocation = _currentLocation == null;
+          final oldLocation = _currentLocation;
 
           setState(() {
-            final oldLocation = _currentLocation;
             _currentLocation = newLocation;
-
-            if (oldLocation != null && _remainingJobs.isNotEmpty) {
-              final nextJob = _remainingJobs.first;
-              if (nextJob.latitude != null && nextJob.longitude != null) {
-                _currentBearing = _calculateBearing(
-                  _currentLocation!,
-                  LatLng(nextJob.latitude!, nextJob.longitude!),
-                );
-              }
-            }
           });
 
-          _mapController.move(_currentLocation!, 17.0);
+          _updateHeading(
+            newLocation: newLocation,
+            oldLocation: oldLocation,
+            gpsHeading: location.heading,
+            speed: location.speed,
+          );
 
           if (isFirstLocation) {
-            _calculateRoute();
+            _calculateRoute().then((_) {
+              if (mounted) {
+                _updateHeading(
+                  newLocation: _currentLocation,
+                  oldLocation: null,
+                );
+                _updateCamera(forceRecenter: true, initialZoom: 17.0);
+              }
+            });
+          } else {
+            _updateCamera();
           }
         }
       });
@@ -193,6 +200,116 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     return distance.as(LengthUnit.Meter, from, to);
   }
 
+  /// Calculates the bearing along the route ahead of the rider's current position
+  double _getBearingAlongRoute(LatLng currentPos, List<LatLng> points) {
+    if (points.isEmpty) return _currentBearing;
+    if (points.length == 1) {
+      return _calculateBearing(currentPos, points.first);
+    }
+
+    // 1. Find the point on the route closest to currentPos
+    int closestIndex = 0;
+    double minDistance = double.infinity;
+
+    for (int i = 0; i < points.length; i++) {
+      final d = _calculateDistance(currentPos, points[i]);
+      if (d < minDistance) {
+        minDistance = d;
+        closestIndex = i;
+      }
+    }
+
+    // 2. Look ahead along the route for a point at least 10 meters ahead of currentPos
+    for (int i = closestIndex; i < points.length; i++) {
+      final d = _calculateDistance(currentPos, points[i]);
+      if (d >= 10.0) {
+        return _calculateBearing(currentPos, points[i]);
+      }
+    }
+
+    // 3. If within 10 meters of the end, point to the last point
+    if (closestIndex < points.length - 1) {
+      return _calculateBearing(currentPos, points[points.length - 1]);
+    }
+
+    // Fallback: segment bearing
+    if (points.length >= 2) {
+      return _calculateBearing(points[points.length - 2], points[points.length - 1]);
+    }
+
+    return _currentBearing;
+  }
+
+  /// Determine and update rider bearing based on route polyline, GPS sensor, or movement
+  void _updateHeading({
+    LatLng? newLocation,
+    LatLng? oldLocation,
+    double? gpsHeading,
+    double? speed,
+  }) {
+    if (newLocation == null) return;
+
+    double? calculatedBearing;
+
+    // 1. If device GPS has reliable heading while moving (> 1.2 m/s or ~4 km/h)
+    if (gpsHeading != null && gpsHeading >= 0 && speed != null && speed > 1.2) {
+      calculatedBearing = gpsHeading;
+    }
+    // 2. If rider moved noticeably between GPS updates (>= 3.0 meters)
+    else if (oldLocation != null && _calculateDistance(oldLocation, newLocation) >= 3.0) {
+      calculatedBearing = _calculateBearing(oldLocation, newLocation);
+    }
+    // 3. Otherwise (stationary or starting out), align along the upcoming route polyline!
+    else if (_routePoints.isNotEmpty) {
+      calculatedBearing = _getBearingAlongRoute(newLocation, _routePoints);
+    }
+    // 4. Fallback: destination bearing
+    else if (_remainingJobs.isNotEmpty) {
+      final nextJob = _remainingJobs.first;
+      if (nextJob.latitude != null && nextJob.longitude != null) {
+        calculatedBearing = _calculateBearing(
+          newLocation,
+          LatLng(nextJob.latitude!, nextJob.longitude!),
+        );
+      }
+    }
+
+    if (calculatedBearing != null) {
+      final diff = (calculatedBearing - _currentBearing).abs();
+      final normalizedDiff = diff > 180 ? 360 - diff : diff;
+      if (normalizedDiff > 2.0) {
+        setState(() {
+          _currentBearing = calculatedBearing!;
+        });
+      }
+    }
+  }
+
+  /// Smoothly moves and optionally rotates the map camera, respecting user's zoom level
+  void _updateCamera({bool forceRecenter = false, double? initialZoom}) {
+    if (_currentLocation == null) return;
+    if (!_followRider && !forceRecenter) return;
+
+    try {
+      double zoom;
+      try {
+        zoom = initialZoom ?? _mapController.camera.zoom;
+      } catch (_) {
+        zoom = initialZoom ?? 17.0;
+      }
+      final targetZoom = zoom.clamp(12.0, 19.0);
+
+      if (_headingUpMode) {
+        final targetRotation = (360.0 - _currentBearing) % 360.0;
+        _mapController.moveAndRotate(_currentLocation!, targetZoom, targetRotation);
+      } else {
+        _mapController.moveAndRotate(_currentLocation!, targetZoom, 0.0);
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error updating camera: $e');
+    }
+  }
+
   Future<void> _calculateRoute() async {
     if (_remainingJobs.isEmpty || _currentLocation == null) {
       setState(() => _routePoints = []);
@@ -221,6 +338,17 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
           _isRouteFallback = route.isFallback;
           _isLoadingRoute = false;
         });
+
+        // Immediately align bearing with road polyline
+        if (_currentLocation != null && _routePoints.isNotEmpty) {
+          final roadBearing = _getBearingAlongRoute(_currentLocation!, _routePoints);
+          setState(() {
+            _currentBearing = roadBearing;
+          });
+          if (_followRider) {
+            _updateCamera();
+          }
+        }
       }
     } catch (e) {
       debugPrint('❌ Error calculating route: $e');
@@ -1101,6 +1229,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
               initialCenter: _currentLocation ?? const LatLng(14.2499596, 121.4027956),
               initialZoom: 17.0,
               minZoom: 12.0,
+              maxZoom: 19.0,
               cameraConstraint: CameraConstraint.contain(
                 bounds: LatLngBounds(
                   LatLng(
@@ -1113,6 +1242,16 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                   ),
                 ),
               ),
+              onPositionChanged: (camera, hasGesture) {
+                if (hasGesture && _currentLocation != null) {
+                  final dist = _calculateDistance(_currentLocation!, camera.center);
+                  if (dist > 50.0 && _followRider) {
+                    setState(() {
+                      _followRider = false;
+                    });
+                  }
+                }
+              },
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
               ),
@@ -1216,6 +1355,23 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                 distanceToNext: distanceToNext,
               ),
             ),
+
+          // Floating Controls (Compass & Recenter)
+          Positioned(
+            right: 16,
+            bottom: nextJob != null ? 100 : 24,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _buildCompassButton(),
+                if (!_followRider && _currentLocation != null) ...[
+                  const SizedBox(height: 10),
+                  _buildRecenterButton(),
+                ],
+              ],
+            ),
+          ),
 
           // Map loading overlay
           MapLoadingOverlay(
@@ -1680,29 +1836,16 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   List<Marker> _buildMarkers() {
     final markers = <Marker>[];
 
-    // Rider live location marker with rotating arrow
+    // Rider live location marker with directional navigation puck
     if (_currentLocation != null) {
       markers.add(
         Marker(
           point: _currentLocation!,
-          width: 60,
-          height: 60,
+          width: 64,
+          height: 64,
           alignment: Alignment.center,
-          child: Transform.rotate(
-            angle: _currentBearing * math.pi / 180,
-            child: Icon(
-              Icons.navigation,
-              size: 40,
-              color: AppTheme.accentBlue,
-              shadows: [
-                Shadow(
-                  blurRadius: 4,
-                  color: Colors.black.withValues(alpha: 0.5),
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-          ),
+          rotate: false,
+          child: _buildRiderMarkerWidget(),
         ),
       );
     }
@@ -1719,6 +1862,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
             width: 80,
             height: 80,
             alignment: Alignment.center,
+            rotate: true, // Keep stop marker upright when map rotates
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () {
@@ -1767,5 +1911,194 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     }
 
     return markers;
+  }
+
+  /// Modern Directional Navigation Puck for the Rider
+  Widget _buildRiderMarkerWidget() {
+    return Transform.rotate(
+      angle: _currentBearing * math.pi / 180,
+      child: SizedBox(
+        width: 64,
+        height: 64,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Outer pulse / accuracy ring
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.accentBlue.withValues(alpha: 0.15),
+                border: Border.all(
+                  color: AppTheme.accentBlue.withValues(alpha: 0.35),
+                  width: 1.5,
+                ),
+              ),
+            ),
+            // Directional forward beam / pointer arrow tip
+            Positioned(
+              top: 1,
+              child: Icon(
+                Icons.arrow_drop_up_rounded,
+                size: 32,
+                color: AppTheme.accentBlue,
+                shadows: [
+                  Shadow(
+                    blurRadius: 4,
+                    color: Colors.black.withValues(alpha: 0.35),
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+            ),
+            // Central navigation puck with white border
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: AppTheme.accentBlue,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.navigation_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Floating Compass / Heading-Up Toggle Button
+  Widget _buildCompassButton() {
+    double rotationRad = 0.0;
+    try {
+      rotationRad = _mapController.camera.rotationRad;
+    } catch (_) {}
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _headingUpMode = !_headingUpMode;
+          });
+          if (_currentLocation != null) {
+            final currentZoom = _mapController.camera.zoom;
+            if (_headingUpMode) {
+              final targetRot = (360.0 - _currentBearing) % 360.0;
+              _mapController.moveAndRotate(_currentLocation!, currentZoom, targetRot);
+            } else {
+              _mapController.moveAndRotate(_currentLocation!, currentZoom, 0.0);
+            }
+          }
+        },
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: _headingUpMode ? AppTheme.accentBlue : Colors.grey.shade300,
+              width: _headingUpMode ? 1.5 : 1.0,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Rotating Compass Needle pointing to True North
+              Transform.rotate(
+                angle: -rotationRad,
+                child: Icon(
+                  Icons.navigation_rounded,
+                  size: 22,
+                  color: Colors.red.shade600,
+                ),
+              ),
+              // Indicator badge when in North-Up mode
+              if (!_headingUpMode)
+                Positioned(
+                  bottom: 3,
+                  child: Text(
+                    'N',
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red.shade700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Floating Recenter Button (appears when rider panned away)
+  Widget _buildRecenterButton() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _followRider = true;
+          });
+          _updateCamera(forceRecenter: true);
+        },
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppTheme.accentBlue,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.accentBlue.withValues(alpha: 0.4),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.my_location_rounded, color: Colors.white, size: 18),
+              SizedBox(width: 6),
+              Text(
+                'Recenter',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
