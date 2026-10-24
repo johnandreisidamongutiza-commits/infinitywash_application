@@ -192,13 +192,13 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
       try {
         final orderRes = await SupabaseService.client
             .from('orders')
-            .select('customer_id, customers(phone_number)')
+            .select('customer_id, customers(phone)')
             .eq('id', job.orderId)
             .maybeSingle();
         if (orderRes != null) {
           custId = orderRes['customer_id']?.toString();
           final cust = orderRes['customers'] as Map<String, dynamic>?;
-          phone = cust?['phone_number']?.toString();
+          phone = cust?['phone']?.toString();
         }
       } catch (_) {}
     }

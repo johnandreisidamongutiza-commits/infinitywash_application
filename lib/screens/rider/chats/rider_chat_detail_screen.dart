@@ -180,13 +180,13 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
           try {
             final orderRes = await SupabaseService.client
                 .from('orders')
-                .select('customer_id, customers(phone_number)')
+                .select('customer_id, customers(phone)')
                 .eq('id', orderId)
                 .maybeSingle();
             if (orderRes != null) {
               custId = orderRes['customer_id']?.toString() ?? '';
               final cust = orderRes['customers'] as Map<String, dynamic>?;
-              custPhone ??= cust?['phone_number']?.toString();
+              custPhone ??= cust?['phone']?.toString();
             }
           } catch (_) {}
         }

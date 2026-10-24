@@ -53,6 +53,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   Timer? _gpsTimeoutTimer;
   bool _isLoadingRoute = false;
   bool _isMapLoading = true;
+  bool _mapReady = false;
   bool _isCompleting = false;
   bool _followRider = true;
   bool _headingUpMode = true;
@@ -114,6 +115,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     try {
       _gpsProvider.attachDialogContext(context);
       await _gpsProvider.initialize();
+      if (!mounted) return;
 
       if (!_gpsProvider.isServiceEnabled) {
         if (mounted) {
@@ -137,6 +139,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
 
       // Fast seed from provider cache if screen didn't receive initialRiderLocation
       if (_currentLocation == null && _gpsProvider.currentLocation != null) {
+        if (!mounted) return;
         final cached = _gpsProvider.currentLocation!;
         _gpsTimeoutTimer?.cancel();
         setState(() {
@@ -159,9 +162,11 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
 
       // Start high-frequency (1s) active navigation tracking
       await _gpsProvider.startTracking(intervalMillis: 1000, distanceFilterMeters: 0);
+      if (!mounted) return;
 
       // Start uploading rider location to Supabase for customer tracking
-      final riderId = SupabaseService.client.auth.currentUser?.id;
+      final riderId = await _riderService.getCurrentRiderEmployeeId();
+      if (!mounted) return;
       if (riderId != null) {
         final currentJobId = _remainingJobs.isNotEmpty ? _remainingJobs.first.id : null;
         _locationProvider.startUploading(
@@ -234,7 +239,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     try {
       final ordersRes = await SupabaseService.client
           .from('orders')
-          .select('id, customer_notes, landmark, payment_status, total_amount, customers(phone_number, landmark, first_name, last_name)')
+          .select('id, customer_notes, landmark, payment_status, total_amount, customers(phone, landmark, first_name, last_name)')
           .inFilter('id', orderIds);
 
       if (mounted) {
@@ -242,7 +247,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         for (final row in (ordersRes as List)) {
           final id = row['id'] as String;
           final cust = row['customers'] as Map<String, dynamic>?;
-          final phone = cust?['phone_number'] as String?;
+          final phone = cust?['phone'] as String?;
           final landmark = (row['landmark'] as String?) ?? (cust?['landmark'] as String?);
           final notes = row['customer_notes'] as String?;
           final paymentStatus = row['payment_status'] as String?;
@@ -367,7 +372,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     if (calculatedBearing != null) {
       final diff = (calculatedBearing - _currentBearing).abs();
       final normalizedDiff = diff > 180 ? 360 - diff : diff;
-      if (normalizedDiff > 2.0) {
+      if (normalizedDiff > 2.0 && mounted) {
         setState(() {
           _currentBearing = calculatedBearing!;
         });
@@ -378,6 +383,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   /// Smoothly moves and optionally rotates the map camera, respecting user's zoom level
   void _updateCamera({bool forceRecenter = false, double? initialZoom}) {
     if (_currentLocation == null) return;
+    if (!_mapReady) return;
     if (!_followRider && !forceRecenter) return;
 
     try {
@@ -401,18 +407,19 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   }
 
   Future<void> _calculateRoute() async {
+    if (!mounted) return;
     if (_remainingJobs.isEmpty || _currentLocation == null) {
-      setState(() => _routePoints = []);
+      if (mounted) setState(() => _routePoints = []);
       return;
     }
 
     final activeJob = _remainingJobs.first;
     if (activeJob.latitude == null || activeJob.longitude == null) {
-      setState(() => _routePoints = []);
+      if (mounted) setState(() => _routePoints = []);
       return;
     }
 
-    setState(() => _isLoadingRoute = true);
+    if (mounted) setState(() => _isLoadingRoute = true);
 
     try {
       final waypoints = <LatLng>[
@@ -1324,6 +1331,12 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
               initialZoom: 17.0,
               minZoom: 12.0,
               maxZoom: 19.0,
+              onMapReady: () {
+                _mapReady = true;
+                if (_currentLocation != null) {
+                  _updateCamera(forceRecenter: true, initialZoom: 17.0);
+                }
+              },
               cameraConstraint: CameraConstraint.contain(
                 bounds: LatLngBounds(
                   LatLng(

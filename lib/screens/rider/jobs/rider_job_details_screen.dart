@@ -63,7 +63,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     try {
       final orderRes = await SupabaseService.client
           .from('orders')
-          .select('customer_id, customers(pin_latitude, pin_longitude, phone_number), customer_notes, payment_status, total_amount')
+          .select('customer_id, customers(pin_latitude, pin_longitude, phone), customer_notes, payment_status, total_amount')
           .eq('id', widget.job.orderId)
           .maybeSingle();
 
@@ -79,7 +79,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
             }
           }
           _customerId = orderRes['customer_id']?.toString();
-          _customerPhone = cust?['phone_number'] as String?;
+          _customerPhone = cust?['phone'] as String?;
           _customerNotes = orderRes['customer_notes'] as String?;
           _paymentStatus = orderRes['payment_status'] as String?;
           _totalAmount = (orderRes['total_amount'] as num?)?.toDouble();
