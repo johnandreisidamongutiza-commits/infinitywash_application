@@ -9,6 +9,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -16,11 +17,30 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val channelName = "infinitywash/app_settings"
     private val foregroundNotificationsChannelName = "infinitywash/foreground_notifications"
+    private val screenWakeChannelName = "infinitywash/screen_wake"
     private val notificationChannelId = "infinitywash_default"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         createNotificationChannel()
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, screenWakeChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "keepScreenOn" -> {
+                        val enable = call.argument<Boolean>("enable") ?: false
+                        runOnUiThread {
+                            if (enable) {
+                                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            } else {
+                                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            }
+                        }
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->

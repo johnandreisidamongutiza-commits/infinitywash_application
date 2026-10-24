@@ -17,6 +17,7 @@ import '../jobs/rider_job_details_screen.dart';
 import '../payments/rider_payment_process_screen.dart';
 import '../../../widgets/address_input_widget.dart';
 import '../../../state/rider_location_provider.dart';
+import '../../../utils/screen_wake_helper.dart';
 
 /// Active Route Tracking Screen
 /// Shows rider's live location centered on map with rotating arrow pointing to next destination
@@ -58,6 +59,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   bool _followRider = true;
   bool _gpsTimedOut = false;
   String? _gpsErrorMessage;
+  double _lastMapRotation = 0.0;
 
   // Metadata cache per order: phone, landmark, customer notes
   final Map<String, Map<String, dynamic>> _jobMetadata = {};
@@ -65,6 +67,8 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
   @override
   void initState() {
     super.initState();
+    // Keep screen awake while actively navigating on motorcycle/vehicle mount
+    ScreenWakeHelper.enable();
     _remainingJobs = List.from(widget.jobs);
     _totalStops = widget.jobs.length;
 
@@ -91,6 +95,8 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
 
   @override
   void dispose() {
+    // Disable screen wake lock to restore normal phone sleep and save battery
+    ScreenWakeHelper.disable();
     _gpsTimeoutTimer?.cancel();
     _locationSubscription?.cancel();
     _locationProvider.stopUploading();
@@ -417,8 +423,13 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
       }
       final targetZoom = zoom.clamp(12.0, 19.0);
 
-      // Always maintain stable North-Up orientation (0.0° rotation)
-      _mapController.moveAndRotate(_currentLocation!, targetZoom, 0.0);
+      // Preserve user's current 2-finger map rotation angle
+      double currentRotation = 0.0;
+      try {
+        currentRotation = _mapController.camera.rotation;
+      } catch (_) {}
+
+      _mapController.moveAndRotate(_currentLocation!, targetZoom, currentRotation);
     } catch (e) {
       debugPrint('⚠️ Error updating camera: $e');
     }
@@ -1368,17 +1379,25 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                 ),
               ),
               onPositionChanged: (camera, hasGesture) {
-                if (hasGesture && _currentLocation != null) {
-                  final dist = _calculateDistance(_currentLocation!, camera.center);
-                  if (dist > 50.0 && _followRider) {
+                if (hasGesture) {
+                  if (_currentLocation != null) {
+                    final dist = _calculateDistance(_currentLocation!, camera.center);
+                    if (dist > 50.0 && _followRider) {
+                      setState(() {
+                        _followRider = false;
+                      });
+                    }
+                  }
+                  // Refresh UI when rotated with 2 fingers so the compass needle updates
+                  if ((camera.rotation - _lastMapRotation).abs() > 1.0) {
                     setState(() {
-                      _followRider = false;
+                      _lastMapRotation = camera.rotation;
                     });
                   }
                 }
               },
               interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+                flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag | InteractiveFlag.rotate,
               ),
             ),
             children: [
@@ -2117,6 +2136,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
             } catch (_) {}
             setState(() {
               _followRider = true;
+              _lastMapRotation = 0.0;
             });
             _mapController.moveAndRotate(_currentLocation!, currentZoom, 0.0);
           }
