@@ -11,7 +11,7 @@ import '../../../config/location_constants.dart';
 import '../../../state/gps_provider.dart';
 import '../../../widgets/cached_tile_provider.dart';
 import '../../../widgets/address_input_widget.dart';
-import 'rider_job_tracking_screen.dart';
+import '../route/rider_active_route_screen.dart';
 import '../chats/rider_chat_detail_screen.dart';
 
 /// Details screen for a specific dispatch job
@@ -129,7 +129,10 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => RiderJobTrackingScreen(job: widget.job),
+            builder: (context) => RiderActiveRouteScreen(
+              jobs: [widget.job],
+              initialRiderLocation: _gpsProvider.currentLocation,
+            ),
           ),
         );
       }
@@ -1117,7 +1120,10 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                     Navigator.pushReplacement(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => RiderJobTrackingScreen(job: widget.job),
+                        builder: (context) => RiderActiveRouteScreen(
+                          jobs: [widget.job],
+                          initialRiderLocation: _gpsProvider.currentLocation,
+                        ),
                       ),
                     );
                   },
