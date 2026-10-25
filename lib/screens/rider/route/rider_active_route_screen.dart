@@ -22,6 +22,8 @@ import '../../../utils/screen_wake_helper.dart';
 import '../../../widgets/in_app_camera_screen.dart';
 import '../../../services/photo_file_service.dart';
 
+enum _ArrivalPhotoReviewAction { retake, usePhoto }
+
 /// Active Route Tracking Screen
 /// Shows rider's live location centered on map with rotating arrow pointing to next destination
 class RiderActiveRouteScreen extends StatefulWidget {
@@ -1102,9 +1104,7 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     if (addArrivalPhoto == null || !mounted) return;
 
     if (addArrivalPhoto) {
-      final photo = await Navigator.of(context).push<File>(
-        MaterialPageRoute(builder: (_) => const InAppCameraScreen()),
-      );
+      final photo = await _captureAndReviewArrivalPhoto();
       if (photo == null || !mounted) return;
 
       try {
@@ -1259,6 +1259,87 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         ),
       );
     }
+  }
+
+  Future<File?> _captureAndReviewArrivalPhoto() async {
+    while (mounted) {
+      final photo = await Navigator.of(context).push<File>(
+        MaterialPageRoute(builder: (_) => const InAppCameraScreen()),
+      );
+      if (photo == null || !mounted) return null;
+
+      final action = await showDialog<_ArrivalPhotoReviewAction>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Review arrival photo',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Make sure the photo is clear. Retake it if it looks blurry.',
+                  style: TextStyle(color: AppTheme.textLight),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  height: MediaQuery.sizeOf(dialogContext).height * 0.48,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      photo,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Text('Could not preview this photo.'),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.pop(
+                          dialogContext,
+                          _ArrivalPhotoReviewAction.retake,
+                        ),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retake'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => Navigator.pop(
+                          dialogContext,
+                          _ArrivalPhotoReviewAction.usePhoto,
+                        ),
+                        icon: const Icon(Icons.check),
+                        label: const Text('Use photo'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      if (action == _ArrivalPhotoReviewAction.usePhoto) return photo;
+
+      await PhotoFileService.deleteTemporary(photo);
+      if (action == null) return null;
+    }
+    return null;
   }
 
   void _showCompletionDialog() {
