@@ -70,6 +70,8 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
 
   // Feedback cache: orderId -> hasFeedback
   final Map<String, bool> _feedbackStatus = {};
+  final Map<String, String?> _receiptRejectionReasons = {};
+  final PaymentService _paymentService = PaymentService();
 
   // Auto-refresh timer
   Timer? _autoRefreshTimer;
@@ -306,6 +308,21 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
     }
   }
 
+  Future<void> _loadReceiptRejectionReasons(List<LaundryOrder> orders) async {
+    final eligible = orders.where((order) =>
+        order.paymentMethod?.toLowerCase() == 'gcash' &&
+        !_receiptRejectionReasons.containsKey(order.id));
+    await Future.wait(eligible.map((order) async {
+      try {
+        final reason = await _paymentService.getLatestReceiptRejectionReason(order.id);
+        if (mounted) setState(() => _receiptRejectionReasons[order.id] = reason);
+      } catch (_) {
+        // Receipt feedback is supplementary; keep the order list available if
+        // the receipt history cannot be reached temporarily.
+      }
+    }));
+  }
+
   // ── Active Tab (in progress orders) ──────────────────────────────────────
   Future<void> _initActive() async {
     if (_activeLoading) return;
@@ -342,6 +359,11 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
         offset: reset ? 0 : _activeOffset,
       );
       if (!mounted) return;
+      if (reset) {
+        for (final order in _active) {
+          _receiptRejectionReasons.remove(order.id);
+        }
+      }
       setState(() {
         if (reset) _active.clear();
         _active.addAll(page);
@@ -350,6 +372,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
         _activeLoading = false;
         _activeLoadingMore = false;
       });
+      _loadReceiptRejectionReasons(page);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1490,6 +1513,22 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                             icon: Icons.delivery_dining,
                             text: 'Your laundry is on the way!',
                             color: AppTheme.statusActive,
+                          ),
+                        ],
+                        if (_receiptRejectionReasons[order.id] != null) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.red.shade200),
+                            ),
+                            child: Text(
+                              'GCash receipt rejected: ${_receiptRejectionReasons[order.id]}',
+                              style: TextStyle(fontSize: 12, color: Colors.red.shade900),
+                            ),
                           ),
                         ],
 

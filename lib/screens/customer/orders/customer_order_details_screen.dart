@@ -6,6 +6,7 @@ import '../../../models/order.dart';
 import '../../../services/feedback_service.dart';
 import '../../../services/customer_service.dart';
 import '../../../services/order_service.dart';
+import '../../../services/arrival_proof_service.dart';
 import '../../../widgets/star_rating.dart';
 import '../../../widgets/order_timeline_view.dart';
 import 'request_service_flow.dart';
@@ -26,6 +27,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
   final FeedbackService _feedbackService = FeedbackService();
   final CustomerService _customerService = CustomerService();
   final OrderService _orderService = OrderService();
+  final ArrivalProofService _arrivalProofService = ArrivalProofService();
   final TextEditingController _commentController = TextEditingController();
 
   Map<String, dynamic>? _existingFeedback;
@@ -37,6 +39,8 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
   LaundryOrder? _latestOrder;
   bool _isRefreshing = false;
   bool _wasUpdated = false;
+  bool _isLoadingArrivalProofs = false;
+  List<ArrivalProof> _arrivalProofs = const [];
   Timer? _autoRefreshTimer;
 
   bool _isTerminalOrder(LaundryOrder? order) {
@@ -52,6 +56,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     WidgetsBinding.instance.addObserver(this);
     _latestOrder = widget.order;
     _loadFeedback();
+    _loadArrivalProofs();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _refreshOrder();
@@ -160,12 +165,114 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
           });
         }
       }
+      _loadArrivalProofs();
     } catch (e) {
       print('Error refreshing order: $e');
       if (mounted) {
         setState(() => _isRefreshing = false);
       }
     }
+  }
+
+  Future<void> _loadArrivalProofs() async {
+    if (_isLoadingArrivalProofs) return;
+    if (mounted) setState(() => _isLoadingArrivalProofs = true);
+    try {
+      final proofs = await _arrivalProofService
+          .getProofsForCustomerOrder(widget.order.id);
+      if (mounted) setState(() => _arrivalProofs = proofs);
+    } catch (e) {
+      debugPrint('Could not load customer arrival proofs: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingArrivalProofs = false);
+    }
+  }
+
+  void _showArrivalProof(ArrivalProof proof) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.all(20),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${proof.jobType == 'pickup' ? 'Pickup' : 'Delivery'} arrival proof',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  proof.signedUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, progress) => progress == null
+                      ? child
+                      : const Padding(
+                          padding: EdgeInsets.all(36),
+                          child: CircularProgressIndicator(),
+                        ),
+                  errorBuilder: (context, error, stackTrace) => const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('This arrival photo is temporarily unavailable.'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showArrivalProofOptions() {
+    if (_arrivalProofs.length == 1) {
+      _showArrivalProof(_arrivalProofs.single);
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Rider arrival proofs', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            ..._arrivalProofs.map((proof) => ListTile(
+                  leading: const Icon(Icons.location_on_outlined, color: AppTheme.accentBlue),
+                  title: Text('${proof.jobType == 'pickup' ? 'Pickup' : 'Delivery'} arrival'),
+                  subtitle: proof.createdAt == null
+                      ? null
+                      : Text(_formatDateTime(proof.createdAt!.toLocal())),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _showArrivalProof(proof);
+                  },
+                )),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _loadFeedback() async {
@@ -317,6 +424,23 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                 ),
               
               _buildHeader(order),
+              if (_arrivalProofs.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _showArrivalProofOptions,
+                    icon: const Icon(Icons.photo_camera_back_outlined, size: 17),
+                    label: const Text("See proof of rider's arrival"),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.accentBlue,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      visualDensity: VisualDensity.compact,
+                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ],
               if (_hasActiveDelivery(order)) ...[
                 const SizedBox(height: 16),
                 _buildLiveTrackingBanner(order),

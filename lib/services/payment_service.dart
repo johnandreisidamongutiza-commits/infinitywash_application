@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../utils/app_error.dart';
 import 'order_service.dart';
@@ -51,6 +52,22 @@ class PaymentService {
 
   static const int _settingsRowId = 1;
   static const String _receiptBucket = 'payment-receipts';
+
+  Future<String?> getLatestReceiptRejectionReason(String orderId) async {
+    final row = await _client
+        .from('gcash_receipt_submissions')
+        .select('rejection_reason')
+        .eq('order_id', orderId)
+        .eq('status', 'rejected')
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+    if (row == null) return null;
+    final reason = (row['rejection_reason'] as String?)?.trim();
+    return reason == null || reason.isEmpty
+        ? 'Please contact support for more information.'
+        : reason;
+  }
 
   /// Reads the admin-managed GCash configuration from `gcash_settings`
   /// (singleton row, id = 1): the uploaded QR image URL plus the account
@@ -107,6 +124,15 @@ class PaymentService {
     String? assignedStaffId,
     String source = 'mobile_app',
   }) async {
+    final receiptText = await _readReceiptText(receiptFile);
+    final referenceNumber = _extractReferenceNumber(receiptText);
+    final receiptDateTime = _extractReceiptDateTime(receiptText);
+    if (referenceNumber == null || receiptDateTime == null) {
+      throw const AppError(
+        'This image must show a GCash reference number and transaction date/time. Please choose a clear receipt.',
+        type: AppErrorType.validation,
+      );
+    }
     final now = DateTime.now().toUtc().toIso8601String();
 
     // Step 1: Upload the receipt first — if this fails, no payment
@@ -184,10 +210,11 @@ class PaymentService {
         'order_number': orderNumber,
         'receipt_image_url': receiptUrl,
         'image_size_bytes': imageSizeBytes,
-        'ocr_raw_text': null,
-        'ocr_reference_number': null,
+        'ocr_raw_text': receiptText,
+        'ocr_reference_number': referenceNumber,
+        'ocr_receipt_datetime': receiptDateTime,
         'ocr_amount': null,
-        'ocr_success': false,
+        'ocr_success': true,
         'ocr_error': null,
         'match_status': 'no_match',
         'match_detail': null,
@@ -216,6 +243,33 @@ class PaymentService {
         '(order $orderId marked paid, pending admin verification)');
     await PhotoFileService.deleteTemporary(receiptFile);
     return transactionNumber;
+  }
+
+  Future<String> _readReceiptText(File image) async {
+    final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    try {
+      return (await recognizer.processImage(InputImage.fromFile(image))).text.trim();
+    } finally {
+      await recognizer.close();
+    }
+  }
+
+  String? _extractReferenceNumber(String text) {
+    final match = RegExp(
+      r'(?:reference\s*(?:no\.?|number|#)?|ref\.?\s*(?:no\.?|number|#)?)\s*[:#-]?\s*([A-Z0-9-]{8,})',
+      caseSensitive: false,
+    ).firstMatch(text);
+    return match?.group(1)?.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  }
+
+  String? _extractReceiptDateTime(String text) {
+    final date = RegExp(
+      r'\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{4})\b',
+      caseSensitive: false,
+    ).firstMatch(text);
+    final time = RegExp(r'\b(?:0?[1-9]|1[0-2]):[0-5]\d\s*(?:AM|PM)\b|\b(?:[01]?\d|2[0-3]):[0-5]\d\b', caseSensitive: false).firstMatch(text);
+    if (date == null || time == null) return null;
+    return '${date.group(0)} ${time.group(0)}'.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   /// Upload a receipt image to the 'payment-receipts' bucket and

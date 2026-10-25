@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:gal/gal.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../../services/payment_service.dart';
 import '../../services/photo_file_service.dart';
@@ -68,6 +69,10 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
   File? _receiptFile;
   bool _isPickingImage = false;
   bool _receiptReturnedToCaller = false;
+  bool _isRecognizingReceipt = false;
+  String? _receiptOcrText;
+  String? _receiptReferenceNumber;
+  String? _receiptDateTime;
   int _step = 1; // 1 = show QR, 2 = capture/upload receipt
 
   @override
@@ -182,8 +187,15 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           return;
         }
         final oldFile = _receiptFile;
-        setState(() => _receiptFile = prepared);
+        setState(() {
+          _receiptFile = prepared;
+          _isRecognizingReceipt = true;
+          _receiptOcrText = null;
+          _receiptReferenceNumber = null;
+          _receiptDateTime = null;
+        });
         if (oldFile != null) await PhotoFileService.deleteTemporary(oldFile);
+        await _recognizeReceipt(prepared);
       }
     } on PlatformException catch (e) {
       if (!mounted) return;
@@ -216,6 +228,53 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
     } finally {
       if (mounted) setState(() => _isPickingImage = false);
     }
+  }
+
+  Future<void> _recognizeReceipt(File image) async {
+    final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    try {
+      final recognized = await recognizer.processImage(InputImage.fromFile(image));
+      final text = recognized.text.trim();
+      final reference = _extractReferenceNumber(text);
+      final dateTime = _extractReceiptDateTime(text);
+      if (!mounted || _receiptFile?.path != image.path) return;
+      setState(() {
+        _isRecognizingReceipt = false;
+        _receiptOcrText = text;
+        _receiptReferenceNumber = reference;
+        _receiptDateTime = dateTime;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isRecognizingReceipt = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not read this image. Please choose a clear GCash receipt.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      await recognizer.close();
+    }
+  }
+
+  String? _extractReferenceNumber(String text) {
+    final labeled = RegExp(
+      r'(?:reference\s*(?:no\.?|number|#)?|ref\.?\s*(?:no\.?|number|#)?)\s*[:#-]?\s*([A-Z0-9-]{8,})',
+      caseSensitive: false,
+    ).firstMatch(text);
+    return labeled?.group(1)?.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  }
+
+  String? _extractReceiptDateTime(String text) {
+    final date = RegExp(
+      r'\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{4})\b',
+      caseSensitive: false,
+    ).firstMatch(text);
+    final time = RegExp(r'\b(?:0?[1-9]|1[0-2]):[0-5]\d\s*(?:AM|PM)\b|\b(?:[01]?\d|2[0-3]):[0-5]\d\b', caseSensitive: false)
+        .firstMatch(text);
+    if (date == null || time == null) return null;
+    return '${date.group(0)} ${time.group(0)}'.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   void _showReceiptSourceSelector() {
@@ -653,11 +712,20 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           const SizedBox(height: 8),
           const Text(
             'Take a photo or upload the GCash receipt for this payment. '
+            'We will check for the reference number and date/time before accepting it. '
             'Our admin team will verify it against the GCash transaction history.',
             style: TextStyle(fontSize: 12, color: AppTheme.textLight),
           ),
           const SizedBox(height: 20),
           _buildReceiptPreview(),
+          if (_isRecognizingReceipt) ...[
+            const LinearProgressIndicator(),
+            const SizedBox(height: 8),
+            const Text('Reading receipt details…', style: TextStyle(fontSize: 12)),
+          ] else if (_receiptFile != null) ...[
+            const SizedBox(height: 10),
+            _buildOcrResult(),
+          ],
           const SizedBox(height: 20),
           Row(
             children: [
@@ -690,7 +758,10 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: _receiptFile == null ? null : _saveReceipt,
+              onPressed: _receiptFile == null || _isRecognizingReceipt ||
+                      _receiptReferenceNumber == null || _receiptDateTime == null
+                  ? null
+                  : _saveReceipt,
               icon: const Icon(Icons.check_circle_outline, size: 18),
               label: const Text('Save Receipt',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
@@ -716,6 +787,24 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           ),
           const SizedBox(height: 16),
         ],
+      ),
+    );
+  }
+
+  Widget _buildOcrResult() {
+    final valid = _receiptReferenceNumber != null && _receiptDateTime != null;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: valid ? Colors.green.shade50 : Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        valid
+            ? 'Reference number: $_receiptReferenceNumber\nDate and time: $_receiptDateTime'
+            : 'We could not find both the reference number and date/time. This image cannot be submitted. Please upload a clear GCash receipt.',
+        style: TextStyle(fontSize: 12, color: valid ? Colors.green.shade900 : Colors.red.shade900),
       ),
     );
   }
@@ -797,8 +886,21 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
     );
   }
 
-  void _saveReceipt() {
-    if (_receiptFile == null) return;
+  Future<void> _saveReceipt() async {
+    if (_receiptFile == null || _receiptOcrText == null ||
+        _receiptReferenceNumber == null || _receiptDateTime == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Submit GCash receipt?'),
+        content: const Text('Submit only a genuine receipt for this payment. Fake receipts may lead to an account ban.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Go back')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Submit receipt')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     _receiptReturnedToCaller = true;
     Navigator.pop(context, _receiptFile);
   }

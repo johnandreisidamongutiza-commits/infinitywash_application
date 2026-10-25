@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:meta/meta.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order.dart';
@@ -7,6 +9,7 @@ import '../config/cache_config.dart';
 import 'cache/job_cache_service.dart';
 import 'supabase_service.dart';
 import 'dispatch_job_adapter.dart';
+import 'photo_file_service.dart';
 
 /// Thrown when a rider tries to start a job that another rider has already
 /// claimed. UI should show a friendly message and refresh the job list.
@@ -99,6 +102,48 @@ class RiderService {
   final _supabaseClient = SupabaseService.client;
   final SupabaseService _supabaseService = SupabaseService();
   final DispatchJobAdapter _adapter = DispatchJobAdapter();
+
+  static const String _arrivalProofBucket = 'dispatch-proofs';
+
+  /// Saves an arrival photo in private storage and links its object path to
+  /// the existing dispatch_jobs.proof_url field.
+  Future<String> submitArrivalProof(String dispatchJobId, File photo) async {
+    File? prepared;
+    var stage = 'prepare';
+    final objectPath =
+        '$dispatchJobId/${DateTime.now().toUtc().microsecondsSinceEpoch}.jpg';
+    try {
+      final compressedPhoto = await PhotoFileService.prepareForUpload(photo);
+      prepared = compressedPhoto;
+      stage = 'upload';
+      await _client.storage.from(_arrivalProofBucket).uploadBinary(
+            objectPath,
+            await compressedPhoto.readAsBytes(),
+            fileOptions: const FileOptions(
+              contentType: 'image/jpeg',
+              upsert: false,
+            ),
+          );
+      final proofPath = '$_arrivalProofBucket/$objectPath';
+      stage = 'link';
+      await _client
+          .from('dispatch_jobs')
+          .update({'proof_url': proofPath})
+          .eq('id', dispatchJobId);
+      return proofPath;
+    } catch (e) {
+      print('❌ Arrival proof $stage failed for dispatch job $dispatchJobId: $e');
+      try {
+        await _client.storage.from(_arrivalProofBucket).remove([objectPath]);
+      } catch (_) {}
+      rethrow;
+    } finally {
+      if (prepared != null) {
+        await PhotoFileService.deleteTemporary(prepared);
+      }
+      await PhotoFileService.deleteTemporary(photo);
+    }
+  }
 
   /// Fetch orders that need pickup by rider
   /// Filters: pickup_requested = true AND status = 'pending_pickup'

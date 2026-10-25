@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,6 +19,8 @@ import '../payments/rider_payment_process_screen.dart';
 import '../../../widgets/address_input_widget.dart';
 import '../../../state/rider_location_provider.dart';
 import '../../../utils/screen_wake_helper.dart';
+import '../../../widgets/in_app_camera_screen.dart';
+import '../../../services/photo_file_service.dart';
 
 /// Active Route Tracking Screen
 /// Shows rider's live location centered on map with rotating arrow pointing to next destination
@@ -1047,33 +1050,84 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         ),
       );
       if (confirm != true) return;
-    } else {
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text('Complete ${job.jobType == 'pickup' ? 'Pickup' : 'Delivery'}?'),
-          content: Text(
-            'Mark stop for ${job.customerName ?? 'customer'} as complete?',
-            style: const TextStyle(height: 1.4),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.accentBlue,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Complete', style: TextStyle(color: Colors.white)),
-            ),
-          ],
+    }
+
+    // Route lists can include unassigned jobs. Claim this stop before saving
+    // proof so the private-storage policy can verify the current rider owns it.
+    try {
+      await _riderService.startJob(job.id);
+    } catch (e) {
+      if (!mounted) return;
+      debugPrint('Could not claim dispatch job before arrival: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This stop could not be assigned to you. Refresh the route and try again.'),
+          backgroundColor: AppTheme.errorRed,
+          behavior: SnackBarBehavior.floating,
         ),
       );
-      if (confirm != true) return;
+      return;
+    }
+
+    // Capture arrival evidence before offering payment or completing the stop.
+    // Riders can skip the photo and continue through the same flow.
+    final addArrivalPhoto = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.camera_alt_outlined, color: AppTheme.accentBlue),
+            SizedBox(width: 8),
+            Text('Arrival Photo'),
+          ],
+        ),
+        content: const Text(
+          'Take a photo as proof that you arrived at this stop. You can skip this step.',
+          style: TextStyle(height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Skip Photo'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.camera_alt_outlined),
+            label: const Text('Take Photo'),
+          ),
+        ],
+      ),
+    );
+    if (addArrivalPhoto == null || !mounted) return;
+
+    if (addArrivalPhoto) {
+      final photo = await Navigator.of(context).push<File>(
+        MaterialPageRoute(builder: (_) => const InAppCameraScreen()),
+      );
+      if (photo == null || !mounted) return;
+
+      try {
+        await _riderService.submitArrivalProof(job.id, photo);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Arrival photo saved.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        debugPrint('Could not save rider arrival proof: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Could not save the arrival photo. Please try again or skip this photo.'),
+            backgroundColor: AppTheme.errorRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
     }
 
     // Payment prompt for deliveries if payment is not completed
