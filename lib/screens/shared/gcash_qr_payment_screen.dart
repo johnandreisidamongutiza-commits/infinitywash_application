@@ -94,8 +94,8 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
   /// Zoom the QR image in or out. Clamped between [_minQrZoom] and [_maxQrZoom].
   void _zoomQr(double factor) {
     final next = (_qrZoom * factor).clamp(_minQrZoom, _maxQrZoom);
-    _qrTransformController.value =
-        Matrix4.identity()..scaleByDouble(next, next, next, 1);
+    _qrTransformController.value = Matrix4.identity()
+      ..scaleByDouble(next, next, next, 1);
     setState(() => _qrZoom = next);
   }
 
@@ -157,7 +157,9 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
     if (!mounted) return;
     final rationaleOk = await PermissionManager.confirmRationale(
       context,
-      source == ImageSource.camera ? AppPermission.camera : AppPermission.photos,
+      source == ImageSource.camera
+          ? AppPermission.camera
+          : AppPermission.photos,
     );
     if (!rationaleOk) {
       if (mounted) setState(() => _isPickingImage = false);
@@ -181,7 +183,15 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
         if (picked != null) selected = File(picked.path);
       }
       if (selected != null) {
-        final prepared = await PhotoFileService.prepareForUpload(selected);
+        // Preserve enough pixels for the small reference/date text on GCash
+        // receipts. The generic image compressor's 1280px default can shrink
+        // a full-screen phone screenshot too far for ML Kit to read reliably.
+        final prepared = await PhotoFileService.prepareForUpload(
+          selected,
+          targetBytes: 2 * 1024 * 1024,
+          initialDimension: 2560,
+          initialQuality: 90,
+        );
         if (!mounted) {
           await PhotoFileService.deleteTemporary(prepared);
           return;
@@ -202,12 +212,16 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
       if (PermissionManager.isPickerPermissionCode(e.code)) {
         await PermissionManager.showDeniedDialog(
           context,
-          source == ImageSource.camera ? AppPermission.camera : AppPermission.photos,
+          source == ImageSource.camera
+              ? AppPermission.camera
+              : AppPermission.photos,
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not take the receipt photo. Please try again.'),
+            content: Text(
+              'Could not take the receipt photo. Please try again.',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -233,7 +247,9 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
   Future<void> _recognizeReceipt(File image) async {
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
     try {
-      final recognized = await recognizer.processImage(InputImage.fromFile(image));
+      final recognized = await recognizer.processImage(
+        InputImage.fromFile(image),
+      );
       final text = recognized.text.trim();
       final reference = _extractReferenceNumber(text);
       final dateTime = _extractReceiptDateTime(text);
@@ -249,7 +265,9 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
       setState(() => _isRecognizingReceipt = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Could not read this image. Please choose a clear GCash receipt.'),
+          content: Text(
+            'Could not read this image. Please choose a clear GCash receipt.',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -259,22 +277,41 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
   }
 
   String? _extractReferenceNumber(String text) {
-    final labeled = RegExp(
-      r'(?:reference\s*(?:no\.?|number|#)?|ref\.?\s*(?:no\.?|number|#)?)\s*[:#-]?\s*([A-Z0-9-]{8,})',
+    final lines = text.split(RegExp(r'[\r\n]+'));
+    final labelPattern = RegExp(
+      r'\b(?:reference|ref\.?)\s*(?:no\.?|number|#)?\s*[:#.-]?\s*(.*)$',
       caseSensitive: false,
-    ).firstMatch(text);
-    return labeled?.group(1)?.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    );
+    final digitsPattern = RegExp(r'^\s*([0-9][0-9\s-]{7,30})');
+
+    for (var i = 0; i < lines.length; i++) {
+      final label = labelPattern.firstMatch(lines[i]);
+      if (label == null) continue;
+      var value = label.group(1) ?? '';
+      if (value.trim().isEmpty && i + 1 < lines.length) value = lines[i + 1];
+      final digits = digitsPattern
+          .firstMatch(value)
+          ?.group(1)
+          ?.replaceAll(RegExp(r'\D'), '');
+      if (digits != null && digits.length >= 8 && digits.length <= 24)
+        return digits;
+    }
+    return null;
   }
 
   String? _extractReceiptDateTime(String text) {
     final date = RegExp(
-      r'\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{4})\b',
+      r'\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{2,4})\b',
       caseSensitive: false,
     ).firstMatch(text);
-    final time = RegExp(r'\b(?:0?[1-9]|1[0-2]):[0-5]\d\s*(?:AM|PM)\b|\b(?:[01]?\d|2[0-3]):[0-5]\d\b', caseSensitive: false)
-        .firstMatch(text);
+    final time = RegExp(
+      r'\b(?:0?[1-9]|1[0-2])[:. ]?[0-5]\d\s*(?:A\.?M\.?|P\.?M\.?)\b|\b(?:[01]?\d|2[0-3])[:.][0-5]\d\b',
+      caseSensitive: false,
+    ).firstMatch(text);
     if (date == null || time == null) return null;
-    return '${date.group(0)} ${time.group(0)}'.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return '${date.group(0)} ${time.group(0)}'
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   void _showReceiptSourceSelector() {
@@ -299,8 +336,10 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
               },
             ),
             ListTile(
-              leading:
-                  const Icon(Icons.photo_library, color: AppTheme.accentBlue),
+              leading: const Icon(
+                Icons.photo_library,
+                color: AppTheme.accentBlue,
+              ),
               title: const Text('Upload from Gallery'),
               subtitle: const Text('Choose the GCash receipt screenshot'),
               onTap: () {
@@ -340,8 +379,10 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
         children: [
           _buildAmountCard(),
           const SizedBox(height: 24),
-          Text('Scan & Pay with GCash',
-              style: AppTheme.lightTheme.textTheme.titleMedium),
+          Text(
+            'Scan & Pay with GCash',
+            style: AppTheme.lightTheme.textTheme.titleMedium,
+          ),
           const SizedBox(height: 12),
           _buildQrCard(),
           const SizedBox(height: 20),
@@ -352,14 +393,17 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
             child: ElevatedButton.icon(
               onPressed: () => setState(() => _step = 2),
               icon: const Icon(Icons.arrow_forward, size: 18),
-              label: const Text('Next',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              label: const Text(
+                'Next',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF007DFE),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+                  borderRadius: BorderRadius.circular(14),
+                ),
                 elevation: 0,
               ),
             ),
@@ -397,14 +441,18 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
                   child: Text(
                     widget.customerName!,
                     style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600),
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
@@ -412,23 +460,27 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
                 child: Text(
                   widget.orderLabel,
                   style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold),
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          const Text('Amount to Pay',
-              style: TextStyle(color: Colors.white70, fontSize: 13)),
+          const Text(
+            'Amount to Pay',
+            style: TextStyle(color: Colors.white70, fontSize: 13),
+          ),
           const SizedBox(height: 4),
           Text(
             '₱${widget.amount.toStringAsFixed(2)}',
             style: const TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.bold),
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
@@ -457,21 +509,22 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           : (_qrImageUrl != null || _qrImageBytes != null)
-              ? Column(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: _buildQrImage(),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Scan this QR using your GCash app',
-                      style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                    ),
-                  ],
-                )
-              : _buildQrUnavailable(
-                  'GCash QR is not configured yet. Pay using the account details below.'),
+          ? Column(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: _buildQrImage(),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Scan this QR using your GCash app',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                ),
+              ],
+            )
+          : _buildQrUnavailable(
+              'GCash QR is not configured yet. Pay using the account details below.',
+            ),
     );
   }
 
@@ -488,7 +541,8 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
         fit: BoxFit.contain,
         gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) => _buildQrUnavailable(
-            'The stored GCash QR image could not be decoded.'),
+          'The stored GCash QR image could not be decoded.',
+        ),
       );
     } else {
       image = Image.network(
@@ -502,7 +556,8 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           );
         },
         errorBuilder: (context, error, stackTrace) => _buildQrUnavailable(
-            'QR image could not be loaded. Please contact the admin to re-upload it.'),
+          'QR image could not be loaded. Please contact the admin to re-upload it.',
+        ),
       );
     }
 
@@ -546,9 +601,7 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
         visualDensity: VisualDensity.compact,
         style: IconButton.styleFrom(
           backgroundColor: AppTheme.softGray,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
     }
@@ -608,16 +661,21 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.qr_code_2,
-                  size: 48, color: Colors.orange.withValues(alpha: 0.7)),
+              Icon(
+                Icons.qr_code_2,
+                size: 48,
+                color: Colors.orange.withValues(alpha: 0.7),
+              ),
               const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
                   message,
                   textAlign: TextAlign.center,
-                  style:
-                      const TextStyle(fontSize: 12, color: AppTheme.textDark),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.textDark,
+                  ),
                 ),
               ),
             ],
@@ -633,7 +691,9 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF007DFE).withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF007DFE).withValues(alpha: 0.25)),
+        border: Border.all(
+          color: const Color(0xFF007DFE).withValues(alpha: 0.25),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -646,17 +706,21 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
                   color: const Color(0xFF007DFE),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.account_balance_wallet,
-                    color: Colors.white, size: 20),
+                child: const Icon(
+                  Icons.account_balance_wallet,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 10),
               const Expanded(
                 child: Text(
                   'GCash Account Details',
                   style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Color(0xFF005AB5)),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Color(0xFF005AB5),
+                  ),
                 ),
               ),
             ],
@@ -665,14 +729,18 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Account Name:',
-                  style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
+              const Text(
+                'Account Name:',
+                style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+              ),
               Flexible(
                 child: Text(
                   _settings.accountName ?? 'INFINITYWASH HUB',
                   textAlign: TextAlign.right,
-                  style:
-                      const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -681,14 +749,18 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('GCash Mobile Number:',
-                  style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
+              const Text(
+                'GCash Mobile Number:',
+                style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+              ),
               Flexible(
                 child: Text(
                   _settings.accountNumber ?? '0917-555-WASH (9274)',
                   textAlign: TextAlign.right,
-                  style:
-                      const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -707,8 +779,10 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Payment Receipt',
-              style: AppTheme.lightTheme.textTheme.titleMedium),
+          Text(
+            'Payment Receipt',
+            style: AppTheme.lightTheme.textTheme.titleMedium,
+          ),
           const SizedBox(height: 8),
           const Text(
             'Take a photo or upload the GCash receipt for this payment. '
@@ -721,7 +795,10 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           if (_isRecognizingReceipt) ...[
             const LinearProgressIndicator(),
             const SizedBox(height: 8),
-            const Text('Reading receipt details…', style: TextStyle(fontSize: 12)),
+            const Text(
+              'Reading receipt details…',
+              style: TextStyle(fontSize: 12),
+            ),
           ] else if (_receiptFile != null) ...[
             const SizedBox(height: 10),
             _buildOcrResult(),
@@ -731,24 +808,33 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed:
-                      _isPickingImage ? null : _showReceiptSourceSelector,
+                  onPressed: _isPickingImage
+                      ? null
+                      : _showReceiptSourceSelector,
                   icon: _receiptFile == null
                       ? const Icon(Icons.add_a_photo, size: 18)
                       : const Icon(Icons.refresh, size: 18),
                   label: Text(
                     _receiptFile == null
-                        ? (_isPickingImage ? 'Opening camera...' : 'Capture / Upload')
+                        ? (_isPickingImage
+                              ? 'Opening camera...'
+                              : 'Capture / Upload')
                         : 'Change Receipt',
                     style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.bold),
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.accentBlue,
-                    side: const BorderSide(color: AppTheme.accentBlue, width: 2),
+                    side: const BorderSide(
+                      color: AppTheme.accentBlue,
+                      width: 2,
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
@@ -758,20 +844,26 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: _receiptFile == null || _isRecognizingReceipt ||
-                      _receiptReferenceNumber == null || _receiptDateTime == null
+              onPressed:
+                  _receiptFile == null ||
+                      _isRecognizingReceipt ||
+                      _receiptReferenceNumber == null ||
+                      _receiptDateTime == null
                   ? null
                   : _saveReceipt,
               icon: const Icon(Icons.check_circle_outline, size: 18),
-              label: const Text('Save Receipt',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              label: const Text(
+                'Save Receipt',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
                 disabledBackgroundColor: Colors.grey.shade300,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+                  borderRadius: BorderRadius.circular(14),
+                ),
                 elevation: 0,
               ),
             ),
@@ -781,8 +873,10 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
             width: double.infinity,
             child: TextButton(
               onPressed: () => setState(() => _step = 1),
-              child: const Text('Back to QR Code',
-                  style: TextStyle(color: AppTheme.textLight)),
+              child: const Text(
+                'Back to QR Code',
+                style: TextStyle(color: AppTheme.textLight),
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -804,7 +898,10 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
         valid
             ? 'Reference number: $_receiptReferenceNumber\nDate and time: $_receiptDateTime'
             : 'We could not find both the reference number and date/time. This image cannot be submitted. Please upload a clear GCash receipt.',
-        style: TextStyle(fontSize: 12, color: valid ? Colors.green.shade900 : Colors.red.shade900),
+        style: TextStyle(
+          fontSize: 12,
+          color: valid ? Colors.green.shade900 : Colors.red.shade900,
+        ),
       ),
     );
   }
@@ -819,15 +916,19 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           color: AppTheme.softGray,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: AppTheme.borderGray,
-              style: BorderStyle.solid,
-              width: 1.5),
+            color: AppTheme.borderGray,
+            style: BorderStyle.solid,
+            width: 1.5,
+          ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.receipt_long,
-                size: 48, color: AppTheme.textLight.withValues(alpha: 0.5)),
+            Icon(
+              Icons.receipt_long,
+              size: 48,
+              color: AppTheme.textLight.withValues(alpha: 0.5),
+            ),
             const SizedBox(height: 8),
             const Text(
               'No receipt added yet',
@@ -875,9 +976,10 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
               const Text(
                 'Receipt ready to upload',
                 style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green,
+                ),
               ),
             ],
           ),
@@ -887,16 +989,27 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
   }
 
   Future<void> _saveReceipt() async {
-    if (_receiptFile == null || _receiptOcrText == null ||
-        _receiptReferenceNumber == null || _receiptDateTime == null) return;
+    if (_receiptFile == null ||
+        _receiptOcrText == null ||
+        _receiptReferenceNumber == null ||
+        _receiptDateTime == null)
+      return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Submit GCash receipt?'),
-        content: const Text('Submit only a genuine receipt for this payment. Fake receipts may lead to an account ban.'),
+        content: const Text(
+          'Submit only a genuine receipt for this payment. Fake receipts may lead to an account ban.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Go back')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Submit receipt')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Go back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Submit receipt'),
+          ),
         ],
       ),
     );
@@ -934,13 +1047,19 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
                         await Gal.putImage(receipt.path);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Photo saved to your gallery.')),
+                            const SnackBar(
+                              content: Text('Photo saved to your gallery.'),
+                            ),
                           );
                         }
                       } catch (_) {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Could not save the photo. Check gallery permission and try again.')),
+                            const SnackBar(
+                              content: Text(
+                                'Could not save the photo. Check gallery permission and try again.',
+                              ),
+                            ),
                           );
                         }
                       }
@@ -957,7 +1076,9 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
                     },
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('Delete'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                    ),
                   ),
                 ],
               ),

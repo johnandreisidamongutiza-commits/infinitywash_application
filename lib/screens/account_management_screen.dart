@@ -72,10 +72,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Sign out current user
-      await _authService.signOut();
-
-      // Try to auto-login with selected account
+      // Preserve the current account's refresh token while restoring another
+      // saved account. Supabase signOut revokes the token on the server.
       final authResponse = await _authService.tryAutoLogin(userId: account.id);
 
       if (authResponse != null && authResponse.user != null) {
@@ -83,7 +81,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         final role = await _authService.getUserRole();
 
         if (role == null) {
-          await _authService.signOut();
           if (mounted) {
             setState(() => _isLoading = false);
             _showMessage('Could not verify account access. Please log in again.');
@@ -104,7 +101,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         };
 
         if (maybeDestination == null) {
-          await _authService.signOut();
           if (mounted) {
             setState(() => _isLoading = false);
             _showMessage('This account type is not supported in the app yet. Please contact support.');

@@ -46,14 +46,13 @@ class _SavedAccountsScreenState extends State<SavedAccountsScreen> {
   Future<void> _openAccount(SavedAccount account) async {
     setState(() => _openingAccountId = account.id);
     try {
-      final currentUser = _authService.getCurrentUser();
-      if (currentUser != null && currentUser.id != account.id) {
-        await _authService.signOut();
-      }
+      // Do not call Supabase signOut while switching saved accounts. Supabase
+      // revokes the active refresh token on sign-out, which would invalidate
+      // that account's encrypted saved session. tryAutoLogin installs the
+      // selected account's session directly.
       final response = await _authService.tryAutoLogin(userId: account.id);
       final user = response?.user;
       if (user == null) {
-        await _authService.signOut();
         await _loadAccounts();
         if (mounted) _message('That saved session expired. Add the account again to sign in.');
         return;
@@ -74,7 +73,6 @@ class _SavedAccountsScreenState extends State<SavedAccountsScreen> {
       } else if (user.appMetadata['provider'] == 'google') {
         _replaceWith(const GoogleProfileCompletionScreen());
       } else {
-        await _authService.signOut();
         _message('We could not verify this saved account. Please sign in again.');
       }
     } catch (_) {
@@ -85,7 +83,8 @@ class _SavedAccountsScreenState extends State<SavedAccountsScreen> {
   }
 
   Future<void> _addAccount() async {
-    await _authService.signOut();
+    // Signing out revokes the current Supabase refresh token, so keep this
+    // session intact while the user signs in to another account.
     if (!mounted) return;
     Navigator.push(
       context,

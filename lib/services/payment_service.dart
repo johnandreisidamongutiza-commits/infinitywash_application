@@ -21,11 +21,7 @@ class GcashSettings {
   /// GCash mobile number shown to the payer.
   final String? accountNumber;
 
-  const GcashSettings({
-    this.qrImageUrl,
-    this.accountName,
-    this.accountNumber,
-  });
+  const GcashSettings({this.qrImageUrl, this.accountName, this.accountNumber});
 
   /// Used when the row is missing or unreadable — screens fall back to
   /// the default account instructions.
@@ -137,8 +133,10 @@ class PaymentService {
 
     // Step 1: Upload the receipt first — if this fails, no payment
     // row is written so nothing is left half-saved.
-    final receiptUrl =
-        await uploadReceipt(orderId: orderId, receiptFile: receiptFile);
+    final receiptUrl = await uploadReceipt(
+      orderId: orderId,
+      receiptFile: receiptFile,
+    );
 
     // Step 2: Transaction number (same generator as cash payments)
     final transactionNumber = await _orderService.generateTransactionNumber();
@@ -232,15 +230,20 @@ class PaymentService {
     }
 
     // Step 5: Mark the order paid immediately (app-side "PAID")
-    await _client.from('orders').update({
-      'payment_status': 'paid',
-      'payment_method': 'gcash',
-      'paid_at': now,
-      'updated_at': now,
-    }).eq('id', orderId);
+    await _client
+        .from('orders')
+        .update({
+          'payment_status': 'paid',
+          'payment_method': 'gcash',
+          'paid_at': now,
+          'updated_at': now,
+        })
+        .eq('id', orderId);
 
-    print('✅ GCash payment recorded: $transactionNumber '
-        '(order $orderId marked paid, pending admin verification)');
+    print(
+      '✅ GCash payment recorded: $transactionNumber '
+      '(order $orderId marked paid, pending admin verification)',
+    );
     await PhotoFileService.deleteTemporary(receiptFile);
     return transactionNumber;
   }
@@ -248,28 +251,49 @@ class PaymentService {
   Future<String> _readReceiptText(File image) async {
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
     try {
-      return (await recognizer.processImage(InputImage.fromFile(image))).text.trim();
+      return (await recognizer.processImage(InputImage.fromFile(image))).text
+          .trim();
     } finally {
       await recognizer.close();
     }
   }
 
   String? _extractReferenceNumber(String text) {
-    final match = RegExp(
-      r'(?:reference\s*(?:no\.?|number|#)?|ref\.?\s*(?:no\.?|number|#)?)\s*[:#-]?\s*([A-Z0-9-]{8,})',
+    final lines = text.split(RegExp(r'[\r\n]+'));
+    final labelPattern = RegExp(
+      r'\b(?:reference|ref\.?)\s*(?:no\.?|number|#)?\s*[:#.-]?\s*(.*)$',
       caseSensitive: false,
-    ).firstMatch(text);
-    return match?.group(1)?.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    );
+    final digitsPattern = RegExp(r'^\s*([0-9][0-9\s-]{7,30})');
+
+    for (var i = 0; i < lines.length; i++) {
+      final label = labelPattern.firstMatch(lines[i]);
+      if (label == null) continue;
+      var value = label.group(1) ?? '';
+      if (value.trim().isEmpty && i + 1 < lines.length) value = lines[i + 1];
+      final digits = digitsPattern
+          .firstMatch(value)
+          ?.group(1)
+          ?.replaceAll(RegExp(r'\D'), '');
+      if (digits != null && digits.length >= 8 && digits.length <= 24)
+        return digits;
+    }
+    return null;
   }
 
   String? _extractReceiptDateTime(String text) {
     final date = RegExp(
-      r'\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{4})\b',
+      r'\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{2,4})\b',
       caseSensitive: false,
     ).firstMatch(text);
-    final time = RegExp(r'\b(?:0?[1-9]|1[0-2]):[0-5]\d\s*(?:AM|PM)\b|\b(?:[01]?\d|2[0-3]):[0-5]\d\b', caseSensitive: false).firstMatch(text);
+    final time = RegExp(
+      r'\b(?:0?[1-9]|1[0-2])[:. ]?[0-5]\d\s*(?:A\.?M\.?|P\.?M\.?)\b|\b(?:[01]?\d|2[0-3])[:.][0-5]\d\b',
+      caseSensitive: false,
+    ).firstMatch(text);
     if (date == null || time == null) return null;
-    return '${date.group(0)} ${time.group(0)}'.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return '${date.group(0)} ${time.group(0)}'
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   /// Upload a receipt image to the 'payment-receipts' bucket and
@@ -299,7 +323,9 @@ class PaymentService {
         '$orderId/${DateTime.now().millisecondsSinceEpoch}.${isPng ? 'png' : 'jpg'}';
 
     try {
-      await _client.storage.from(_receiptBucket).uploadBinary(
+      await _client.storage
+          .from(_receiptBucket)
+          .uploadBinary(
             path,
             bytes,
             fileOptions: FileOptions(

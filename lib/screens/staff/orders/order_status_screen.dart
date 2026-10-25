@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../theme/app_theme.dart';
@@ -1178,18 +1180,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   final url = _currentOrder.laundryPhotoUrls![index];
                   return ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      url,
-                      width: 75,
-                      height: 75,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        width: 75,
-                        height: 75,
-                        color: Colors.grey.shade200,
-                        child: const Icon(Icons.broken_image, size: 24, color: Colors.grey),
-                      ),
-                    ),
+                    child: _buildLaundryPhoto(url),
                   );
                 },
               ),
@@ -1198,6 +1189,67 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildLaundryPhoto(String source) {
+    const photoSize = 75.0;
+    final errorPlaceholder = Container(
+      width: photoSize,
+      height: photoSize,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.broken_image, size: 24, color: Colors.grey),
+    );
+
+    if (source.startsWith('http://') || source.startsWith('https://')) {
+      return Image.network(
+        source,
+        width: photoSize,
+        height: photoSize,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => errorPlaceholder,
+        loadingBuilder: (_, child, progress) => progress == null
+            ? child
+            : Container(
+                width: photoSize,
+                height: photoSize,
+                color: Colors.grey.shade100,
+                alignment: Alignment.center,
+                child: const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+      );
+    }
+
+    if (source.startsWith('data:image') ||
+        (source.length > 100 && !source.startsWith('/') && !source.contains('\\'))) {
+      try {
+        final payload = source.contains(',') ? source.split(',').last : source;
+        return Image.memory(
+          base64Decode(payload.trim()),
+          width: photoSize,
+          height: photoSize,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => errorPlaceholder,
+        );
+      } catch (_) {
+        return errorPlaceholder;
+      }
+    }
+
+    final file = File(source);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: photoSize,
+        height: photoSize,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => errorPlaceholder,
+      );
+    }
+    return errorPlaceholder;
   }
 
   Widget _buildSpecStat({

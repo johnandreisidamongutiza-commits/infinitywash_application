@@ -12,6 +12,7 @@ import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'utils/app_error.dart';
 import 'services/connectivity_service.dart';
+import 'services/auth_service.dart';
 import 'services/push_notification_service.dart';
 import 'widgets/offline_banner.dart';
 import 'services/cache/route_cache_service.dart';
@@ -135,6 +136,7 @@ Future<void> _bootstrap() async {
       url: SupabaseConfig.supabaseUrl,
       anonKey: SupabaseConfig.supabaseAnonKey,
     );
+    AuthService.initializeSessionPersistence();
     // ignore: avoid_print
     print('✅ Supabase initialized successfully');
   } catch (e) {

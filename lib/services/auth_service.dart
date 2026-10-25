@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/app_error.dart';
@@ -10,6 +12,8 @@ import '../models/saved_account.dart';
 import 'legal_service.dart';
 
 class AuthService {
+  static StreamSubscription<AuthState>? _sessionPersistenceSubscription;
+
   final _auth = SupabaseService.client.auth;
   final _secureStorage = SecureStorageService.instance;
   final _savedAccountsDb = SavedAccountsDatabase.instance;
@@ -681,6 +685,39 @@ class AuthService {
   // Listen to auth state changes
   Stream<AuthState> get authStateChanges => _auth.onAuthStateChange;
 
+  /// Keep the app's secure per-account token cache in step with Supabase token
+  /// rotation. Supabase refresh tokens are single-use, so a stale cached token
+  /// cannot restore a session after the SDK has rotated it.
+  static void initializeSessionPersistence() {
+    if (_sessionPersistenceSubscription != null) return;
+    final authService = AuthService();
+    _sessionPersistenceSubscription = authService._auth.onAuthStateChange.listen(
+      (state) {
+        final session = state.session;
+        if (state.event == AuthChangeEvent.tokenRefreshed && session != null) {
+          unawaited(authService._persistRotatedSession(session));
+        }
+      },
+      onError: (Object error) => print('Session cache update failed: $error'),
+    );
+  }
+
+  Future<void> _persistRotatedSession(Session session) async {
+    try {
+      if (await _savedAccountsDb.getAccountById(session.user.id) == null) return;
+      await _secureStorage.saveAuthTokens(
+        userId: session.user.id,
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        expiresAt: session.expiresAt == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000),
+      );
+    } catch (error) {
+      print('Could not update saved session tokens: $error');
+    }
+  }
+
   // ==================== Remember Me Functionality ====================
 
   // Save remember me data (account info + tokens)
@@ -759,33 +796,16 @@ class AuthService {
         return null;
       }
 
-      // Prefer a still-valid access token, but a refresh token can restore an
-      // expired access token. Do not discard a saved account just because its
-      // short-lived access token expired while the app was closed.
-      final hasValidToken = await _secureStorage.isTokenValid(targetUserId);
-      print('🔄 Has valid token: $hasValidToken');
-
-      // Get the access token
-      final accessToken = await _secureStorage.getAccessToken(targetUserId);
-      final refreshToken = await _secureStorage.getRefreshToken(targetUserId);
-
-      print('🔄 Access token present: ${accessToken != null}');
-      print('🔄 Refresh token present: ${refreshToken != null}');
-
-      if (accessToken == null && refreshToken == null) {
-        print('❌ AUTO-LOGIN: No saved session tokens found');
-        await _removeRememberMeData(targetUserId);
-        return null;
-      }
-
-      // Try to restore session with Supabase
-      // Note: Supabase Flutter handles session restoration automatically
-      // We just need to verify the current session is valid
+      // Supabase may already have restored a valid session from its own local
+      // storage. Prefer it over the app's token snapshot, which can lag if the
+      // SDK refreshed the session just before the app was closed.
       final currentSession = _auth.currentSession;
 
-      if (hasValidToken &&
-          currentSession != null &&
-          currentSession.user.id == targetUserId) {
+      if (currentSession != null &&
+          currentSession.user.id == targetUserId &&
+          currentSession.expiresAt != null &&
+          currentSession.expiresAt! >
+              DateTime.now().millisecondsSinceEpoch ~/ 1000) {
         print('✅ AUTO-LOGIN: Session already active');
 
         // Validate account status before allowing access
@@ -799,10 +819,30 @@ class AuthService {
         }
 
         // Session is already active and account is valid
+        await _persistRotatedSession(currentSession);
+        await _secureStorage.saveLastAutoLoginUser(targetUserId);
         await _savedAccountsDb.updateLastLogin(targetUserId);
         // Register push for auto-logged-in users too (fire-and-forget).
         PushNotificationService.instance.initializeForCurrentUser();
         return AuthResponse(user: currentSession.user, session: currentSession);
+      }
+
+      // Prefer a still-valid access token, but a refresh token can restore an
+      // expired access token. Do not discard a saved account just because its
+      // short-lived access token expired while the app was closed.
+      final accessToken = await _secureStorage.getAccessToken(targetUserId);
+      final cachedRefreshToken = await _secureStorage.getRefreshToken(targetUserId);
+      final refreshToken = currentSession?.user.id == targetUserId
+          ? currentSession!.refreshToken
+          : cachedRefreshToken;
+
+      print('🔄 Access token present: ${accessToken != null}');
+      print('🔄 Refresh token present: ${refreshToken != null}');
+
+      if (accessToken == null && refreshToken == null) {
+        print('❌ AUTO-LOGIN: No saved session tokens found');
+        await _removeRememberMeData(targetUserId);
+        return null;
       }
 
       // If we have a refresh token, try to refresh the session
@@ -812,6 +852,10 @@ class AuthService {
           final response = await _auth.refreshSession(refreshToken);
           if (response.session != null) {
             print('✅ AUTO-LOGIN: Session refreshed successfully');
+
+            // Save the rotated refresh token immediately: Supabase refresh
+            // tokens are single-use, even if a later role check fails.
+            await _persistRotatedSession(response.session!);
 
             // Validate account status before allowing access
             try {
@@ -835,6 +879,7 @@ class AuthService {
                   : null,
             );
 
+            await _secureStorage.saveLastAutoLoginUser(targetUserId);
             await _savedAccountsDb.updateLastLogin(targetUserId);
             // Register push for auto-logged-in users too (fire-and-forget).
             PushNotificationService.instance.initializeForCurrentUser();

@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/feedback_service.dart';
 import '../../../services/customer_service.dart';
 import '../../../services/order_service.dart';
+import '../../../services/payment_service.dart';
 import '../../../services/arrival_proof_service.dart';
 import '../../../widgets/star_rating.dart';
 import '../../../widgets/order_timeline_view.dart';
+import '../../shared/gcash_qr_payment_screen.dart';
 import 'request_service_flow.dart';
 import '../chats/customer_chat_detail_screen.dart';
 import '../delivery/order_delivery_tracking_screen.dart';
@@ -186,6 +189,103 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
     } finally {
       if (mounted) setState(() => _isLoadingArrivalProofs = false);
     }
+  }
+
+  Future<void> _showPaymentOptions(LaundryOrder order) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Choose how to pay', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              Text('Total: ₱${(order.totalAmount ?? 0).toStringAsFixed(2)}', style: const TextStyle(color: AppTheme.textLight)),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _payOrderWithGcash(order);
+                },
+                icon: const Icon(Icons.qr_code_2),
+                label: const Text('Pay with GCash'),
+                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _showCashPaymentInstructions();
+                },
+                icon: const Icon(Icons.payments_outlined),
+                label: const Text('Pay with cash'),
+                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _payOrderWithGcash(LaundryOrder order) async {
+    final amount = order.totalAmount ?? 0;
+    final receipt = await Navigator.push<File>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GcashQrPaymentScreen(
+          title: 'Pay with GCash',
+          orderLabel: order.displayNumber,
+          amount: amount,
+          customerName: order.customerName,
+        ),
+      ),
+    );
+    if (receipt == null || !mounted) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(children: [CircularProgressIndicator(), SizedBox(width: 16), Text('Uploading receipt...')]),
+      ),
+    );
+    try {
+      await PaymentService().submitGcashPayment(
+        orderId: order.id,
+        amount: amount,
+        receiptFile: receipt,
+      );
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GCash receipt submitted for verification.')),
+      );
+      await _refreshOrder();
+    } catch (error) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not submit payment. ${mapErrorToMessage(error)}')),
+      );
+    }
+  }
+
+  Future<void> _showCashPaymentInstructions() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Pay with cash'),
+        content: const Text('Please give the cash payment to the rider or staff. They will confirm it in the system, and your order will show as paid after confirmation.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Got it')),
+        ],
+      ),
+    );
   }
 
   void _showArrivalProof(ArrivalProof proof) {
@@ -703,6 +803,24 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
               ],
             ),
           ),
+          if (order.status == OrderStatus.processing &&
+              order.paymentStatus == PaymentStatus.unpaid) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _showPaymentOptions(order),
+                icon: const Icon(Icons.payment),
+                label: const Text('Pay for laundry'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentBlue,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

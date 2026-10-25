@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/profile_service.dart';
-import '../../../services/auth_service.dart';
 import '../../../services/push_notification_service.dart';
 import '../../../widgets/editable_profile_avatar.dart';
-import '../../login_screen.dart';
+import '../../saved_accounts_screen.dart';
 import 'options/account_details_screen.dart';
 import 'options/change_password_screen.dart';
 
@@ -17,7 +16,6 @@ class RiderProfileScreen extends StatefulWidget {
 
 class _RiderProfileScreenState extends State<RiderProfileScreen> {
   final _profileService = ProfileService();
-  final _authService = AuthService();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -113,12 +111,14 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () {
-                // Drop this device's push token before signing out.
+                // The saved account relies on this refresh token. Calling
+                // Supabase signOut revokes it, so leave the local session
+                // restorable and return to the account chooser.
                 PushNotificationService.instance.unregisterCurrentUser();
-                _authService.signOut();
+                if (!context.mounted) return;
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  MaterialPageRoute(builder: (context) => const SavedAccountsScreen()),
                   (route) => false,
                 );
               },

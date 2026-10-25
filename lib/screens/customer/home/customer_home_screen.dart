@@ -36,6 +36,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   // Recent activity state
   bool _loadingRecentOrders = false;
   List<LaundryOrder> _recentOrders = [];
+  String? _selectedMonitorOrderId;
 
   @override
   void initState() {
@@ -91,6 +92,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       
       setState(() {
         _recentOrders = orders; // Full list for active order detection; recent activity uses .take(3)
+        if (!_monitorableOrders.any((order) => order.id == _selectedMonitorOrderId)) {
+          _selectedMonitorOrderId = null;
+        }
         _loadingRecentOrders = false;
       });
       debugPrint('✅ Loaded ${orders.length} recent orders for home screen');
@@ -164,9 +168,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   // ── Active order helpers ──────────────────────────────────────────
 
+  List<LaundryOrder> get _monitorableOrders => _recentOrders.where((order) =>
+      order.status != OrderStatus.completed &&
+      order.status != OrderStatus.cancelled &&
+      order.status != OrderStatus.rejected).toList();
+
   /// Find the most relevant active order from loaded orders.
   /// Priority: in-progress statuses first, then pending requests.
   LaundryOrder? get _activeOrder {
+    for (final order in _monitorableOrders) {
+      if (order.id == _selectedMonitorOrderId) return order;
+    }
+
     // Priority 1: actively in-progress orders
     const inProgressStatuses = [
       OrderStatus.processing,
@@ -181,7 +194,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     for (final order in _recentOrders) {
       if (order.status == OrderStatus.pending_approval) return order;
     }
-    return null;
+    return _monitorableOrders.isEmpty ? null : _monitorableOrders.first;
   }
 
   /// Status-specific display title for the active order card.
@@ -302,24 +315,66 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   /// Content when there IS an active order.
   Widget _buildActiveOrderContent(LaundryOrder order) {
     final status = order.status;
+    final monitorableOrders = _monitorableOrders;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Active Order',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            Text(
-              order.displayNumber,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+            const Expanded(
+              child: Row(
+                children: [
+                  Icon(Icons.track_changes_rounded, color: Colors.white, size: 18),
+                  SizedBox(width: 7),
+                  Flexible(
+                    child: Text(
+                      'Active Order Monitoring',
+                      style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
+            if (monitorableOrders.length > 1) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: order.id,
+                    dropdownColor: AppTheme.accentBlue,
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                    isDense: true,
+                    items: monitorableOrders.map((item) => DropdownMenuItem<String>(
+                      value: item.id,
+                      child: Text(item.displayNumber, overflow: TextOverflow.ellipsis),
+                    )).toList(),
+                    onChanged: (orderId) {
+                      if (orderId != null) setState(() => _selectedMonitorOrderId = orderId);
+                    },
+                  ),
+                ),
+              ),
+            ] else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  order.displayNumber,
+                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                ),
+              ),
           ],
         ),
         const SizedBox(height: 12),

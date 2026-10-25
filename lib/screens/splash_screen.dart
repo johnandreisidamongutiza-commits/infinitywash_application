@@ -3,6 +3,10 @@ import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import 'saved_accounts_screen.dart';
+import 'customer/customer_main_screen.dart';
+import 'customer/google_profile_completion_screen.dart';
+import 'rider/rider_main_screen.dart';
+import 'staff/staff_main_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -45,17 +49,37 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   Future<void> _checkAutoLogin() async {
     try {
-      // Add a small delay for better UX
       await Future.delayed(const Duration(milliseconds: 800));
 
       setState(() => _statusMessage = 'Checking saved accounts...');
       final accounts = await _authService.getSavedAccounts();
       if (!mounted) return;
       if (accounts.isNotEmpty) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const SavedAccountsScreen()),
-        );
+        final response = await _authService.tryAutoLogin();
+        if (!mounted) return;
+        final user = response?.user;
+        if (user != null) {
+          final role = await _authService.getUserRole();
+          if (!mounted) return;
+          if (role == 'customer') {
+            if (!await _authService.isCustomerProfileComplete()) {
+              _replaceWith(const GoogleProfileCompletionScreen());
+            } else {
+              _replaceWith(const CustomerMainScreen());
+            }
+            return;
+          }
+          if (role == 'staff') {
+            _replaceWith(const StaffMainScreen());
+            return;
+          }
+          if (role == 'rider') {
+            _replaceWith(const RiderMainScreen());
+            return;
+          }
+          await _authService.signOut();
+        }
+        _replaceWith(const SavedAccountsScreen());
         return;
       }
 
@@ -80,6 +104,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         MaterialPageRoute(builder: (context) => const LoginScreen()),
       );
     }
+  }
+
+  void _replaceWith(Widget screen) {
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
+      (_) => false,
+    );
   }
 
   @override
