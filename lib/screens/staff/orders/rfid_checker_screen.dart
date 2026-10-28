@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../utils/input_formatters.dart';
@@ -15,6 +17,7 @@ class RfidCheckerScreen extends StatefulWidget {
 class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
   final TextEditingController _manualTagController = TextEditingController();
   final LoyaltyService _loyaltyService = LoyaltyService();
+  RealtimeChannel? _scanChannel;
 
   String? _scannedUid;
   LoyaltyCardInfo? _cardInfo;
@@ -30,6 +33,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
   @override
   void initState() {
     super.initState();
+    _subscribeToLiveRfidScans();
     if (widget.initialTag != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _scanCard(widget.initialTag!);
@@ -37,8 +41,31 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
     }
   }
 
+  void _subscribeToLiveRfidScans() {
+    try {
+      _scanChannel = Supabase.instance.client
+          .channel('public:scanned_rfid_events')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'scanned_rfid_events',
+            callback: (payload) {
+              final newRecord = payload.newRecord;
+              final uid = newRecord['uid'] as String?;
+              if (uid != null && uid.trim().isNotEmpty && mounted) {
+                _scanCard(uid);
+              }
+            },
+          )
+          .subscribe();
+    } catch (e) {
+      debugPrint('Error subscribing to RFID live scans: $e');
+    }
+  }
+
   @override
   void dispose() {
+    _scanChannel?.unsubscribe();
     _manualTagController.dispose();
     _searchController.dispose();
     super.dispose();
