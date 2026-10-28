@@ -236,10 +236,32 @@ class LoyaltyService {
 
   /// Award points to a card when an order is completed.
   /// 1 load = 1 point.
+    /// Resolve profile_id for a given customerId (needed because loyalty_points_history.customer_id FK references profiles.id).
+  Future<String?> _resolveProfileId(String? customerId) async {
+    if (customerId == null) return null;
+    try {
+      final cust = await _client
+          .from('customers')
+          .select('profile_id')
+          .eq('id', customerId)
+          .maybeSingle();
+      if (cust != null && cust['profile_id'] != null) {
+        return cust['profile_id'] as String?;
+      }
+      final prof = await _client
+          .from('profiles')
+          .select('id')
+          .eq('id', customerId)
+          .maybeSingle();
+      if (prof != null) return customerId;
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> awardPoints({
     required String cardId,
     required String? customerId,
-    required String orderId,
+    String? orderId,
     required int loadsCompleted,
     String? orderNumber,
   }) async {
@@ -270,9 +292,11 @@ class LoyaltyService {
           .eq('id', cardId);
 
       // 3. Log history entry
+      final profileId = await _resolveProfileId(customerId);
+
       await _client.from('loyalty_points_history').insert({
         'card_id': cardId,
-        'customer_id': customerId,
+        'customer_id': profileId,
         'order_id': orderId,
         'transaction_type': 'earned',
         'points': loadsCompleted,
@@ -296,7 +320,7 @@ class LoyaltyService {
     required String cardId,
     required String? customerId,
     required int freeLoadsToRedeem,
-    required String orderId,
+    String? orderId,
     String? orderNumber,
   }) async {
     const int pointsPerLoad = 10;
@@ -333,9 +357,11 @@ class LoyaltyService {
           .eq('id', cardId);
 
       // 3. Log history entry
+      final profileId = await _resolveProfileId(customerId);
+
       await _client.from('loyalty_points_history').insert({
         'card_id': cardId,
-        'customer_id': customerId,
+        'customer_id': profileId,
         'order_id': orderId,
         'transaction_type': 'redeemed',
         'points': -pointsToDeduct,
@@ -480,7 +506,7 @@ class LoyaltyService {
           .from('vw_rfid_loyalty_cards')
           .select()
           .eq('customer_id', customerId)
-          .eq('status', 'active')
+          .eq('card_status', 'active')
           .maybeSingle();
 
       if (response == null) {

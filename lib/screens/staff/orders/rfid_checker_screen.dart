@@ -1255,16 +1255,36 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                   const Text('Cancel', style: TextStyle(color: AppTheme.textLight)),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        '✅ Redemption noted: $loadsToRedeem free load(s) for ${card.ownerName}. Apply discount when processing order.'),
-                    backgroundColor: Colors.green,
-                    duration: const Duration(seconds: 5),
-                  ),
-                );
+                try {
+                  final discount = await _loyaltyService.redeemPoints(
+                    cardId: card.cardId,
+                    customerId: card.customerId,
+                    freeLoadsToRedeem: loadsToRedeem,
+                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            '🎉 Successfully redeemed $loadsToRedeem free load(s) for ${card.ownerName}! ₱${discount.toStringAsFixed(0)} saved.'),
+                        backgroundColor: Colors.green,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                    _scanCard(card.uid);
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('❌ Redemption failed: $e'),
+                        backgroundColor: AppTheme.errorRed,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.amber.shade700,
