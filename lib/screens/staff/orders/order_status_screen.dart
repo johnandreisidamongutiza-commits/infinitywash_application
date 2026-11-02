@@ -316,7 +316,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 26),
             SizedBox(width: 8),
-            Text('Complete Pickup Manually?'),
+            Expanded(child: Text('Complete Pickup Manually?', style: TextStyle(fontSize: 18))),
           ],
         ),
         content: Column(
@@ -412,7 +412,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.purple, size: 26),
             SizedBox(width: 8),
-            Text('Complete Delivery Manually?'),
+            Expanded(child: Text('Complete Delivery Manually?', style: TextStyle(fontSize: 18))),
           ],
         ),
         content: Column(
