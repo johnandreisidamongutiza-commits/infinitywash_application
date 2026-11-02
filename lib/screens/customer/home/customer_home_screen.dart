@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../theme/app_theme.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/service_request_service.dart';
@@ -32,7 +33,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   int _unreadNotificationsCount = 0;
   String? _avatarUrl;
   String? _localAvatarPath;
-  
+
   // Recent activity state
   bool _loadingRecentOrders = false;
   List<LaundryOrder> _recentOrders = [];
@@ -85,14 +86,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
     try {
       // Get authenticated customer ID
-      final customerId = await _customerService.getCurrentAuthenticatedCustomerId();
-      
+      final customerId = await _customerService
+          .getCurrentAuthenticatedCustomerId();
+
       // Fetch orders for this customer
-      final orders = await _serviceRequestService.getOrdersByCustomerId(customerId);
-      
+      final orders = await _serviceRequestService.getOrdersByCustomerId(
+        customerId,
+      );
+
       setState(() {
         _recentOrders = orders; // Full list for active order detection; recent activity uses .take(3)
-        if (!_monitorableOrders.any((order) => order.id == _selectedMonitorOrderId)) {
+        if (!_monitorableOrders.any(
+          (order) => order.id == _selectedMonitorOrderId,
+        )) {
           _selectedMonitorOrderId = null;
         }
         _loadingRecentOrders = false;
@@ -168,10 +174,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   // ── Active order helpers ──────────────────────────────────────────
 
-  List<LaundryOrder> get _monitorableOrders => _recentOrders.where((order) =>
-      order.status != OrderStatus.completed &&
-      order.status != OrderStatus.cancelled &&
-      order.status != OrderStatus.rejected).toList();
+  List<LaundryOrder> get _monitorableOrders => _recentOrders
+      .where(
+        (order) =>
+            order.status != OrderStatus.completed &&
+            order.status != OrderStatus.cancelled &&
+            order.status != OrderStatus.rejected,
+      )
+      .toList();
 
   /// Find the most relevant active order from loaded orders.
   /// Priority: in-progress statuses first, then pending requests.
@@ -278,7 +288,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           await Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => CustomerOrderDetailsScreen(order: activeOrder),
+              builder: (context) =>
+                  CustomerOrderDetailsScreen(order: activeOrder),
             ),
           );
           _loadRecentOrders();
@@ -325,12 +336,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             const Expanded(
               child: Row(
                 children: [
-                  Icon(Icons.track_changes_rounded, color: Colors.white, size: 18),
+                  Icon(
+                    Icons.track_changes_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                   SizedBox(width: 7),
                   Flexible(
                     child: Text(
                       'Active Order Monitoring',
-                      style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -344,35 +363,60 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.55),
+                  ),
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     value: order.id,
                     dropdownColor: AppTheme.accentBlue,
-                    icon: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                    icon: const Icon(
+                      Icons.arrow_drop_down,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
                     isDense: true,
-                    items: monitorableOrders.map((item) => DropdownMenuItem<String>(
-                      value: item.id,
-                      child: Text(item.displayNumber, overflow: TextOverflow.ellipsis),
-                    )).toList(),
+                    items: monitorableOrders
+                        .map(
+                          (item) => DropdownMenuItem<String>(
+                            value: item.id,
+                            child: Text(
+                              item.displayNumber,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
                     onChanged: (orderId) {
-                      if (orderId != null) setState(() => _selectedMonitorOrderId = orderId);
+                      if (orderId != null)
+                        setState(() => _selectedMonitorOrderId = orderId);
                     },
                   ),
                 ),
               ),
             ] else
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   order.displayNumber,
-                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
           ],
@@ -449,7 +493,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 color: Colors.white.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_circle_outline, color: Colors.white),
+              child: const Icon(
+                Icons.check_circle_outline,
+                color: Colors.white,
+              ),
             ),
           ],
         ),
@@ -502,7 +549,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 onTap: () async {
                   final result = await Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
+                    MaterialPageRoute(
+                      builder: (context) => const RequestServiceFlow(),
+                    ),
                   );
                   // Refresh recent orders after creating a new request
                   if (result == true) {
@@ -519,13 +568,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 AppTheme.teamMemberOrange,
                 AppTheme.teamMemberIconOrange,
                 onTap: () {
-                  final activeOrder = _recentOrders.cast<LaundryOrder?>().firstWhere(
-                    (o) =>
-                        o != null &&
-                        (o.status == OrderStatus.out_for_delivery ||
-                            o.status == OrderStatus.pending_pickup),
-                    orElse: () => null,
-                  );
+                  final activeOrder = _recentOrders
+                      .cast<LaundryOrder?>()
+                      .firstWhere(
+                        (o) =>
+                            o != null &&
+                            (o.status == OrderStatus.out_for_delivery ||
+                                o.status == OrderStatus.pending_pickup),
+                        orElse: () => null,
+                      );
                   if (activeOrder != null) {
                     Navigator.push(
                       context,
@@ -552,7 +603,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  Widget _buildActionCard(String title, IconData icon, Color bgColor, Color iconColor, {required VoidCallback onTap}) {
+  Widget _buildActionCard(
+    String title,
+    IconData icon,
+    Color bgColor,
+    Color iconColor, {
+    required VoidCallback onTap,
+  }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -567,11 +624,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  shape: BoxShape.circle,
+                ),
                 child: Icon(icon, color: iconColor, size: 28),
               ),
               const SizedBox(height: 12),
-              Text(title, style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 14)),
+              Text(
+                title,
+                style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                  fontSize: 14,
+                ),
+              ),
             ],
           ),
         ),
@@ -586,24 +651,35 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Recent Activity', style: AppTheme.lightTheme.textTheme.titleMedium),
+            Text(
+              'Recent Activity',
+              style: AppTheme.lightTheme.textTheme.titleMedium,
+            ),
             TextButton(
               onPressed: () async {
                 final result = await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const CustomerOrdersScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const CustomerOrdersScreen(),
+                  ),
                 );
                 // Refresh recent orders when returning from orders screen
                 if (result == true) {
                   _loadRecentOrders();
                 }
               },
-              child: const Text('View All', style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold)),
+              child: const Text(
+                'View All',
+                style: TextStyle(
+                  color: AppTheme.accentBlue,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        
+
         // Loading state
         if (_loadingRecentOrders)
           Container(
@@ -616,12 +692,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 12),
-                  Text('Loading recent orders...', style: TextStyle(color: AppTheme.textLight, fontSize: 12)),
+                  Text(
+                    'Loading recent orders...',
+                    style: TextStyle(color: AppTheme.textLight, fontSize: 12),
+                  ),
                 ],
               ),
             ),
           )
-        
         // No recent orders
         else if (_recentOrders.isEmpty)
           Material(
@@ -630,7 +708,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               onTap: () async {
                 final result = await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
+                  MaterialPageRoute(
+                    builder: (context) => const RequestServiceFlow(),
+                  ),
                 );
                 // Refresh recent orders after creating a new request
                 if (result == true) {
@@ -640,7 +720,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               borderRadius: BorderRadius.circular(20),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 28,
+                  horizontal: 20,
+                ),
                 decoration: AppStyles.cardDecoration,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -678,11 +761,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ),
           )
-        
         // Recent orders list
         else
           Column(
-            children: _recentOrders.take(3).map((order) => _buildRecentOrderCard(order)).toList(),
+            children: _recentOrders
+                .take(3)
+                .map((order) => _buildRecentOrderCard(order))
+                .toList(),
           ),
       ],
     );
@@ -701,7 +786,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           onTap: () async {
             final result = await Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const CustomerOrdersScreen()),
+              MaterialPageRoute(
+                builder: (context) => const CustomerOrdersScreen(),
+              ),
             );
             if (result == true) {
               _loadRecentOrders();
@@ -720,10 +807,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: _getStatusColor(order.status).withValues(alpha: 0.1),
+                        color: _getStatusColor(order.status)
+                            .withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(_getStatusIcon(order.status), color: _getStatusColor(order.status), size: 22),
+                      child: Icon(
+                        _getStatusIcon(order.status),
+                        color: _getStatusColor(order.status),
+                        size: 22,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -732,12 +824,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         children: [
                           Text(
                             order.displayNumber,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textDark),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: AppTheme.textDark,
+                            ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             _formatOrderSubtitle(order),
-                            style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textLight,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
@@ -745,45 +844,75 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: _getStatusColor(order.status).withValues(alpha: 0.1),
+                        color: _getStatusColor(order.status)
+                            .withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(_getStatusIcon(order.status), size: 12, color: _getStatusColor(order.status)),
+                          Icon(
+                            _getStatusIcon(order.status),
+                            size: 12,
+                            color: _getStatusColor(order.status),
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             _getStatusText(order.status),
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _getStatusColor(order.status)),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: _getStatusColor(order.status),
+                            ),
                           ),
                         ],
                       ),
                     ),
                   ],
                 ),
-                
+
                 // Show additional details for service requests
-                if (hasDescription || order.laundryPhotoUrls?.isNotEmpty == true) ...[
+                if (hasDescription ||
+                    order.laundryPhotoUrls?.isNotEmpty == true) ...[
                   const Divider(height: 20),
                   Row(
                     children: [
                       if (order.laundryPhotoUrls?.isNotEmpty == true) ...[
-                        const Icon(Icons.photo_camera_outlined, size: 15, color: AppTheme.textLight),
+                        const Icon(
+                          Icons.photo_camera_outlined,
+                          size: 15,
+                          color: AppTheme.textLight,
+                        ),
                         const SizedBox(width: 4),
-                        Text('${order.laundryPhotoUrls!.length} photo${order.laundryPhotoUrls!.length > 1 ? 's' : ''}', 
-                             style: const TextStyle(fontSize: 12, color: AppTheme.textDark, fontWeight: FontWeight.w600)),
+                        Text(
+                          '${order.laundryPhotoUrls!.length} photo${order.laundryPhotoUrls!.length > 1 ? 's' : ''}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textDark,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const SizedBox(width: 12),
                       ],
                       if (hasDescription) ...[
-                        const Icon(Icons.description_outlined, size: 15, color: AppTheme.textLight),
+                        const Icon(
+                          Icons.description_outlined,
+                          size: 15,
+                          color: AppTheme.textLight,
+                        ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             description,
-                            style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textLight,
+                            ),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
@@ -808,8 +937,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   /// Format date for display
   String _formatDate(DateTime date) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${months[date.month - 1]} ${date.day.toString().padLeft(2, '0')}, ${date.year}';
   }
 

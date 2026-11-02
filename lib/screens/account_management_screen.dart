@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../models/saved_account.dart';
@@ -11,7 +12,8 @@ class AccountManagementScreen extends StatefulWidget {
   const AccountManagementScreen({super.key});
 
   @override
-  State<AccountManagementScreen> createState() => _AccountManagementScreenState();
+  State<AccountManagementScreen> createState() =>
+      _AccountManagementScreenState();
 }
 
 class _AccountManagementScreenState extends State<AccountManagementScreen> {
@@ -28,13 +30,13 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    
+
     try {
       final currentUser = _authService.getCurrentUser();
       _currentUserId = currentUser?.id;
-      
+
       final accounts = await _authService.getSavedAccounts();
-      
+
       setState(() {
         _savedAccounts = accounts;
         _isLoading = false;
@@ -51,9 +53,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Switch Account'),
-        content: Text(
-          'Switch to ${account.displayName} (${account.email})?',
-        ),
+        content: Text('Switch to ${account.displayName} (${account.email})?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -83,7 +83,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         if (role == null) {
           if (mounted) {
             setState(() => _isLoading = false);
-            _showMessage('Could not verify account access. Please log in again.');
+            _showMessage(
+              'Could not verify account access. Please log in again.',
+            );
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -103,7 +105,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         if (maybeDestination == null) {
           if (mounted) {
             setState(() => _isLoading = false);
-            _showMessage('This account type is not supported in the app yet. Please contact support.');
+            _showMessage(
+              'This account type is not supported in the app yet. Please contact support.',
+            );
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -157,9 +161,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Remove'),
           ),
         ],
@@ -219,9 +221,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Clear All'),
           ),
         ],
@@ -253,9 +253,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -278,8 +277,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _savedAccounts.isEmpty
-              ? _buildEmptyState()
-              : _buildAccountList(),
+          ? _buildEmptyState()
+          : _buildAccountList(),
     );
   }
 
@@ -338,7 +337,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
 
   Widget _buildAccountCard(SavedAccount account) {
     final isCurrentUser = account.id == _currentUserId;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -347,7 +346,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
           width: isCurrentUser ? 2 : 1,
         ),
         borderRadius: BorderRadius.circular(12),
-        color: isCurrentUser ? AppTheme.accentBlue.withValues(alpha: 0.05) : Colors.white,
+        color: isCurrentUser
+            ? AppTheme.accentBlue.withValues(alpha: 0.05)
+            : Colors.white,
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.all(12),
@@ -398,26 +399,16 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
             const SizedBox(height: 4),
             Text(
               account.email,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[700],
-              ),
+              style: TextStyle(fontSize: 13, color: Colors.grey[700]),
             ),
             const SizedBox(height: 4),
             Row(
               children: [
-                Icon(
-                  Icons.access_time,
-                  size: 14,
-                  color: Colors.grey[600],
-                ),
+                Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
                 const SizedBox(width: 4),
                 Text(
                   _formatLastLogin(account.lastLoginDate),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
               ],
             ),
