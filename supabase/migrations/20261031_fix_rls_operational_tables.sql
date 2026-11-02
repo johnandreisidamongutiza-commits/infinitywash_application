@@ -264,16 +264,23 @@ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'payments') THEN
     EXECUTE 'ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY';
     EXECUTE 'DROP POLICY IF EXISTS "payments_staff_admin_all" ON public.payments';
-    EXECUTE 'DROP POLICY IF EXISTS "payments_customer_select" ON public.payments';
     EXECUTE 'DROP POLICY IF EXISTS "payments_rider_select" ON public.payments';
+    EXECUTE 'DROP POLICY IF EXISTS "payments_rider_all" ON public.payments';
+    EXECUTE 'DROP POLICY IF EXISTS "payments_customer_select" ON public.payments';
+    EXECUTE 'DROP POLICY IF EXISTS "payments_customer_all" ON public.payments';
 
     EXECUTE 'CREATE POLICY "payments_staff_admin_all"
       ON public.payments FOR ALL TO authenticated
       USING (public.is_staff_or_admin())
       WITH CHECK (public.is_staff_or_admin())';
 
-    EXECUTE 'CREATE POLICY "payments_customer_select"
-      ON public.payments FOR SELECT TO authenticated
+    EXECUTE 'CREATE POLICY "payments_rider_all"
+      ON public.payments FOR ALL TO authenticated
+      USING (public.is_rider())
+      WITH CHECK (public.is_rider())';
+
+    EXECUTE 'CREATE POLICY "payments_customer_all"
+      ON public.payments FOR ALL TO authenticated
       USING (
         EXISTS (
           SELECT 1 FROM public.orders o
@@ -281,11 +288,15 @@ BEGIN
           WHERE o.id = payments.order_id
             AND c.profile_id = public.get_auth_profile_id()
         )
+      )
+      WITH CHECK (
+        EXISTS (
+          SELECT 1 FROM public.orders o
+          JOIN public.customers c ON c.id = o.customer_id
+          WHERE o.id = payments.order_id
+            AND c.profile_id = public.get_auth_profile_id()
+        )
       )';
-
-    EXECUTE 'CREATE POLICY "payments_rider_select"
-      ON public.payments FOR SELECT TO authenticated
-      USING (public.is_rider())';
   END IF;
 
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'gcash_receipt_submissions') THEN
