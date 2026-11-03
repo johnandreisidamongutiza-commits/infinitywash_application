@@ -470,7 +470,7 @@ class _RiderRouteMapScreenState extends State<RiderRouteMapScreen> {
                             PhoneHelper.openDialer(
                               context,
                               phone: (phone.isNotEmpty && phone != 'No phone') ? phone : null,
-                              contactName: stop['customer'] as String?,
+                              contactName: (stop['name'] ?? stop['customer']) as String?,
                             );
                           },
                           icon: const Icon(Icons.phone_outlined, size: 16),

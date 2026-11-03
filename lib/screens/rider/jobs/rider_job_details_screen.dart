@@ -13,6 +13,7 @@ import '../../../widgets/cached_tile_provider.dart';
 import '../../../widgets/address_input_widget.dart';
 import '../route/rider_active_route_screen.dart';
 import '../chats/rider_chat_detail_screen.dart';
+import '../../../utils/phone_helper.dart';
 
 /// Details screen for a specific dispatch job
 /// Shows job information, location on map, and action buttons with a modern card-based theme
@@ -290,13 +291,17 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
               title: const Text('Phone Call', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
               subtitle: Text(phone, style: const TextStyle(fontSize: 13, color: AppTheme.textLight)),
               trailing: IconButton(
-                icon: const Icon(Icons.copy, size: 18, color: AppTheme.accentBlue),
-                tooltip: 'Copy Phone',
+                icon: const Icon(Icons.phone, size: 18, color: AppTheme.accentBlue),
+                tooltip: 'Call $name',
                 onPressed: () {
                   Navigator.pop(context);
-                  _copyToClipboard(phone, 'Phone number copied');
+                  PhoneHelper.openDialer(context, phone: phone, contactName: name);
                 },
               ),
+              onTap: () {
+                Navigator.pop(context);
+                PhoneHelper.openDialer(context, phone: phone, contactName: name);
+              },
             ),
             const Divider(height: 12),
             ListTile(
