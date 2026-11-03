@@ -238,7 +238,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   Widget _buildHeader() {
     return HomeHeader(
       title: 'Hi, Rider!',
-      subtitle: 'Ready for today\'s deliveries? 🛵',
+      subtitle: 'Ready for today\'s deliveries?',
       avatarUrl: _avatarUrl,
       localAvatarPath: _localAvatarPath,
       unreadCount: _unreadCount,

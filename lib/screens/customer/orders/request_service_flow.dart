@@ -564,7 +564,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Show Us Your Laundry 📸',
+              'Show Us Your Laundry',
               style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(fontSize: 22),
             ),
             const SizedBox(height: 8),

@@ -414,7 +414,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    '⚠️ You have $_resendAttemptsLeft resend${_resendAttemptsLeft == 1 ? '' : 's'} remaining',
+                    'You have $_resendAttemptsLeft resend${_resendAttemptsLeft == 1 ? '' : 's'} remaining',
                     style: const TextStyle(fontSize: 12, color: Colors.orange),
                   ),
                 ),

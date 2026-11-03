@@ -89,7 +89,7 @@ class FirebaseChatService {
             'role:staff': LocationConstants.shopPhone,
           },
           'last_message':
-              'Hello! Welcome to InfinityWash Support. 🫧 How can we assist you?',
+              'Hello! Welcome to InfinityWash Support. How can we assist you?',
           'last_sender_id': 'role:staff',
           'last_sender_name': 'InfinityWash Support',
           'last_timestamp': now,
@@ -109,7 +109,7 @@ class FirebaseChatService {
           'sender_name': 'InfinityWash Support',
           'sender_role': 'staff',
           'text':
-              'Hello! Welcome to InfinityWash Support. 🫧 How can we assist you today?',
+              'Hello! Welcome to InfinityWash Support. How can we assist you today?',
           'timestamp': now,
           'is_read': true,
         });

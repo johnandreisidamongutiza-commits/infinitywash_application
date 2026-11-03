@@ -171,7 +171,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   Widget _buildHeader(BuildContext context) {
     return HomeHeader(
       title: 'Hi, Staff!',
-      subtitle: 'Let\'s keep things moving today. ✨',
+      subtitle: 'Let\'s keep things moving today.',
       avatarUrl: _avatarUrl,
       localAvatarPath: _localAvatarPath,
       unreadCount: _unreadNotificationCount,
@@ -584,7 +584,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                 Icon(Icons.local_laundry_service_outlined, size: 48, color: AppTheme.textLight.withValues(alpha: 0.3)),
                 const SizedBox(height: 12),
                 Text(
-                  'No laundry in the machines right now 🧺',
+                  'No laundry in the machines right now',
                   textAlign: TextAlign.center,
                   style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                     color: AppTheme.textLight.withValues(alpha: 0.6),

@@ -416,7 +416,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Thank you for your feedback! 🎉'),
+            content: Text('Thank you for your feedback!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -927,12 +927,9 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Text(
-                '💬',
-                style: TextStyle(fontSize: 20),
-              ),
+              Icon(Icons.rate_review_outlined, color: AppTheme.accentBlue, size: 20),
               SizedBox(width: 8),
               Text(
                 'Rate Your Experience',

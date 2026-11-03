@@ -358,7 +358,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                                             const Icon(Icons.check_circle, color: Colors.white),
                                             const SizedBox(width: 8),
                                             Expanded(
-                                              child: Text('🎉 Loyalty Card linked to $fullName!'),
+                                              child: Text('Loyalty Card linked to $fullName!'),
                                             ),
                                           ],
                                         ),
@@ -495,7 +495,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
               const Icon(Icons.check_circle, color: Colors.white),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('🎉 Loyalty Card linked to $name!'),
+                child: Text('Loyalty Card linked to $name!'),
               ),
             ],
           ),
@@ -946,7 +946,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
               // Points balance big display
               Row(
                 children: [
-                  const Text('⭐', style: TextStyle(fontSize: 28)),
+                  Icon(Icons.stars_rounded, color: Colors.amber, size: 28),
                   const SizedBox(width: 8),
                   Text(
                     '${card.pointsBalance}',
@@ -1174,7 +1174,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
           const SizedBox(height: 6),
           Text(
             fraction >= 1.0 || progress == 0 && card.pointsBalance > 0
-                ? '🎉 Ready to redeem a free load!'
+                ? 'Ready to redeem a free load!'
                 : '${10 - progress} more load${10 - progress > 1 ? 's' : ''} to earn a free load',
             style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
           ),
@@ -1267,7 +1267,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                            '🎉 Successfully redeemed $loadsToRedeem free load(s) for ${card.ownerName}! ₱${discount.toStringAsFixed(0)} saved.'),
+                            'Successfully redeemed $loadsToRedeem free load(s) for ${card.ownerName}! ₱${discount.toStringAsFixed(0)} saved.'),
                         backgroundColor: Colors.green,
                         duration: const Duration(seconds: 4),
                       ),
@@ -1278,7 +1278,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('❌ Redemption failed: $e'),
+                        content: Text('Redemption failed: $e'),
                         backgroundColor: AppTheme.errorRed,
                         duration: const Duration(seconds: 4),
                       ),

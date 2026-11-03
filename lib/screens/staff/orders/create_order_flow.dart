@@ -2439,7 +2439,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   const SizedBox(height: 2),
                   Text(
                     _loyaltyCardInfo != null
-                        ? '${_loyaltyCardInfo!.ownerName} • ⭐ ${_loyaltyCardInfo!.pointsBalance} pts'
+                        ? '${_loyaltyCardInfo!.ownerName} • ${_loyaltyCardInfo!.pointsBalance} pts'
                         : 'Unregistered Card',
                     style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
                   ),

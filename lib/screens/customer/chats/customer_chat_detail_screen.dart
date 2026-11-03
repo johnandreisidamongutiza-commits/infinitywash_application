@@ -10,6 +10,7 @@ import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../utils/chat_rate_limiter.dart';
 import '../../../utils/phone_helper.dart';
+import '../../../widgets/empty_chat_placeholder.dart';
 
 enum ChatRecipientType { rider, support }
 
@@ -437,6 +438,21 @@ class _CustomerChatDetailScreenState extends State<CustomerChatDetailScreen> {
                             }
                           }
                         });
+
+                        if (allMessages.isEmpty) {
+                          return EmptyChatPlaceholder(
+                            recipientName: displayName,
+                            recipientRole: displayRole,
+                            icon: isRider
+                                ? Icons.delivery_dining
+                                : Icons.support_agent,
+                            customMessage: isRider
+                                ? 'Reach out to your delivery rider for updates on pickup or delivery.'
+                                : 'Welcome to InfinityWash Support! How can we assist you with your laundry today?',
+                            tipText:
+                                'Select a quick reply below or type a message to start.',
+                          );
+                        }
 
                         final bool showHeader =
                             _hasMoreOlder || _isLoadingOlder;

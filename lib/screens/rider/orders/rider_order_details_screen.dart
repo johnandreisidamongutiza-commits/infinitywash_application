@@ -492,7 +492,7 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
     // Show success and go back
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('✅ Pickup confirmed! $actualLoadCount loads (₱${actualLoadCount * 170})'),
+        content: Text('Pickup confirmed! $actualLoadCount loads (₱${actualLoadCount * 170})'),
         backgroundColor: Colors.green,
       ),
     );

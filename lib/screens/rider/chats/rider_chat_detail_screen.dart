@@ -12,6 +12,7 @@ import '../../../services/order_number_resolver.dart';
 import '../../../widgets/top_notification.dart';
 import '../../../utils/chat_rate_limiter.dart';
 import '../../../utils/phone_helper.dart';
+import '../../../widgets/empty_chat_placeholder.dart';
 
 class RiderChatDetailScreen extends StatefulWidget {
   final ChatConversation? conversation;
@@ -603,6 +604,23 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
                             }
                           }
                         });
+
+                        if (allMessages.isEmpty) {
+                          return EmptyChatPlaceholder(
+                            recipientName:
+                                _isDispatch ? 'InfinityWash Staff' : title,
+                            recipientRole:
+                                _isDispatch ? 'Shop Dispatch' : 'Customer',
+                            icon: _isDispatch
+                                ? Icons.storefront_outlined
+                                : Icons.person_outline,
+                            customMessage: _isDispatch
+                                ? 'Direct line to shop staff for order status, issues, and assistance.'
+                                : 'Send a quick message to coordinate pickup or delivery details.',
+                            tipText:
+                                'Select a quick reply below or type an update to start.',
+                          );
+                        }
 
                         final bool showHeader =
                             _hasMoreOlder || _isLoadingOlder;

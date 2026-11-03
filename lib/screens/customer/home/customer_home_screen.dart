@@ -136,7 +136,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget _buildHeader() {
     return HomeHeader(
       title: 'Hello, Customer!',
-      subtitle: 'Your laundry is our priority. 🫧',
+      subtitle: 'Your laundry is our priority.',
       avatarUrl: _avatarUrl,
       localAvatarPath: _localAvatarPath,
       unreadCount: _unreadNotificationsCount,

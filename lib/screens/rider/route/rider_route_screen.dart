@@ -879,7 +879,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
               ),
               const SizedBox(height: 20),
               const Text(
-                'All Caught Up for Today! 🎉',
+                'All Caught Up for Today!',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 22,
