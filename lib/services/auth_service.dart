@@ -718,6 +718,48 @@ class AuthService {
     }
   }
 
+  /// Validates and refreshes the current session when returning from the background.
+  /// If the token is near expiration (< 5 mins) or has expired, it attempts a safe refresh.
+  Future<bool> validateOrRefreshSessionOnResume() async {
+    try {
+      final session = _auth.currentSession;
+      if (session == null) {
+        // No in-memory session; attempt auto-login if saved account exists
+        final lastUser = await _secureStorage.getLastAutoLoginUser();
+        if (lastUser != null) {
+          final res = await tryAutoLogin(userId: lastUser);
+          return res?.session != null;
+        }
+        return false;
+      }
+
+      final expiresAt = session.expiresAt;
+      final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+      // Check if expired or expiring within 5 minutes (300 seconds)
+      if (expiresAt != null && (expiresAt - nowSec) < 300) {
+        print('🔄 App resumed: Session token near expiry, refreshing...');
+        final refreshToken = session.refreshToken;
+        if (refreshToken != null) {
+          final res = await _auth.refreshSession(refreshToken);
+          if (res.session != null) {
+            await _persistRotatedSession(res.session!);
+            print('✅ App resumed: Session successfully refreshed');
+            return true;
+          }
+        }
+        // Fallback: tryAutoLogin
+        final res = await tryAutoLogin(userId: session.user.id);
+        return res?.session != null;
+      }
+
+      return true;
+    } catch (e) {
+      print('⚠️ App resumed: Session validation error: $e');
+      return false;
+    }
+  }
+
   // ==================== Remember Me Functionality ====================
 
   // Save remember me data (account info + tokens)

@@ -12,6 +12,7 @@ import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'utils/app_error.dart';
 import 'services/connectivity_service.dart';
+import 'services/lifecycle_service.dart';
 import 'services/auth_service.dart';
 import 'services/push_notification_service.dart';
 import 'widgets/offline_banner.dart';
@@ -128,6 +129,16 @@ Future<void> _bootstrap() async {
   } catch (e) {
     // ignore: avoid_print
     print('⚠️ Connectivity init error (app continues): $e');
+  }
+
+  // Initialize Android app lifecycle service (handles background/foreground transitions).
+  try {
+    LifecycleService.instance.initialize();
+    // ignore: avoid_print
+    print('✅ App lifecycle service initialized');
+  } catch (e) {
+    // ignore: avoid_print
+    print('⚠️ Lifecycle service init error: $e');
   }
 
   // Initialize Supabase first (required for auth)
