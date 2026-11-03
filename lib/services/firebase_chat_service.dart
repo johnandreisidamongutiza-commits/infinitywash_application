@@ -7,6 +7,7 @@ import '../models/chat_model.dart';
 import 'photo_file_service.dart';
 import 'supabase_service.dart';
 import 'order_number_resolver.dart';
+import '../config/location_constants.dart';
 
 
 class FirebaseChatService {
@@ -85,7 +86,7 @@ class FirebaseChatService {
           },
           'participant_phones': {
             customerId: customerPhone,
-            'role:staff': '0912-345-6789',
+            'role:staff': LocationConstants.shopPhone,
           },
           'last_message':
               'Hello! Welcome to InfinityWash Support. 🫧 How can we assist you?',
@@ -128,7 +129,7 @@ class FirebaseChatService {
         participantRoles: {customerId: 'customer', 'role:staff': 'staff'},
         participantNames: {customerId: customerName, 'role:staff': 'InfinityWash Support'},
         participantAvatars: {customerId: customerAvatar, 'role:staff': null},
-        participantPhones: {customerId: customerPhone, 'role:staff': '0912-345-6789'},
+        participantPhones: {customerId: customerPhone, 'role:staff': LocationConstants.shopPhone},
         lastMessage: 'Connecting to support...',
         lastSenderId: 'role:staff',
         lastTimestamp: DateTime.now(),
@@ -173,7 +174,7 @@ class FirebaseChatService {
           },
           'participant_phones': {
             riderId: riderPhone,
-            'role:staff': '0912-345-6789',
+            'role:staff': LocationConstants.shopPhone,
           },
           'last_message': 'Shop staff channel opened.',
           'last_sender_id': 'role:staff',
@@ -202,7 +203,7 @@ class FirebaseChatService {
         participantRoles: {riderId: 'rider', 'role:staff': 'staff'},
         participantNames: {riderId: riderName, 'role:staff': 'InfinityWash Staff'},
         participantAvatars: {riderId: riderAvatar, 'role:staff': null},
-        participantPhones: {riderId: riderPhone, 'role:staff': '0912-345-6789'},
+        participantPhones: {riderId: riderPhone, 'role:staff': LocationConstants.shopPhone},
         lastMessage: 'Shop staff channel opened.',
         lastSenderId: 'role:staff',
         lastTimestamp: DateTime.now(),

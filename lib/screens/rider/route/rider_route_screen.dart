@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/phone_helper.dart';
 import '../../../utils/app_error.dart';
 import '../../../services/rider_service.dart';
 import '../../../models/order.dart';
@@ -672,18 +674,16 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                   ],
                 ),
               ),
-              // Call action
+              // Call phone action (Opens dialer with number pre-filled)
               if (phone != 'No phone')
                 IconButton(
-                  icon: const Icon(Icons.phone, color: AppTheme.accentBlue),
-                  onPressed: () {
-                    showTopNotification(
-                      context,
-                      message: 'Calling $phone...',
-                      icon: Icons.phone,
-                      backgroundColor: AppTheme.accentBlue,
-                    );
-                  },
+                  icon: const Icon(Icons.phone_outlined, color: AppTheme.accentBlue),
+                  tooltip: 'Call $customerName',
+                  onPressed: () => PhoneHelper.openDialer(
+                    context,
+                    phone: phone,
+                    contactName: customerName,
+                  ),
                 ),
               // Message action
               IconButton(

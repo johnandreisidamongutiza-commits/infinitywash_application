@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../services/customer_service.dart';
 import '../../../services/delivery_tracking_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/phone_helper.dart';
 import '../../../widgets/top_notification.dart';
 import '../chats/customer_chat_detail_screen.dart';
 import '../orders/customer_orders_screen.dart';
@@ -443,11 +444,15 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                           },
                         ),
 
-                        // Phone button shortcut
+                        // Call rider shortcut
                         IconButton(
                           icon: const Icon(Icons.phone_outlined, size: 18, color: Colors.green),
                           tooltip: 'Call Rider',
-                          onPressed: () => _handlePhoneAction(delivery.riderPhone, delivery.riderName ?? 'Rider'),
+                          onPressed: () => PhoneHelper.openDialer(
+                            context,
+                            phone: delivery.riderPhone,
+                            contactName: delivery.riderName ?? 'Rider',
+                          ),
                         ),
                       ],
                     ),
@@ -482,44 +487,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     );
   }
 
-  /// Triggers direct phone dialing or copies number.
+  /// Opens native dialer with pre-filled number and copies to clipboard.
   Future<void> _handlePhoneAction(String? phone, String name) async {
-    if (phone == null || phone.trim().isEmpty) {
-      showTopNotification(
-        context,
-        message: '$name does not have a phone number on file.',
-        icon: Icons.phone_disabled,
-        backgroundColor: Colors.orange.shade700,
-      );
-      return;
-    }
-
-    final cleanPhone = phone.replaceAll(RegExp(r'[^\d+]'), '');
-    final Uri callUri = Uri.parse('tel:$cleanPhone');
-
-    try {
-      if (await canLaunchUrl(callUri)) {
-        await launchUrl(callUri);
-      } else {
-        await Clipboard.setData(ClipboardData(text: phone));
-        if (!mounted) return;
-        showTopNotification(
-          context,
-          message: 'Phone number $phone copied to clipboard.',
-          icon: Icons.copy,
-          backgroundColor: AppTheme.accentBlue,
-        );
-      }
-    } catch (_) {
-      await Clipboard.setData(ClipboardData(text: phone));
-      if (!mounted) return;
-      showTopNotification(
-        context,
-        message: 'Phone number $phone copied to clipboard.',
-        icon: Icons.copy,
-        backgroundColor: AppTheme.accentBlue,
-      );
-    }
+    await PhoneHelper.openDialer(context, phone: phone, contactName: name);
   }
 
   /// Clean empty state when the customer has no active deliveries or pickups.

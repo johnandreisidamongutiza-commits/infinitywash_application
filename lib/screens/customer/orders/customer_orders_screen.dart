@@ -21,6 +21,7 @@ import 'request_service_flow.dart';
 import 'customer_order_details_screen.dart';
 import '../chats/customer_chat_detail_screen.dart';
 import '../delivery/order_delivery_tracking_screen.dart';
+import '../../../config/location_constants.dart';
 
 class CustomerOrdersScreen extends StatefulWidget {
   const CustomerOrdersScreen({super.key});
@@ -738,7 +739,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                         recipientRole: 'Customer Support Helpdesk',
                         recipientType: ChatRecipientType.support,
                         orderId: (_activeOrders.isNotEmpty ? _activeOrders : _active).first.displayNumber,
-                        phoneNumber: '0912-345-6789',
+                        phoneNumber: LocationConstants.shopPhone,
                       ),
                     ),
                   );

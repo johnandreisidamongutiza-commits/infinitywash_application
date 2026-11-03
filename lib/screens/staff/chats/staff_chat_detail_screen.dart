@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/chat_model.dart';
@@ -8,6 +9,7 @@ import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../widgets/top_notification.dart';
 import '../../../utils/chat_rate_limiter.dart';
+import '../../../utils/phone_helper.dart';
 
 class StaffChatDetailScreen extends StatefulWidget {
   final ChatConversation conversation;
@@ -302,17 +304,14 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
         actions: [
           if (otherPhone != null && otherPhone.isNotEmpty)
             IconButton(
-              onPressed: () {
-                showTopNotification(
-                  context,
-                  message: 'Calling $otherName ($otherPhone)...',
-                  icon: Icons.phone,
-                  backgroundColor: AppTheme.accentBlue,
-                );
-              },
               icon: const Icon(Icons.phone_outlined,
                   color: AppTheme.accentBlue),
-              tooltip: 'Call',
+              tooltip: 'Call $otherName',
+              onPressed: () => PhoneHelper.openDialer(
+                context,
+                phone: otherPhone,
+                contactName: otherName,
+              ),
             ),
         ],
       ),

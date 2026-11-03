@@ -15,6 +15,7 @@ import '../../shared/gcash_qr_payment_screen.dart';
 import 'request_service_flow.dart';
 import '../chats/customer_chat_detail_screen.dart';
 import '../delivery/order_delivery_tracking_screen.dart';
+import '../../../config/location_constants.dart';
 
 class CustomerOrderDetailsScreen extends StatefulWidget {
   final LaundryOrder order;
@@ -1089,7 +1090,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                     recipientRole: 'Customer Support',
                     recipientType: ChatRecipientType.support,
                     orderId: order.displayNumber,
-                    phoneNumber: '0912-345-6789',
+                    phoneNumber: LocationConstants.shopPhone,
                   ),
                 ),
               );

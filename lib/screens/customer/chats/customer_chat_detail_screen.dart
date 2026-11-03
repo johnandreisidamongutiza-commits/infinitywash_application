@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/top_notification.dart';
@@ -8,6 +9,7 @@ import '../../../models/chat_model.dart';
 import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../utils/chat_rate_limiter.dart';
+import '../../../utils/phone_helper.dart';
 
 enum ChatRecipientType { rider, support }
 
@@ -367,14 +369,12 @@ class _CustomerChatDetailScreenState extends State<CustomerChatDetailScreen> {
             IconButton(
               icon: const Icon(Icons.phone_outlined,
                   color: AppTheme.accentBlue),
-              onPressed: () {
-                showTopNotification(
-                  context,
-                  message: 'Calling $displayName ($displayPhone)...',
-                  icon: Icons.phone,
-                  backgroundColor: AppTheme.accentBlue,
-                );
-              },
+              tooltip: 'Call $displayName',
+              onPressed: () => PhoneHelper.openDialer(
+                context,
+                phone: displayPhone,
+                contactName: displayName,
+              ),
             ),
         ],
       ),

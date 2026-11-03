@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/phone_helper.dart';
 import 'rider_route_screen.dart';
 import '../../../widgets/top_notification.dart';
 
@@ -464,11 +466,11 @@ class _RiderRouteMapScreenState extends State<RiderRouteMapScreen> {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () {
-                            showTopNotification(
+                            final phone = stop['phone'] as String? ?? '';
+                            PhoneHelper.openDialer(
                               context,
-                              message: 'Calling ${stop['phone']}...',
-                              icon: Icons.phone,
-                              backgroundColor: AppTheme.accentBlue,
+                              phone: (phone.isNotEmpty && phone != 'No phone') ? phone : null,
+                              contactName: stop['customer'] as String?,
                             );
                           },
                           icon: const Icon(Icons.phone_outlined, size: 16),

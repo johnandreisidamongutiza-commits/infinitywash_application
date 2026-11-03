@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../../config/location_constants.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/chat_model.dart';
@@ -9,6 +11,7 @@ import '../../../services/supabase_service.dart';
 import '../../../services/order_number_resolver.dart';
 import '../../../widgets/top_notification.dart';
 import '../../../utils/chat_rate_limiter.dart';
+import '../../../utils/phone_helper.dart';
 
 class RiderChatDetailScreen extends StatefulWidget {
   final ChatConversation? conversation;
@@ -528,16 +531,12 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
             tooltip: _isDispatch ? 'Call Shop Staff' : 'Call Customer',
             onPressed: () {
               final phoneToCall = _isDispatch
-                  ? (widget.phoneNumber ?? '0912-345-6789')
-                  : (widget.phoneNumber ?? 'Customer Phone');
-              showTopNotification(
+                  ? (widget.phoneNumber ?? LocationConstants.shopPhone)
+                  : widget.phoneNumber;
+              PhoneHelper.openDialer(
                 context,
-                message: _isDispatch
-                    ? 'Calling Shop Staff ($phoneToCall)...'
-                    : 'Calling $title ($phoneToCall)...',
-                icon: Icons.phone,
-                backgroundColor:
-                    _isDispatch ? AppTheme.primaryBlue : AppTheme.accentBlue,
+                phone: phoneToCall,
+                contactName: _isDispatch ? 'Shop Staff' : title,
               );
             },
           ),
