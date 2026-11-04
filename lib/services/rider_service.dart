@@ -346,6 +346,7 @@ class RiderService {
         final order = LaundryOrder(
           id: orderData['id'] as String,
           orderNumber: orderData['order_number'] as String?,
+          customerId: orderData['customer_id'] as String?,
           customerName: customerName,
           customerPhone: customerPhone,
           deliveryAddress: finalDeliveryAddress ?? finalPickupAddress, // Use either address
@@ -957,6 +958,7 @@ class RiderService {
       final rawJobs = (response as List)
           .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
           .toList();
+
       final jobs = await _enrichJobsWithCoordinates(rawJobs);
 
       print('✅ Fetched ${jobs.length} completed pickup jobs for rider $myEmployeeId (today)');
@@ -1034,6 +1036,7 @@ class RiderService {
     final jobs = await fetchCompletedDeliveryJobs(limit: limit);
     return await _adapter.toLaundryOrders(jobs);
   }
+
 
   /// Clear adapter cache (useful when refreshing data)
   void clearAdapterCache() {

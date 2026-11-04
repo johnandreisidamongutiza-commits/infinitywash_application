@@ -11,7 +11,8 @@ import '../../../services/order_number_resolver.dart';
 import 'rider_chat_detail_screen.dart';
 
 /// Internal model representing an active rider chat entry.
-/// Can be either the persistent Shop Staff line or an active assigned job (Pickup / Delivery).
+/// Can be either the persistent Shop Staff line, an active assigned job (Pickup / Delivery),
+/// or a job completed earlier today.
 class _RiderChatItem {
   final bool isDispatch;
   final ChatConversation? conversation;
@@ -28,7 +29,7 @@ class _RiderChatItem {
             conversation?.getUnreadCount(currentRiderId, 'rider') ?? 0,
         sortTime = conversation?.lastTimestamp ?? DateTime.now();
 
-  _RiderChatItem.activeJob({
+  _RiderChatItem.job({
     required this.job,
     required this.conversation,
     required String currentRiderId,
@@ -38,12 +39,23 @@ class _RiderChatItem {
         sortTime =
             conversation?.lastTimestamp ?? job?.createdAt ?? DateTime.now();
 
+  _RiderChatItem.conversationOnly({
+    required this.conversation,
+    required String currentRiderId,
+  })  : isDispatch = false,
+        job = null,
+        unreadCount =
+            conversation?.getUnreadCount(currentRiderId, 'rider') ?? 0,
+        sortTime = conversation?.lastTimestamp ?? DateTime.now();
+
   String get displayName {
     if (isDispatch) return 'InfinityWash Staff';
     return job?.customerName ??
         conversation?.getOtherParticipantName('', 'rider') ??
         'Customer';
   }
+
+  String? get orderId => job?.orderId ?? conversation?.orderId;
 
   String? get displayPhone =>
       conversation?.getOtherParticipantPhone('', 'rider');
@@ -60,14 +72,24 @@ class _RiderChatItem {
   }
 
   String? get taskType {
-    if (job?.jobType == 'pickup') return 'PICKUP';
-    if (job?.jobType == 'delivery') return 'DELIVERY';
+    if (job?.jobType == 'pickup') {
+      if (job?.status == 'pickup_done') return 'PICKUP DONE';
+      return 'PICKUP';
+    }
+    if (job?.jobType == 'delivery') {
+      if (job?.status == 'delivery_done') return 'DELIVERY DONE';
+      return 'DELIVERY';
+    }
     return null;
   }
 
-  Color get taskColor => job?.jobType == 'pickup'
-      ? AppTheme.errorRed
-      : AppTheme.teamMemberIconOrange;
+  Color get taskColor {
+    final t = taskType;
+    if (t == 'PICKUP') return AppTheme.errorRed;
+    if (t == 'DELIVERY') return AppTheme.teamMemberIconOrange;
+    if (t == 'PICKUP DONE' || t == 'DELIVERY DONE') return Colors.green;
+    return AppTheme.accentBlue;
+  }
 
   String? get address => job?.address;
   String? get landmark => job?.landmark;
@@ -77,6 +99,8 @@ class _RiderChatItem {
       return conversation!.lastMessage;
     }
     if (isDispatch) return 'Tap to contact shop staff';
+    if (job?.status == 'pickup_done') return 'Pickup completed today';
+    if (job?.status == 'delivery_done') return 'Delivery completed today';
     return 'Tap to send a message...';
   }
 
@@ -105,9 +129,10 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
   // Filter tabs: 0: All (Active + Shop Staff), 1: Pickups, 2: Deliveries, 3: Shop Staff
   int _selectedFilterIndex = 0;
 
-  // Active jobs for today (strictly active pickup / delivery jobs assigned to this rider)
+  // Active jobs & completed jobs for today
   List<DispatchJob> _activeJobs = [];
   Map<String, DispatchJob> _activeJobsByOrderId = {};
+  Map<String, DispatchJob> _completedJobsByOrderId = {};
   bool _isLoadingJobs = false;
 
   @override
@@ -157,12 +182,16 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
     try {
       final pickups = await _riderService.fetchActivePickupJobs();
       final deliveries = await _riderService.fetchActiveDeliveryJobs();
-      final all = [...pickups, ...deliveries];
+      final completedPickups = await _riderService.fetchCompletedPickupJobs();
+      final completedDeliveries = await _riderService.fetchCompletedDeliveryJobs();
+      final allActive = [...pickups, ...deliveries];
+      final allCompletedToday = [...completedPickups, ...completedDeliveries];
 
       if (mounted) {
         setState(() {
-          _activeJobs = all;
-          _activeJobsByOrderId = {for (final j in all) j.orderId: j};
+          _activeJobs = allActive;
+          _activeJobsByOrderId = {for (final j in allActive) j.orderId: j};
+          _completedJobsByOrderId = {for (final j in allCompletedToday) j.orderId: j};
           _isLoadingJobs = false;
         });
       }
@@ -183,22 +212,29 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
     super.dispose();
   }
 
-  void _openActiveJobChat(DispatchJob job, {ChatConversation? existingConversation}) async {
+  void _openActiveJobChat(
+    DispatchJob job, {
+    ChatConversation? existingConversation,
+  }) async {
     // Resolve customer phone / ID if missing
     String? phone = existingConversation?.getOtherParticipantPhone(_currentRiderId, 'rider');
     String? custId;
+    String? address = job.address;
+    String? landmark = job.landmark;
 
     if (phone == null || phone.isEmpty) {
       try {
         final orderRes = await SupabaseService.client
             .from('orders')
-            .select('customer_id, customers(phone)')
+            .select('customer_id, customers(phone, address, landmark)')
             .eq('id', job.orderId)
             .maybeSingle();
         if (orderRes != null) {
           custId = orderRes['customer_id']?.toString();
           final cust = orderRes['customers'] as Map<String, dynamic>?;
           phone = cust?['phone']?.toString();
+          address = address ?? cust?['address']?.toString();
+          landmark = landmark ?? cust?['landmark']?.toString();
         }
       } catch (_) {}
     }
@@ -215,8 +251,8 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
           orderId: job.orderId,
           phoneNumber: phone,
           jobType: job.jobType,
-          address: job.address,
-          landmark: job.landmark,
+          address: address,
+          landmark: landmark,
           isDispatchChat: false,
         ),
       ),
@@ -246,6 +282,21 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
       ).then((_) => _loadActiveJobs());
     } else if (item.job != null) {
       _openActiveJobChat(item.job!, existingConversation: item.conversation);
+    } else if (item.conversation != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RiderChatDetailScreen(
+            conversation: item.conversation,
+            customerName: item.displayName,
+            customerId: '',
+            orderId: item.orderId ?? '',
+            phoneNumber: item.displayPhone,
+            jobType: 'delivery',
+            isDispatchChat: false,
+          ),
+        ),
+      ).then((_) => _loadActiveJobs());
     }
   }
 
@@ -280,26 +331,57 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
             : null;
 
         // 2. Active Customer Conversations:
-        // STRICT FILTER: Only match conversations whose orderId is in _activeJobsByOrderId.
-        // Past / completed deliveries are completely excluded!
+        // Match conversations whose order is either an active job OR a completed job from today
         final activeConvByOrderId = <String, ChatConversation>{};
         for (final c in conversations) {
-          if (c.chatType == ChatType.customerRider &&
-              c.orderId != null &&
-              _activeJobsByOrderId.containsKey(c.orderId)) {
-            activeConvByOrderId[c.orderId!] = c;
+          if (c.chatType == ChatType.customerRider && c.orderId != null) {
+            final hasActiveJob = _activeJobsByOrderId.containsKey(c.orderId);
+            final hasCompletedJob = _completedJobsByOrderId.containsKey(c.orderId);
+            if (hasActiveJob || hasCompletedJob) {
+              activeConvByOrderId[c.orderId!] = c;
+            }
           }
         }
 
-        // 3. Create active items for all currently assigned jobs (with or without messages yet)
+        // 3. Create items for active jobs and today's completed jobs with conversations
         final List<_RiderChatItem> activeJobItems = [];
+        final Set<String> processedOrderIds = {};
+
+        // 3a. Active pending / in_progress dispatch jobs (always shown on route)
         for (final job in _activeJobs) {
           final conv = activeConvByOrderId[job.orderId];
-          activeJobItems.add(_RiderChatItem.activeJob(
+          activeJobItems.add(_RiderChatItem.job(
             job: job,
             conversation: conv,
             currentRiderId: _currentRiderId,
           ));
+          processedOrderIds.add(job.orderId);
+        }
+
+        // 3b. Today's completed jobs (shown if there is a conversation from today)
+        for (final entry in _completedJobsByOrderId.entries) {
+          final orderId = entry.key;
+          if (processedOrderIds.contains(orderId)) continue;
+          final conv = activeConvByOrderId[orderId];
+          if (conv != null) {
+            activeJobItems.add(_RiderChatItem.job(
+              job: entry.value,
+              conversation: conv,
+              currentRiderId: _currentRiderId,
+            ));
+            processedOrderIds.add(orderId);
+          }
+        }
+
+        // 3c. Any conversation whose order is still in activeConvByOrderId
+        for (final conv in activeConvByOrderId.values) {
+          if (conv.orderId != null && !processedOrderIds.contains(conv.orderId)) {
+            activeJobItems.add(_RiderChatItem.conversationOnly(
+              conversation: conv,
+              currentRiderId: _currentRiderId,
+            ));
+            processedOrderIds.add(conv.orderId!);
+          }
         }
 
         // Sort active jobs: unread messages first, then most recent activity
@@ -309,28 +391,25 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
           return b.sortTime.compareTo(a.sortTime);
         });
 
-        final pickupCount =
-            activeJobItems.where((i) => i.job?.jobType == 'pickup').length;
-        final deliveryCount =
-            activeJobItems.where((i) => i.job?.jobType == 'delivery').length;
+        bool isPickupItem(_RiderChatItem item) => item.job?.jobType == 'pickup';
+        bool isDeliveryItem(_RiderChatItem item) => item.job?.jobType == 'delivery';
+
+        final pickupCount = activeJobItems.where(isPickupItem).length;
+        final deliveryCount = activeJobItems.where(isDeliveryItem).length;
 
         // 4. Apply Tab Filter
         List<_RiderChatItem> displayItems;
         if (_selectedFilterIndex == 1) {
-          // Pickups only
-          displayItems = activeJobItems
-              .where((i) => i.job?.jobType == 'pickup')
-              .toList();
+          // Pickups
+          displayItems = activeJobItems.where(isPickupItem).toList();
         } else if (_selectedFilterIndex == 2) {
-          // Deliveries only
-          displayItems = activeJobItems
-              .where((i) => i.job?.jobType == 'delivery')
-              .toList();
+          // Deliveries
+          displayItems = activeJobItems.where(isDeliveryItem).toList();
         } else if (_selectedFilterIndex == 3) {
           // Shop Staff only
           displayItems = dispatchItem != null ? [dispatchItem] : [];
         } else {
-          // All: Pinned Shop Staff first, followed by active route jobs
+          // All: Pinned Shop Staff first, followed by active route jobs & completed jobs from today
           displayItems = [
             ?dispatchItem,
             ...activeJobItems,

@@ -109,6 +109,7 @@ class OrderLoad {
 class LaundryOrder {
   final String id;
   final String? orderNumber; // Human-readable order number (ORD-YYMMDD-001)
+  final String? customerId; // Customer UUID from orders.customer_id
   final String customerName;
   final String? customerPhone;
   final String? deliveryAddress;
@@ -142,6 +143,7 @@ class LaundryOrder {
   LaundryOrder({
     required this.id,
     this.orderNumber,
+    this.customerId,
     required this.customerName,
     this.customerPhone,
     this.deliveryAddress,
@@ -256,6 +258,7 @@ class LaundryOrder {
     return {
       'id': id,
       'order_number': orderNumber ?? id, // Use orderNumber if available, fallback to id
+      'customer_id': customerId,
       'customer_name': customerName,
       'customer_phone': customerPhone,
       'delivery_address': deliveryAddress,
@@ -293,6 +296,7 @@ class LaundryOrder {
     return LaundryOrder(
       id: json['id'] as String,
       orderNumber: json['order_number'] as String?, // Get order number from database
+      customerId: json['customer_id'] as String?,
       customerName: json['customer_name'] as String? ?? 'Unknown',
       customerPhone: json['customer_phone'] as String?,
       deliveryAddress: (json['delivery_address'] ?? json['pickup_address']) as String?,
