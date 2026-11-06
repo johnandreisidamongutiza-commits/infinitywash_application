@@ -8,19 +8,14 @@ class Validators {
   static final RegExp _emailRe = RegExp(r'^[\w\.\-\+]+@([\w\-]+\.)+[a-zA-Z]{2,}$');
   static final RegExp _phoneRe = RegExp(r'^[0-9\+\-\s\(\)]{7,20}$');
 
-  /// Email: required + basic format.
-  static String? email(String? value) {
-    final v = value?.trim() ?? '';
-    if (v.isEmpty) return 'Please enter your email address.';
-    if (!_emailRe.hasMatch(v)) return 'Please enter a valid email address (e.g. name@example.com).';
-    return null;
-  }
+  /// Email: required + basic format (delegates to [emailField]).
+  static String? email(String? value) => emailField(value);
 
   /// Email when the field is optional.
   static String? optionalEmail(String? value) {
     final v = value?.trim() ?? '';
     if (v.isEmpty) return null;
-    return email(v);
+    return emailField(v);
   }
 
   /// Password for sign-in (non-empty).
@@ -54,16 +49,54 @@ class Validators {
     return null;
   }
 
-  /// Philippine mobile number (optional country code, 10-13 digits).
+  /// Philippine mobile number (accepts 09XXXXXXXXX, +639XXXXXXXXX, or 9XXXXXXXXX).
   static String? phone(String? value) {
     final v = value?.trim() ?? '';
-    if (v.isEmpty) return 'Please enter your phone number.';
-    final digits = v.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length < 10 || digits.length > 13) {
-      return 'Please enter a valid phone number (e.g. 0917 123 4567).';
+    if (v.isEmpty) return 'Please enter your mobile number.';
+
+    // Check for disallowed characters (only digits, spaces, +, -, parentheses allowed)
+    if (!_phoneRe.hasMatch(v)) {
+      return 'Mobile number contains invalid characters.';
     }
-    if (!_phoneRe.hasMatch(v)) return 'Please enter a valid phone number (e.g. 0917 123 4567).';
-    return null;
+
+    final digits = v.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return 'Please enter your mobile number.';
+
+    // Enforce Philippine mobile structure
+    if (digits.startsWith('09')) {
+      if (digits.length < 11) {
+        return 'Mobile number must have 11 digits (e.g. 0917 123 4567).';
+      }
+      if (digits.length > 11) {
+        return 'Mobile number cannot exceed 11 digits.';
+      }
+      return null;
+    } else if (digits.startsWith('639')) {
+      if (digits.length < 12) {
+        return 'Mobile number must have 12 digits (e.g. +63 917 123 4567).';
+      }
+      if (digits.length > 12) {
+        return 'Mobile number is too long.';
+      }
+      return null;
+    } else if (digits.startsWith('9')) {
+      if (digits.length < 10) {
+        return 'Mobile number must have 10 digits without leading 0.';
+      }
+      if (digits.length > 10) {
+        return 'Mobile number cannot exceed 10 digits.';
+      }
+      return null;
+    } else {
+      return 'Please enter a valid mobile number starting with 09 (e.g. 0917 123 4567).';
+    }
+  }
+
+  /// Optional Philippine mobile number.
+  static String? optionalPhone(String? value) {
+    final v = value?.trim() ?? '';
+    if (v.isEmpty) return null;
+    return phone(v);
   }
 
   /// Numeric amount greater than zero (payments).
@@ -162,11 +195,53 @@ class Validators {
     return null;
   }
 
-  /// Email field: required, valid format, max 254 characters.
+  /// Email field: required, valid format, granular errors, max 254 characters.
   static String? emailField(String? value) {
     final v = value?.trim() ?? '';
     if (v.isEmpty) return 'Please enter your email address.';
     if (v.length > emailMax) return 'Email address is too long.';
+    if (v.contains(' ')) return 'Email address cannot contain spaces.';
+
+    final atIndex = v.indexOf('@');
+    if (atIndex == -1) {
+      return "Email address must contain an '@'.";
+    }
+    if (atIndex == 0) {
+      return "Please enter a username before '@'.";
+    }
+    if (v.indexOf('@', atIndex + 1) != -1) {
+      return "Email address can only contain one '@'.";
+    }
+
+    final localPart = v.substring(0, atIndex);
+    final domainPart = v.substring(atIndex + 1);
+
+    if (domainPart.isEmpty) {
+      return "Please include a domain after '@' (e.g. gmail.com).";
+    }
+
+    if (localPart.contains('..') || domainPart.contains('..')) {
+      return 'Email address cannot contain consecutive dots.';
+    }
+
+    if (localPart.startsWith('.') || localPart.endsWith('.')) {
+      return 'Username cannot start or end with a dot.';
+    }
+
+    if (!domainPart.contains('.')) {
+      return 'Domain must include an extension (e.g. .com, .ph).';
+    }
+
+    final domainParts = domainPart.split('.');
+    if (domainParts.any((part) => part.isEmpty)) {
+      return 'Please enter a valid domain (e.g. name@example.com).';
+    }
+
+    final tld = domainParts.last;
+    if (tld.length < 2 || !RegExp(r'^[a-zA-Z]+$').hasMatch(tld)) {
+      return 'Please enter a valid domain ending (e.g. .com, .ph).';
+    }
+
     if (!_emailRe.hasMatch(v)) {
       return 'Please enter a valid email address (e.g. name@example.com).';
     }

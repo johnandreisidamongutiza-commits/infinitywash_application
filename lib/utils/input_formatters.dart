@@ -30,6 +30,14 @@ class InputFormatters {
     ];
   }
 
+  /// Email format: disallows whitespace and enforces max length (254).
+  static List<TextInputFormatter> email({int maxLength = 254}) {
+    return [
+      FilteringTextInputFormatter.deny(RegExp(r'\s')),
+      LengthLimitingTextInputFormatter(maxLength),
+    ];
+  }
+
   /// Letters and digits only (no spaces). For card codes and codes in general.
   static List<TextInputFormatter> get alphanumeric => [
         FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),

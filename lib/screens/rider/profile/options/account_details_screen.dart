@@ -17,27 +17,77 @@ class RiderAccountDetailsScreen extends StatefulWidget {
 }
 
 class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
-  final _formKey = GlobalKey<FormState>();
+  final _personalFormKey = GlobalKey<FormState>();
+  final _riderFormKey = GlobalKey<FormState>();
   final _profileService = ProfileService();
+
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _nameController = TextEditingController();
   final _vehicleController = TextEditingController();
+
   String? _avatarUrl;
+  String? _profileId;
   bool _hasChanges = false;
   bool _isLoading = true;
-  bool _isSaving = false;
+
+  // Edit states per card
+  bool _isEditingPersonal = false;
+  bool _isSavingPersonal = false;
+  bool _isEditingRider = false;
+  bool _isSavingRider = false;
+
+  // Baseline values
+  String _initialFirstName = '';
+  String _initialLastName = '';
+  String _initialPhone = '';
+  String _initialEmail = '';
+  String _initialName = '';
+  String _initialVehicle = '';
+
+  bool get _hasPersonalChanges {
+    return _firstNameController.text.trim() != _initialFirstName ||
+        _lastNameController.text.trim() != _initialLastName ||
+        _phoneController.text.trim() != _initialPhone ||
+        _emailController.text.trim().toLowerCase() !=
+            _initialEmail.toLowerCase();
+  }
+
+  bool get _hasRiderChanges {
+    return _nameController.text.trim() != _initialName ||
+        _vehicleController.text.trim() != _initialVehicle;
+  }
+
+  bool get _hasUnsavedChanges =>
+      (_isEditingPersonal && _hasPersonalChanges) ||
+      (_isEditingRider && _hasRiderChanges);
+
+  void _onFieldChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
+    _firstNameController.addListener(_onFieldChanged);
+    _lastNameController.addListener(_onFieldChanged);
+    _phoneController.addListener(_onFieldChanged);
+    _emailController.addListener(_onFieldChanged);
+    _nameController.addListener(_onFieldChanged);
+    _vehicleController.addListener(_onFieldChanged);
     _loadProfile();
   }
 
   @override
   void dispose() {
+    _firstNameController.removeListener(_onFieldChanged);
+    _lastNameController.removeListener(_onFieldChanged);
+    _phoneController.removeListener(_onFieldChanged);
+    _emailController.removeListener(_onFieldChanged);
+    _nameController.removeListener(_onFieldChanged);
+    _vehicleController.removeListener(_onFieldChanged);
     _firstNameController.dispose();
     _lastNameController.dispose();
     _phoneController.dispose();
@@ -50,6 +100,7 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
   Future<void> _loadProfile() async {
     try {
       final profile = await _profileService.getProfile();
+      _profileId = profile['id'] as String?;
       final employee = await _profileService.getEmployee(profile['id']);
 
       if (!mounted) return;
@@ -61,6 +112,13 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
       _nameController.text = employee['name'] ?? '';
       _vehicleController.text = employee['vehicle_details'] ?? '';
       _avatarUrl = profile['avatar_url'] as String?;
+
+      _initialFirstName = _firstNameController.text.trim();
+      _initialLastName = _lastNameController.text.trim();
+      _initialPhone = _phoneController.text.trim();
+      _initialEmail = _emailController.text.trim();
+      _initialName = _nameController.text.trim();
+      _initialVehicle = _vehicleController.text.trim();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,7 +129,8 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
           ),
           backgroundColor: AppTheme.errorRed,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     } finally {
@@ -81,8 +140,40 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
     }
   }
 
-  Future<void> _saveProfile() async {
-    if (_formKey.currentState?.validate() != true) return;
+  // ─────────────────────────────────────────────────────────────────────────
+  // CARD ACTIONS: PERSONAL INFO
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> _savePersonalInfo() async {
+    if (!_hasPersonalChanges) {
+      setState(() => _isEditingPersonal = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'No changes made to personal information.',
+                  style: GoogleFonts.lexend(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.primaryBlue,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
+
+    if (_personalFormKey.currentState?.validate() != true) return;
 
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
@@ -95,57 +186,67 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
           ),
           backgroundColor: AppTheme.errorRed,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
       return;
     }
 
-    setState(() => _isSaving = true);
+    setState(() => _isSavingPersonal = true);
 
     try {
-      final profile = await _profileService.getProfile();
       await _profileService.updateProfile(
         firstName: firstName,
         lastName: lastName,
         phone: _phoneController.text.trim(),
-        email: _emailController.text.trim(),
+        email: _emailController.text.trim().toLowerCase(),
       );
 
-      final riderName = _nameController.text.trim().isNotEmpty
-          ? _nameController.text.trim()
-          : '$firstName $lastName'.trim();
+      if (_profileId != null) {
+        final riderName = _initialName.isNotEmpty
+            ? _initialName
+            : '$firstName $lastName'.trim();
+        await _profileService.updateEmployee(
+          profileId: _profileId!,
+          name: riderName,
+          phone: _phoneController.text.trim(),
+          vehicleDetails: _initialVehicle,
+        );
+      }
 
-      await _profileService.updateEmployee(
-        profileId: profile['id'],
-        name: riderName,
-        phone: _phoneController.text.trim(),
-        vehicleDetails: _vehicleController.text.trim(),
-      );
+      _initialFirstName = firstName;
+      _initialLastName = lastName;
+      _initialPhone = _phoneController.text.trim();
+      _initialEmail = _emailController.text.trim().toLowerCase();
+      _hasChanges = true;
 
       if (!mounted) return;
+      setState(() => _isEditingPersonal = false);
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
             children: [
               const Icon(Icons.check_circle_outline, color: Colors.white),
               const SizedBox(width: 10),
-              Text(
-                'Account details updated successfully!',
-                style: GoogleFonts.lexend(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
+              Expanded(
+                child: Text(
+                  'Personal information updated successfully!',
+                  style: GoogleFonts.lexend(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ],
           ),
           backgroundColor: Colors.green.shade600,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
-
-      Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -156,52 +257,235 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
           ),
           backgroundColor: AppTheme.errorRed,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     } finally {
       if (mounted) {
-        setState(() => _isSaving = false);
+        setState(() => _isSavingPersonal = false);
       }
     }
   }
 
+  void _cancelPersonalEdit() {
+    _personalFormKey.currentState?.reset();
+    _firstNameController.text = _initialFirstName;
+    _lastNameController.text = _initialLastName;
+    _phoneController.text = _initialPhone;
+    _emailController.text = _initialEmail;
+    setState(() => _isEditingPersonal = false);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CARD ACTIONS: RIDER & VEHICLE INFO
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> _saveRiderInfo() async {
+    if (!_hasRiderChanges) {
+      setState(() => _isEditingRider = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'No changes made to vehicle and rider details.',
+                  style: GoogleFonts.lexend(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.primaryBlue,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
+
+    if (_riderFormKey.currentState?.validate() != true) return;
+
+    setState(() => _isSavingRider = true);
+
+    try {
+      if (_profileId == null) {
+        final profile = await _profileService.getProfile();
+        _profileId = profile['id'] as String?;
+      }
+
+      final riderName = _nameController.text.trim().isNotEmpty
+          ? _nameController.text.trim()
+          : '$_initialFirstName $_initialLastName'.trim();
+      final vehicleDetails = _vehicleController.text.trim();
+
+      if (_profileId != null) {
+        await _profileService.updateEmployee(
+          profileId: _profileId!,
+          name: riderName,
+          phone: _initialPhone,
+          vehicleDetails: vehicleDetails,
+        );
+      }
+
+      _initialName = _nameController.text.trim();
+      _initialVehicle = vehicleDetails;
+      _hasChanges = true;
+
+      if (!mounted) return;
+      setState(() => _isEditingRider = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_outline, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Vehicle and rider details updated successfully!',
+                  style: GoogleFonts.lexend(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green.shade600,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            mapErrorToMessage(error),
+            style: GoogleFonts.lexend(color: Colors.white),
+          ),
+          backgroundColor: AppTheme.errorRed,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingRider = false);
+      }
+    }
+  }
+
+  void _cancelRiderEdit() {
+    _riderFormKey.currentState?.reset();
+    _nameController.text = _initialName;
+    _vehicleController.text = _initialVehicle;
+    setState(() => _isEditingRider = false);
+  }
+
+  Future<bool> _showDiscardChangesDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Discard Changes?',
+          style: GoogleFonts.lexend(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        content: Text(
+          'You have unsaved changes in one of your sections. Are you sure you want to discard them and exit?',
+          style: GoogleFonts.lexend(fontSize: 14, color: AppTheme.textDark),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'Keep Editing',
+              style: GoogleFonts.lexend(
+                fontWeight: FontWeight.w600,
+                color: AppTheme.accentBlue,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.errorRed),
+            child: Text(
+              'Discard',
+              style: GoogleFonts.lexend(
+                fontWeight: FontWeight.bold,
+                color: AppTheme.errorRed,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: Text(
-          'Account Details',
-          style: GoogleFonts.lexend(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-            color: AppTheme.textDark,
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldPop = await _showDiscardChangesDialog();
+        if (shouldPop && context.mounted) {
+          Navigator.pop(context, _hasChanges);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          title: Text(
+            'Account Details',
+            style: GoogleFonts.lexend(
+              fontWeight: FontWeight.w700,
+              fontSize: 18,
+              color: AppTheme.textDark,
+            ),
+          ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: AppTheme.textDark,
+              size: 20,
+            ),
+            onPressed: () async {
+              if (_hasUnsavedChanges) {
+                final shouldPop = await _showDiscardChangesDialog();
+                if (shouldPop && context.mounted) {
+                  Navigator.pop(context, _hasChanges);
+                }
+              } else {
+                Navigator.pop(context, _hasChanges);
+              }
+            },
           ),
         ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: AppTheme.textDark,
-            size: 20,
-          ),
-          onPressed: () => Navigator.pop(context, _hasChanges),
-        ),
-      ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: AppTheme.accentBlue,
-                strokeWidth: 2.5,
-              ),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Form(
-                key: _formKey,
+        body: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: AppTheme.accentBlue,
+                  strokeWidth: 2.5,
+                ),
+              )
+            : SingleChildScrollView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -210,6 +494,12 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
                     _buildSectionHeader(
                       icon: Icons.person_outline_rounded,
                       title: 'Personal Information',
+                      action: _isEditingPersonal
+                          ? null
+                          : _buildEditButton(
+                              onPressed: () =>
+                                  setState(() => _isEditingPersonal = true),
+                            ),
                     ),
                     const SizedBox(height: 8),
                     _buildPersonalInfoCard(),
@@ -217,22 +507,200 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
                     _buildSectionHeader(
                       icon: Icons.two_wheeler_rounded,
                       title: 'Delivery & Vehicle Details',
+                      action: _isEditingRider
+                          ? null
+                          : _buildEditButton(
+                              onPressed: () =>
+                                  setState(() => _isEditingRider = true),
+                            ),
                     ),
                     const SizedBox(height: 8),
                     _buildRiderInfoCard(),
                     const SizedBox(height: 32),
-                    _buildSaveButton(),
-                    const SizedBox(height: 24),
                   ],
                 ),
               ),
-            ),
+      ),
     );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // SECTION COMPONENTS
+  // UI HELPERS & COMPONENTS
   // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildEditButton({required VoidCallback onPressed}) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      icon: const Icon(Icons.edit_outlined, size: 15, color: AppTheme.accentBlue),
+      label: Text(
+        'Edit',
+        style: GoogleFonts.lexend(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.accentBlue,
+        ),
+      ),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        backgroundColor: AppTheme.accentBlue.withValues(alpha: 0.08),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    String placeholder = 'Not set',
+  }) {
+    final hasValue = value.trim().isNotEmpty;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppTheme.accentBlue.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: AppTheme.accentBlue),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.lexend(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.textLight,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                hasValue ? value : placeholder,
+                style: GoogleFonts.lexend(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: hasValue
+                      ? AppTheme.textDark
+                      : AppTheme.textLight.withValues(alpha: 0.7),
+                  fontStyle: hasValue ? FontStyle.normal : FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCardActionButtons({
+    required VoidCallback onCancel,
+    required VoidCallback onSave,
+    required bool isSaving,
+    bool canSave = true,
+    String saveLabel = 'Save',
+  }) {
+    const buttonHeight = 46.0;
+    final borderRadius = BorderRadius.circular(12);
+
+    return SizedBox(
+      height: buttonHeight,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: ElevatedButton(
+              onPressed: isSaving ? null : onCancel,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.softGray,
+                foregroundColor: AppTheme.textDark,
+                elevation: 0,
+                shadowColor: Colors.transparent,
+                side: BorderSide(
+                  color: AppTheme.borderGray.withValues(alpha: 0.8),
+                  width: 1,
+                ),
+                shape: RoundedRectangleBorder(borderRadius: borderRadius),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: AppTheme.textDark,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Cancel',
+                    style: GoogleFonts.lexend(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton(
+              onPressed: (isSaving || !canSave) ? null : onSave,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentBlue,
+                disabledBackgroundColor: Colors.grey.shade300,
+                foregroundColor: Colors.white,
+                disabledForegroundColor: Colors.grey.shade600,
+                elevation: 0,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(borderRadius: borderRadius),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+              ),
+              child: isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.check_rounded,
+                          size: 18,
+                          color: canSave ? Colors.white : Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          saveLabel,
+                          style: GoogleFonts.lexend(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: canSave ? Colors.white : Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildHeaderCard() {
     final fullName =
@@ -327,6 +795,7 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
   Widget _buildSectionHeader({
     required IconData icon,
     required String title,
+    Widget? action,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -334,7 +803,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
         children: [
           Icon(icon, size: 18, color: AppTheme.accentBlue),
           const SizedBox(width: 8),
-          // Expanded so a long section title wraps instead of overflowing.
           Expanded(
             child: Text(
               title,
@@ -345,162 +813,244 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
               ),
             ),
           ),
+          if (action != null) action,
         ],
       ),
     );
   }
 
   Widget _buildPersonalInfoCard() {
+    if (!_isEditingPersonal) {
+      final fullName =
+          '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
+              .trim();
+
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoRow(
+              icon: Icons.person_outline_rounded,
+              label: 'Full Name',
+              value: fullName,
+              placeholder: 'No name set',
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Divider(
+                height: 1,
+                color: AppTheme.borderGray.withValues(alpha: 0.4),
+              ),
+            ),
+            _buildInfoRow(
+              icon: Icons.phone_android_outlined,
+              label: 'Mobile Number',
+              value: _phoneController.text.trim(),
+              placeholder: 'No phone number set',
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Divider(
+                height: 1,
+                color: AppTheme.borderGray.withValues(alpha: 0.4),
+              ),
+            ),
+            _buildInfoRow(
+              icon: Icons.email_outlined,
+              label: 'Email Address',
+              value: _emailController.text.trim(),
+              placeholder: 'No email address set',
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+        border: Border.all(
+          color: AppTheme.accentBlue.withValues(alpha: 0.6),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: AppTheme.accentBlue.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: CustomTextField(
-                  label: 'First Name',
-                  hint: 'First name',
-                  prefixIcon: Icons.badge_outlined,
-                  controller: _firstNameController,
-                  validator: (v) => Validators.nameField(v, 'First name'),
-                  maxLength: Validators.nameMax,
-                  textCapitalization: TextCapitalization.words,
-                  onChanged: (_) => setState(() {}),
+      child: Form(
+        key: _personalFormKey,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: CustomTextField(
+                    label: 'First Name',
+                    hint: 'First name',
+                    prefixIcon: Icons.badge_outlined,
+                    controller: _firstNameController,
+                    validator: (v) => Validators.nameField(v, 'First name'),
+                    maxLength: Validators.nameMax,
+                    textCapitalization: TextCapitalization.words,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: CustomTextField(
-                  label: 'Last Name',
-                  hint: 'Last name',
-                  prefixIcon: Icons.badge_outlined,
-                  controller: _lastNameController,
-                  validator: (v) => Validators.nameField(v, 'Last name'),
-                  maxLength: Validators.nameMax,
-                  textCapitalization: TextCapitalization.words,
-                  onChanged: (_) => setState(() {}),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: CustomTextField(
+                    label: 'Last Name',
+                    hint: 'Last name',
+                    prefixIcon: Icons.badge_outlined,
+                    controller: _lastNameController,
+                    validator: (v) => Validators.nameField(v, 'Last name'),
+                    maxLength: Validators.nameMax,
+                    textCapitalization: TextCapitalization.words,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          CustomTextField(
-            label: 'Mobile Number',
-            hint: '09XX-XXX-XXXX',
-            prefixIcon: Icons.phone_android_outlined,
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            inputFormatters: InputFormatters.phone(),
-            validator: Validators.phone,
-          ),
-          const SizedBox(height: 16),
-          CustomTextField(
-            label: 'Email Address',
-            hint: 'Email address',
-            prefixIcon: Icons.email_outlined,
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-            validator: Validators.optionalEmail,
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 16),
+            CustomTextField(
+              label: 'Mobile Number',
+              hint: '09XX-XXX-XXXX',
+              prefixIcon: Icons.phone_android_outlined,
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              inputFormatters: InputFormatters.phone(),
+              validator: Validators.phone,
+            ),
+            const SizedBox(height: 16),
+            CustomTextField(
+              label: 'Email Address',
+              hint: 'Email address',
+              prefixIcon: Icons.email_outlined,
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              inputFormatters: InputFormatters.email(),
+              validator: Validators.emailField,
+            ),
+            const SizedBox(height: 16),
+            _buildCardActionButtons(
+              onCancel: _cancelPersonalEdit,
+              onSave: _savePersonalInfo,
+              isSaving: _isSavingPersonal,
+              canSave: _hasPersonalChanges,
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildRiderInfoCard() {
+    if (!_isEditingRider) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoRow(
+              icon: Icons.person_outline_rounded,
+              label: 'Rider Display Name',
+              value: _nameController.text.trim(),
+              placeholder: 'No display name specified',
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Divider(
+                height: 1,
+                color: AppTheme.borderGray.withValues(alpha: 0.4),
+              ),
+            ),
+            _buildInfoRow(
+              icon: Icons.two_wheeler_outlined,
+              label: 'Vehicle Details',
+              value: _vehicleController.text.trim(),
+              placeholder: 'No vehicle details specified',
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+        border: Border.all(
+          color: AppTheme.accentBlue.withValues(alpha: 0.6),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: AppTheme.accentBlue.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        children: [
-          CustomTextField(
-            label: 'Rider Name',
-            hint: 'Full display name',
-            prefixIcon: Icons.person_outline_rounded,
-            controller: _nameController,
-            validator: (v) => Validators.nameField(v, 'Rider name'),
-            maxLength: Validators.nameMax,
-            textCapitalization: TextCapitalization.words,
-          ),
-          const SizedBox(height: 16),
-          CustomTextField(
-            label: 'Vehicle Details',
-            hint: 'e.g. Honda Wave 110 - ABC 1234',
-            prefixIcon: Icons.two_wheeler_outlined,
-            controller: _vehicleController,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSaveButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: _isSaving ? null : _saveProfile,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.accentBlue,
-          foregroundColor: Colors.white,
-          elevation: 4,
-          shadowColor: AppTheme.accentBlue.withValues(alpha: 0.4),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+      child: Form(
+        key: _riderFormKey,
+        child: Column(
+          children: [
+            CustomTextField(
+              label: 'Rider Name',
+              hint: 'Full display name',
+              prefixIcon: Icons.person_outline_rounded,
+              controller: _nameController,
+              validator: (v) => Validators.nameField(v, 'Rider name'),
+              maxLength: Validators.nameMax,
+              textCapitalization: TextCapitalization.words,
+            ),
+            const SizedBox(height: 16),
+            CustomTextField(
+              label: 'Vehicle Details',
+              hint: 'e.g. Honda Wave 110 - ABC 1234',
+              prefixIcon: Icons.two_wheeler_outlined,
+              controller: _vehicleController,
+            ),
+            const SizedBox(height: 16),
+            _buildCardActionButtons(
+              onCancel: _cancelRiderEdit,
+              onSave: _saveRiderInfo,
+              isSaving: _isSavingRider,
+              canSave: _hasRiderChanges,
+            ),
+          ],
         ),
-        child: _isSaving
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            // scaleDown keeps the label intact (and on one line) inside the
-            // button when the system font is enlarged.
-            : FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.check_rounded, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Save Information',
-                      style: GoogleFonts.lexend(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
       ),
     );
   }
