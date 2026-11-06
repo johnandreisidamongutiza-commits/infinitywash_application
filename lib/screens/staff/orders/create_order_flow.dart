@@ -2613,7 +2613,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   onChanged: (_) => setState(() {}),
                   textAlign: TextAlign.center,
                   decoration: InputDecoration(
-                    hintText: '0',
+                    hintText: '0.0',
+                    hintStyle: TextStyle(
+                      color: AppTheme.textLight.withValues(alpha: 0.5),
+                      fontSize: 14,
+                      fontWeight: FontWeight.normal,
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(

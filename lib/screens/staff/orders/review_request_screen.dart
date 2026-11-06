@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
+import '../../../utils/phone_helper.dart';
 import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
 import '../../../services/supabase_service.dart';
@@ -618,16 +619,28 @@ class _ReviewRequestScreenState extends State<ReviewRequestScreen> {
                   phone,
                   style: const TextStyle(fontSize: 13, color: AppTheme.textDark, fontWeight: FontWeight.w500),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 InkWell(
-                  onTap: () => _copyToClipboard(phone, 'Phone number'),
+                  onTap: () => PhoneHelper.openDialer(
+                    context,
+                    phone: phone,
+                    contactName: customerName,
+                  ),
+                  borderRadius: BorderRadius.circular(6),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppTheme.softGray,
+                      color: AppTheme.accentBlue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: const Text('Copy', style: TextStyle(fontSize: 10, color: AppTheme.accentBlue, fontWeight: FontWeight.bold)),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.phone, size: 12, color: AppTheme.accentBlue),
+                        SizedBox(width: 4),
+                        Text('Call', style: TextStyle(fontSize: 11, color: AppTheme.accentBlue, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
                   ),
                 ),
               ],

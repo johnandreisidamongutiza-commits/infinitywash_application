@@ -174,9 +174,13 @@ class OrdersScreenState extends State<OrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _loadRejectedCount() async {
     try {
-      // Auto-reject any expired requests so the badge count is always accurate.
+      // Auto-reject any expired requests and purge requests older than 30 days
       await _orderService.autoRejectExpiredRequests();
-      final count = await _orderService.fetchOrderCount(statuses: ['rejected']);
+      await _orderService.purgeOldRejectedOrders(days: 30);
+      final count = await _orderService.fetchOrderCount(
+        statuses: ['rejected'],
+        isDismissed: false,
+      );
       if (mounted) setState(() => _rejectedCount = count);
     } catch (_) {}
   }

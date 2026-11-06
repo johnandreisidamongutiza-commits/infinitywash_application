@@ -138,6 +138,7 @@ class LaundryOrder {
   final String? reviewedBy; // Which staff member reviewed
   final DateTime? expiresAt; // Auto-reject after 24 hours if not reviewed
   final String? underReviewBy; // Staff member currently reviewing (lock)
+  final DateTime? dismissedAt; // When staff dismissed this rejected request
   final double? totalAmount; // Total order price from DB
 
   LaundryOrder({
@@ -170,6 +171,7 @@ class LaundryOrder {
     this.reviewedBy,
     this.expiresAt,
     this.underReviewBy,
+    this.dismissedAt,
     this.totalAmount,
   });
 
@@ -202,6 +204,8 @@ class LaundryOrder {
   bool get allLoadsReady => true; // Order-level status only, no per-load status
   
   bool get hasMultipleLoads => loads.length > 1;
+
+  bool get isDismissed => dismissedAt != null;
 
   /// App request that was accepted and arrived at shop, but laundry has not been weighed/tagged yet.
   /// Also includes staff-created rider pickup orders that arrived at shop and need check-in.
@@ -287,6 +291,7 @@ class LaundryOrder {
       'reviewed_by': reviewedBy,
       'expires_at': expiresAt?.toIso8601String(),
       'under_review_by': underReviewBy,
+      'dismissed_at': dismissedAt?.toIso8601String(),
       'total_amount': totalAmount,
     };
   }
@@ -329,6 +334,7 @@ class LaundryOrder {
       reviewedBy: json['reviewed_by'] as String?,
       expiresAt: _parseLocalDateTime(json['expires_at']),
       underReviewBy: json['under_review_by'] as String?,
+      dismissedAt: _parseLocalDateTime(json['dismissed_at']),
       totalAmount: (json['total_amount'] as num?)?.toDouble(),
     );
   }
