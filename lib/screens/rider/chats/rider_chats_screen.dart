@@ -524,22 +524,22 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
     required int dispatchUnread,
   }) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _buildFilterChip('All', 0, count: totalCount),
-            const SizedBox(width: 8),
-            _buildFilterChip('Pickups', 1, count: pickupCount),
-            const SizedBox(width: 8),
-            _buildFilterChip('Deliveries', 2, count: deliveryCount),
-            const SizedBox(width: 8),
-            _buildFilterChip('Shop Staff', 3,
-                count: dispatchUnread > 0 ? dispatchUnread : null,
-                isUnreadBadge: dispatchUnread > 0),
-          ],
-        ),
+      margin: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+      child: Row(
+        children: [
+          _buildFilterChip('All', 0, count: totalCount),
+          const SizedBox(width: 6),
+          _buildFilterChip('Pickups', 1, count: pickupCount),
+          const SizedBox(width: 6),
+          _buildFilterChip('Deliveries', 2, count: deliveryCount),
+          const SizedBox(width: 6),
+          _buildFilterChip(
+            'Shop Staff',
+            3,
+            count: dispatchUnread > 0 ? dispatchUnread : null,
+            isUnreadBadge: dispatchUnread > 0,
+          ),
+        ],
       ),
     );
   }
@@ -552,58 +552,65 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
   }) {
     final isSelected = _selectedFilterIndex == index;
 
-    return GestureDetector(
-      onTap: () => setState(() => _selectedFilterIndex = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryBlue : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected
-                ? AppTheme.primaryBlue
-                : AppTheme.borderGray.withValues(alpha: 0.6),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? Colors.white : AppTheme.textDark,
-              ),
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedFilterIndex = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primaryBlue : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.primaryBlue
+                  : AppTheme.borderGray.withValues(alpha: 0.4),
             ),
-            if (count != null && count > 0) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: isUnreadBadge
-                      ? AppTheme.errorRed
-                      : isSelected
-                          ? Colors.white.withValues(alpha: 0.25)
-                          : AppTheme.softGray,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$count',
+          ),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(width: 4),
+                Text(
+                  label,
                   style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: isUnreadBadge
-                        ? Colors.white
-                        : isSelected
-                            ? Colors.white
-                            : AppTheme.textDark,
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    color: isSelected ? Colors.white : AppTheme.textDark,
                   ),
                 ),
-              ),
-            ],
-          ],
+                if (count != null && count > 0) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: isUnreadBadge
+                          ? AppTheme.errorRed
+                          : isSelected
+                              ? Colors.white.withValues(alpha: 0.25)
+                              : AppTheme.softGray,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: isUnreadBadge
+                            ? Colors.white
+                            : isSelected
+                                ? Colors.white
+                                : AppTheme.textDark,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 4),
+              ],
+            ),
+          ),
         ),
       ),
     );

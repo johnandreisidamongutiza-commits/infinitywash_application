@@ -621,11 +621,11 @@ class OrdersScreenState extends State<OrdersScreen>
               controller: _tabController,
               labelPadding: const EdgeInsets.symmetric(horizontal: 4),
               indicator: BoxDecoration(
-                color: AppTheme.accentBlue,
+                color: AppTheme.primaryBlue,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.accentBlue.withValues(alpha: 0.3),
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
