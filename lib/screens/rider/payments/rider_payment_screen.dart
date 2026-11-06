@@ -547,7 +547,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
             icon: Icons.all_inbox_rounded,
             value: 'all',
             count: allCount,
-            color: AppTheme.accentBlue,
+            color: AppTheme.primaryBlue,
           ),
           const SizedBox(width: 8),
           _buildSubFilterChip(
@@ -555,7 +555,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
             icon: Icons.inventory_2_outlined,
             value: 'pickup',
             count: pickupCount,
-            color: AppTheme.accentBlue,
+            color: AppTheme.primaryBlue,
           ),
           const SizedBox(width: 8),
           _buildSubFilterChip(
@@ -563,7 +563,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
             icon: Icons.local_shipping_outlined,
             value: 'delivery',
             count: deliveryCount,
-            color: Colors.purple.shade700,
+            color: AppTheme.primaryBlue,
           ),
         ],
       ),

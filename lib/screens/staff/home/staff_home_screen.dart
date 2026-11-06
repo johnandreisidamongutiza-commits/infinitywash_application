@@ -286,27 +286,6 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Today\'s Queue', style: AppTheme.lightTheme.textTheme.titleMedium),
-              InkWell(
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const OrdersScreen()),
-                  );
-                  if (mounted) _loadOrders();
-                },
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  child: Text(
-                    'View All',
-                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.accentBlue,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 20),
@@ -484,22 +463,6 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                 },
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _buildQuickActionCard(
-                context,
-                'View All\nOrders',
-                Icons.assignment_outlined,
-                AppTheme.teamMemberIconOrange,
-                AppTheme.teamMemberOrange,
-                () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const OrdersScreen()),
-                  );
-                },
-              ),
-            ),
           ],
         ),
       ],
@@ -561,15 +524,6 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                 style: AppTheme.lightTheme.textTheme.titleMedium,
                 overflow: TextOverflow.ellipsis,
               ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const OrdersScreen()),
-                );
-              },
-              child: const Text('See All', style: TextStyle(color: AppTheme.accentBlue)),
             ),
           ],
         ),

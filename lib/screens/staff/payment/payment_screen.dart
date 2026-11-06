@@ -40,11 +40,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _paidInitialized = false;
   final ScrollController _paidScroll = ScrollController();
 
-  // ── Header aggregates (cover every row, not just the loaded page) ───────
+  // ── Tab counts (cover every row, not just the loaded page) ───────
   int _unpaidCount = 0;
-  double _unpaidTotal = 0;
   int _paidCount = 0;
-  double _paidTotal = 0;
 
   @override
   void initState() {
@@ -236,9 +234,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (!mounted) return;
       setState(() {
         _unpaidCount = results[0].count;
-        _unpaidTotal = results[0].total;
         _paidCount = results[1].count;
-        _paidTotal = results[1].total;
       });
     } catch (e) {
       // Totals are cosmetic — keep the last known values if the query fails.
@@ -328,9 +324,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ),
       body: Column(
         children: [
-          // Stats Header
-          _buildStatsHeader(),
-
           // Filter & Search Section
           Container(
             color: Colors.white,
@@ -486,93 +479,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ─── Stats Header ──────────────────────────────────────────────
-  Widget _buildStatsHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.shade200, width: 1),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildStatItem(
-              icon: Icons.pending_actions,
-              iconColor: Colors.amber.shade700,
-              iconBg: Colors.amber.shade50,
-              label: 'Unpaid',
-              value: '₱${_unpaidTotal.toStringAsFixed(0)}',
-              subValue: '$_unpaidCount orders',
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 44,
-            color: Colors.grey.shade200,
-          ),
-          Expanded(
-            child: _buildStatItem(
-              icon: Icons.check_circle_outline,
-              iconColor: Colors.green.shade700,
-              iconBg: Colors.green.shade50,
-              label: 'Collected',
-              value: '₱${_paidTotal.toStringAsFixed(0)}',
-              subValue: '$_paidCount orders',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatItem({
-    required IconData icon,
-    required Color iconColor,
-    required Color iconBg,
-    required String label,
-    required String value,
-    required String subValue,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: iconBg,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, size: 18, color: iconColor),
-        ),
-        const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              value,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: Colors.black87,
-              ),
-            ),
-            Text(
-              subValue,
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey.shade500,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
   // ─── Filter Tab ─────────────────────────────────────────────────
   Widget _buildFilterTab({
     required String title,
@@ -678,7 +584,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         onTap: () {
           if (isPaid) {
             _showReceiptSheet(order, total);
-          } else if (!isRider) {
+          } else {
             _openPaymentProcess(order);
           }
         },
