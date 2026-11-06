@@ -235,11 +235,11 @@ class _StaffChatsScreenState extends State<StaffChatsScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.accentBlue : Colors.white,
+            color: isSelected ? AppTheme.primaryBlue : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isSelected
-                  ? AppTheme.accentBlue
+                  ? AppTheme.primaryBlue
                   : AppTheme.borderGray.withValues(alpha: 0.4),
             ),
           ),

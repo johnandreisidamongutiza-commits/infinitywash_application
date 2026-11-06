@@ -1189,7 +1189,7 @@ class OrdersScreenState extends State<OrdersScreen>
             final isSelected = _selectedActiveStatus == status;
             final label = status == null ? 'All' : _statusLabel(status);
             final icon = status == null ? Icons.all_inbox_rounded : _statusIcon(status);
-            final color = status == null ? AppTheme.primaryBlue : _statusColor(status);
+            const color = AppTheme.primaryBlue;
 
             final countKey = status == null ? 'all' : status.name;
             final count = _activeStatusCounts[countKey];

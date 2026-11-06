@@ -557,11 +557,11 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? AppTheme.accentBlue : Colors.white,
+          color: isSelected ? AppTheme.primaryBlue : Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected
-                ? AppTheme.accentBlue
+                ? AppTheme.primaryBlue
                 : AppTheme.borderGray.withValues(alpha: 0.6),
           ),
         ),
