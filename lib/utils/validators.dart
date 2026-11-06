@@ -92,6 +92,26 @@ class Validators {
     }
   }
 
+  /// Normalizes any valid Philippine mobile number to the standard 11-digit format (09XXXXXXXXX).
+  ///
+  /// Examples:
+  /// - `+63 915 109 4449` -> `09151094449`
+  /// - `639151094449` -> `09151094449`
+  /// - `9151094449` -> `09151094449`
+  /// - `0915-109-4449` -> `09151094449`
+  static String normalizePhone(String? value) {
+    if (value == null) return '';
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.startsWith('639') && digits.length == 12) {
+      return '0${digits.substring(2)}';
+    } else if (digits.startsWith('9') && digits.length == 10) {
+      return '0$digits';
+    } else if (digits.startsWith('09') && digits.length == 11) {
+      return digits;
+    }
+    return digits;
+  }
+
   /// Optional Philippine mobile number.
   static String? optionalPhone(String? value) {
     final v = value?.trim() ?? '';
@@ -118,15 +138,20 @@ class Validators {
     return null;
   }
 
-  /// Name: letters, spaces, hyphens; 2+ chars.
-  static String? name(String? value, String fieldName) {
-    final v = value?.trim() ?? '';
-    if (v.isEmpty) return 'Please enter $fieldName.';
-    if (v.length < 2) return '$fieldName must be at least 2 characters.';
-    if (!v.contains(RegExp(r"^[a-zA-Z\u00C0-\u017F' \-]+$"))) {
-      return 'Please enter a valid $fieldName (letters only).';
-    }
-    return null;
+  /// Name: letters, spaces, hyphens; 2+ chars (delegates to [nameField]).
+  static String? name(String? value, String fieldName) => nameField(value, fieldName);
+
+  /// Cleans a name by stripping leading/trailing whitespace, collapsing consecutive
+  /// spaces into a single space, and removing stray edge hyphens or apostrophes.
+  ///
+  /// Examples:
+  /// - `'  John    Paul  '` -> `'John Paul'`
+  /// - `'-John-'` -> `'John'`
+  static String cleanName(String? value) {
+    if (value == null) return '';
+    var cleaned = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    cleaned = cleaned.replaceAll(RegExp(r"^[\s'\-]+|[\s'\-]+$"), '');
+    return cleaned;
   }
 
   /// Free-form address (2+ chars).
@@ -171,13 +196,16 @@ class Validators {
   // ── Field validators: required + format + MIN and MAX character limits ────
 
   /// Name field: required, min 2 chars (rejects 1-character names),
-  /// max 50, letters/spaces/hyphens/apostrophes only.
+  /// max 50, letters/spaces/hyphens/apostrophes only, must contain at least one letter.
   static String? nameField(String? value, String fieldName) {
-    final v = value?.trim() ?? '';
+    final v = cleanName(value);
     if (v.isEmpty) return 'Please enter $fieldName.';
     if (v.length < nameMin) return '$fieldName must be at least $nameMin characters.';
     if (v.length > nameMax) return '$fieldName must be at most $nameMax characters.';
-    if (!v.contains(RegExp(r"^[a-zA-Z\u00C0-\u017F' \-]+$"))) {
+    if (!RegExp(r"[a-zA-Z\u00C0-\u017F]").hasMatch(v)) {
+      return '$fieldName must contain letters.';
+    }
+    if (!RegExp(r"^[a-zA-Z\u00C0-\u017F' \-]+$").hasMatch(v)) {
       return 'Please enter a valid $fieldName (letters only).';
     }
     return null;

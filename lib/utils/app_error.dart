@@ -264,6 +264,13 @@ String _authMessage(AuthException error) {
   }
 
   final msg = error.message.toLowerCase();
+  if (msg.contains('already been registered') ||
+      msg.contains('already registered') ||
+      msg.contains('email already exists') ||
+      msg.contains('user already exists') ||
+      msg.contains('email is already in use')) {
+    return 'This email address is already in use by another account.';
+  }
   if (msg.contains('invalid login credentials')) {
     return 'Incorrect email or password. Please try again.';
   }

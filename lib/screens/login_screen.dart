@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_error.dart';
@@ -10,7 +11,6 @@ import '../widgets/custom_text_field.dart';
 import '../services/auth_service.dart';
 import '../services/google_sign_in_service.dart';
 import '../services/supabase_service.dart';
-import '../utils/save_account_prompt.dart';
 import 'staff/staff_main_screen.dart';
 import 'customer/customer_main_screen.dart';
 import 'rider/rider_main_screen.dart';
@@ -33,6 +33,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _saveAccount = true;
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _authService = AuthService();
@@ -102,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await _authService.signIn(
         email: email,
         password: password,
-        rememberMe: false,
+        rememberMe: _saveAccount,
       );
 
       // Discover the role from the backend — never from local state.
@@ -146,8 +147,6 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
       }
-
-      await offerSaveAccount(context, _authService);
 
       final Widget destination = maybeDestination;
 
@@ -218,7 +217,9 @@ class _LoginScreenState extends State<LoginScreen> {
           );
           return;
         }
-        await offerSaveAccount(context, _authService);
+        if (_saveAccount) {
+          await _authService.rememberCurrentSession();
+        }
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const CustomerMainScreen()),
@@ -233,7 +234,9 @@ class _LoginScreenState extends State<LoginScreen> {
         if (mounted) _showMessage('This account does not have an active app role. Please contact support.');
         return;
       }
-      await offerSaveAccount(context, _authService);
+      if (_saveAccount) {
+        await _authService.rememberCurrentSession();
+      }
       Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => destination), (_) => false);
     } catch (error) {
       if (mounted) _showMessage(mapErrorToMessage(error));
@@ -375,22 +378,72 @@ class _LoginScreenState extends State<LoginScreen> {
               validator: Validators.passwordRequired,
             ),
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                InkWell(
+                  onTap: () => setState(() => _saveAccount = !_saveAccount),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: Checkbox(
+                            value: _saveAccount,
+                            onChanged: (v) =>
+                                setState(() => _saveAccount = v ?? false),
+                            activeColor: AppTheme.accentBlue,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Save account',
+                          style: GoogleFonts.lexend(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                TextButton(
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+                      MaterialPageRoute(
+                          builder: (context) => const ForgotPasswordScreen()),
                     );
                   },
-                  child: const Text(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 4, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
                     'Forgot password?',
-                    style: TextStyle(color: AppTheme.accentBlue),
+                    style: GoogleFonts.lexend(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.accentBlue,
+                    ),
                   ),
                 ),
+              ],
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _isLoading ? null : _signIn,
               child: Row(

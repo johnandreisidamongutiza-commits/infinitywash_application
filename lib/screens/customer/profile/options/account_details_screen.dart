@@ -9,6 +9,7 @@ import '../../../../utils/input_formatters.dart';
 import '../../../../utils/validators.dart';
 import '../../../../widgets/address_input_widget.dart';
 import '../../../../widgets/custom_text_field.dart';
+import '../../../../services/supabase_service.dart';
 import '../../../../widgets/editable_profile_avatar.dart';
 import '../../../../widgets/location_picker_widget.dart';
 
@@ -57,10 +58,16 @@ class _CustomerAccountDetailsScreenState
   String _initialLandmark = '';
   LatLng? _initialPinLocation;
 
+  bool get _isGoogleUser =>
+      SupabaseService.currentUser?.appMetadata['provider'] == 'google';
+
   bool get _hasPersonalChanges {
-    return _firstNameController.text.trim() != _initialFirstName ||
-        _lastNameController.text.trim() != _initialLastName ||
-        _phoneController.text.trim() != _initialPhone ||
+    final namePhoneChanged =
+        _firstNameController.text.trim() != _initialFirstName ||
+            _lastNameController.text.trim() != _initialLastName ||
+            _phoneController.text.trim() != _initialPhone;
+    if (_isGoogleUser) return namePhoneChanged;
+    return namePhoneChanged ||
         _emailController.text.trim().toLowerCase() !=
             _initialEmail.toLowerCase();
   }
@@ -210,8 +217,8 @@ class _CustomerAccountDetailsScreenState
 
     if (_personalFormKey.currentState?.validate() != true) return;
 
-    final firstName = _firstNameController.text.trim();
-    final lastName = _lastNameController.text.trim();
+    final firstName = Validators.cleanName(_firstNameController.text);
+    final lastName = Validators.cleanName(_lastNameController.text);
     if (firstName.isEmpty || lastName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -225,9 +232,16 @@ class _CustomerAccountDetailsScreenState
       return;
     }
 
+    _firstNameController.text = firstName;
+    _lastNameController.text = lastName;
+
     setState(() => _isSavingPersonal = true);
 
     try {
+      final normalizedPhone =
+          Validators.normalizePhone(_phoneController.text.trim());
+      _phoneController.text = normalizedPhone;
+
       final currentAddress = AddressInputWidget.buildFullAddress(
         houseStreet: _initialHouseStreet,
         selectedBarangay: _initialBarangay,
@@ -237,7 +251,7 @@ class _CustomerAccountDetailsScreenState
       await _profileService.updateProfile(
         firstName: firstName,
         lastName: lastName,
-        phone: _phoneController.text.trim(),
+        phone: normalizedPhone,
         email: _emailController.text.trim().toLowerCase(),
         address: currentAddress.isNotEmpty ? currentAddress : null,
         landmark: _initialLandmark.isNotEmpty ? _initialLandmark : null,
@@ -247,7 +261,7 @@ class _CustomerAccountDetailsScreenState
 
       _initialFirstName = firstName;
       _initialLastName = lastName;
-      _initialPhone = _phoneController.text.trim();
+      _initialPhone = normalizedPhone;
       _initialEmail = _emailController.text.trim().toLowerCase();
       _hasChanges = true;
 
@@ -980,6 +994,7 @@ class _CustomerAccountDetailsScreenState
                     hint: 'First name',
                     prefixIcon: Icons.badge_outlined,
                     controller: _firstNameController,
+                    inputFormatters: InputFormatters.name(),
                     validator: (v) => Validators.nameField(v, 'First name'),
                     maxLength: Validators.nameMax,
                     textCapitalization: TextCapitalization.words,
@@ -992,6 +1007,7 @@ class _CustomerAccountDetailsScreenState
                     hint: 'Last name',
                     prefixIcon: Icons.badge_outlined,
                     controller: _lastNameController,
+                    inputFormatters: InputFormatters.name(),
                     validator: (v) => Validators.nameField(v, 'Last name'),
                     maxLength: Validators.nameMax,
                     textCapitalization: TextCapitalization.words,
@@ -1015,9 +1031,10 @@ class _CustomerAccountDetailsScreenState
               hint: 'Email address',
               prefixIcon: Icons.email_outlined,
               controller: _emailController,
+              enabled: !_isGoogleUser,
               keyboardType: TextInputType.emailAddress,
               inputFormatters: InputFormatters.email(),
-              validator: Validators.emailField,
+              validator: _isGoogleUser ? null : Validators.emailField,
             ),
             const SizedBox(height: 16),
             _buildCardActionButtons(

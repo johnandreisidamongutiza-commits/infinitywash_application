@@ -17,14 +17,12 @@ class AccountDetailsScreen extends StatefulWidget {
 
 class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   final _personalFormKey = GlobalKey<FormState>();
-  final _staffFormKey = GlobalKey<FormState>();
   final _profileService = ProfileService();
 
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
-  final _nameController = TextEditingController();
   final _employeeCodeController = TextEditingController();
 
   String? _avatarUrl;
@@ -32,34 +30,23 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   bool _hasChanges = false;
   bool _isLoading = true;
 
-  // Edit states per card
+  // Edit states
   bool _isEditingPersonal = false;
   bool _isSavingPersonal = false;
-  bool _isEditingStaff = false;
-  bool _isSavingStaff = false;
 
   // Baseline values to detect unsaved changes
   String _initialFirstName = '';
   String _initialLastName = '';
   String _initialPhone = '';
   String _initialEmail = '';
-  String _initialName = '';
 
   bool get _hasPersonalChanges {
     return _firstNameController.text.trim() != _initialFirstName ||
         _lastNameController.text.trim() != _initialLastName ||
-        _phoneController.text.trim() != _initialPhone ||
-        _emailController.text.trim().toLowerCase() !=
-            _initialEmail.toLowerCase();
+        _phoneController.text.trim() != _initialPhone;
   }
 
-  bool get _hasStaffChanges {
-    return _nameController.text.trim() != _initialName;
-  }
-
-  bool get _hasUnsavedChanges =>
-      (_isEditingPersonal && _hasPersonalChanges) ||
-      (_isEditingStaff && _hasStaffChanges);
+  bool get _hasUnsavedChanges => _isEditingPersonal && _hasPersonalChanges;
 
   void _onFieldChanged() {
     if (mounted) setState(() {});
@@ -71,8 +58,6 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
     _firstNameController.addListener(_onFieldChanged);
     _lastNameController.addListener(_onFieldChanged);
     _phoneController.addListener(_onFieldChanged);
-    _emailController.addListener(_onFieldChanged);
-    _nameController.addListener(_onFieldChanged);
     _loadProfile();
   }
 
@@ -81,13 +66,10 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
     _firstNameController.removeListener(_onFieldChanged);
     _lastNameController.removeListener(_onFieldChanged);
     _phoneController.removeListener(_onFieldChanged);
-    _emailController.removeListener(_onFieldChanged);
-    _nameController.removeListener(_onFieldChanged);
     _firstNameController.dispose();
     _lastNameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
-    _nameController.dispose();
     _employeeCodeController.dispose();
     super.dispose();
   }
@@ -104,7 +86,6 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
       _lastNameController.text = profile['last_name'] ?? '';
       _phoneController.text = profile['phone'] ?? employee['phone'] ?? '';
       _emailController.text = profile['email'] ?? employee['email'] ?? '';
-      _nameController.text = employee['name'] ?? '';
       _employeeCodeController.text = employee['employee_code'] ?? '';
       _avatarUrl = profile['avatar_url'] as String?;
 
@@ -112,7 +93,6 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
       _initialLastName = _lastNameController.text.trim();
       _initialPhone = _phoneController.text.trim();
       _initialEmail = _emailController.text.trim();
-      _initialName = _nameController.text.trim();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -169,8 +149,8 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
 
     if (_personalFormKey.currentState?.validate() != true) return;
 
-    final firstName = _firstNameController.text.trim();
-    final lastName = _lastNameController.text.trim();
+    final firstName = Validators.cleanName(_firstNameController.text);
+    final lastName = Validators.cleanName(_lastNameController.text);
     if (firstName.isEmpty || lastName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -187,30 +167,35 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
       return;
     }
 
+    _firstNameController.text = firstName;
+    _lastNameController.text = lastName;
+
     setState(() => _isSavingPersonal = true);
 
     try {
+      final normalizedPhone =
+          Validators.normalizePhone(_phoneController.text.trim());
+      _phoneController.text = normalizedPhone;
+
       await _profileService.updateProfile(
         firstName: firstName,
         lastName: lastName,
-        phone: _phoneController.text.trim(),
+        phone: normalizedPhone,
         email: _emailController.text.trim().toLowerCase(),
       );
 
       if (_profileId != null) {
-        final staffName = _initialName.isNotEmpty
-            ? _initialName
-            : '$firstName $lastName'.trim();
+        final staffName = '$firstName $lastName'.trim();
         await _profileService.updateEmployee(
           profileId: _profileId!,
           name: staffName,
-          phone: _phoneController.text.trim(),
+          phone: normalizedPhone,
         );
       }
 
       _initialFirstName = firstName;
       _initialLastName = lastName;
-      _initialPhone = _phoneController.text.trim();
+      _initialPhone = normalizedPhone;
       _initialEmail = _emailController.text.trim().toLowerCase();
       _hasChanges = true;
 
@@ -268,117 +253,6 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
     _phoneController.text = _initialPhone;
     _emailController.text = _initialEmail;
     setState(() => _isEditingPersonal = false);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // CARD ACTIONS: STAFF INFO
-  // ─────────────────────────────────────────────────────────────────────────
-
-  Future<void> _saveStaffInfo() async {
-    if (!_hasStaffChanges) {
-      setState(() => _isEditingStaff = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.info_outline_rounded, color: Colors.white),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'No changes made to staff details.',
-                  style: GoogleFonts.lexend(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: AppTheme.primaryBlue,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
-      return;
-    }
-
-    if (_staffFormKey.currentState?.validate() != true) return;
-
-    setState(() => _isSavingStaff = true);
-
-    try {
-      if (_profileId == null) {
-        final profile = await _profileService.getProfile();
-        _profileId = profile['id'] as String?;
-      }
-
-      final staffName = _nameController.text.trim().isNotEmpty
-          ? _nameController.text.trim()
-          : '$_initialFirstName $_initialLastName'.trim();
-
-      if (_profileId != null) {
-        await _profileService.updateEmployee(
-          profileId: _profileId!,
-          name: staffName,
-          phone: _initialPhone,
-        );
-      }
-
-      _initialName = _nameController.text.trim();
-      _hasChanges = true;
-
-      if (!mounted) return;
-      setState(() => _isEditingStaff = false);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_outline, color: Colors.white),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Staff details updated successfully!',
-                  style: GoogleFonts.lexend(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.green.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            mapErrorToMessage(error),
-            style: GoogleFonts.lexend(color: Colors.white),
-          ),
-          backgroundColor: AppTheme.errorRed,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isSavingStaff = false);
-      }
-    }
-  }
-
-  void _cancelStaffEdit() {
-    _staffFormKey.currentState?.reset();
-    _nameController.text = _initialName;
-    setState(() => _isEditingStaff = false);
   }
 
   Future<bool> _showDiscardChangesDialog() async {
@@ -492,19 +366,6 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
                     ),
                     const SizedBox(height: 8),
                     _buildPersonalInfoCard(),
-                    const SizedBox(height: 24),
-                    _buildSectionHeader(
-                      icon: Icons.work_outline_rounded,
-                      title: 'Staff Details',
-                      action: _isEditingStaff
-                          ? null
-                          : _buildEditButton(
-                              onPressed: () =>
-                                  setState(() => _isEditingStaff = true),
-                            ),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildStaffInfoCard(),
                     const SizedBox(height: 32),
                   ],
                 ),
@@ -695,11 +556,7 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
     final fullName =
         '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
             .trim();
-    final displayName = fullName.isNotEmpty
-        ? fullName
-        : (_nameController.text.trim().isNotEmpty
-            ? _nameController.text.trim()
-            : 'Staff Member');
+    final displayName = fullName.isNotEmpty ? fullName : 'Staff Member';
 
     return Container(
       width: double.infinity,
@@ -864,118 +721,6 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
               value: _emailController.text.trim(),
               placeholder: 'No email address set',
             ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppTheme.accentBlue.withValues(alpha: 0.6),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.accentBlue.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Form(
-        key: _personalFormKey,
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: CustomTextField(
-                    label: 'First Name',
-                    hint: 'First name',
-                    prefixIcon: Icons.badge_outlined,
-                    controller: _firstNameController,
-                    validator: (v) => Validators.nameField(v, 'First name'),
-                    maxLength: Validators.nameMax,
-                    textCapitalization: TextCapitalization.words,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: CustomTextField(
-                    label: 'Last Name',
-                    hint: 'Last name',
-                    prefixIcon: Icons.badge_outlined,
-                    controller: _lastNameController,
-                    validator: (v) => Validators.nameField(v, 'Last name'),
-                    maxLength: Validators.nameMax,
-                    textCapitalization: TextCapitalization.words,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            CustomTextField(
-              label: 'Mobile Number',
-              hint: '09XX-XXX-XXXX',
-              prefixIcon: Icons.phone_android_outlined,
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              inputFormatters: InputFormatters.phone(),
-              validator: Validators.phone,
-            ),
-            const SizedBox(height: 16),
-            CustomTextField(
-              label: 'Email Address',
-              hint: 'Email address',
-              prefixIcon: Icons.email_outlined,
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              inputFormatters: InputFormatters.email(),
-              validator: Validators.emailField,
-            ),
-            const SizedBox(height: 16),
-            _buildCardActionButtons(
-              onCancel: _cancelPersonalEdit,
-              onSave: _savePersonalInfo,
-              isSaving: _isSavingPersonal,
-              canSave: _hasPersonalChanges,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStaffInfoCard() {
-    if (!_isEditingStaff) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildInfoRow(
-              icon: Icons.person_outline_rounded,
-              label: 'Employee Name',
-              value: _nameController.text.trim(),
-              placeholder: 'No employee name specified',
-            ),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Divider(
@@ -1012,17 +757,55 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
         ],
       ),
       child: Form(
-        key: _staffFormKey,
+        key: _personalFormKey,
         child: Column(
           children: [
+            Row(
+              children: [
+                Expanded(
+                  child: CustomTextField(
+                    label: 'First Name',
+                    hint: 'First name',
+                    prefixIcon: Icons.badge_outlined,
+                    controller: _firstNameController,
+                    inputFormatters: InputFormatters.name(),
+                    validator: (v) => Validators.nameField(v, 'First name'),
+                    maxLength: Validators.nameMax,
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: CustomTextField(
+                    label: 'Last Name',
+                    hint: 'Last name',
+                    prefixIcon: Icons.badge_outlined,
+                    controller: _lastNameController,
+                    inputFormatters: InputFormatters.name(),
+                    validator: (v) => Validators.nameField(v, 'Last name'),
+                    maxLength: Validators.nameMax,
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             CustomTextField(
-              label: 'Employee Name',
-              hint: 'Full display name',
-              prefixIcon: Icons.person_outline_rounded,
-              controller: _nameController,
-              validator: (v) => Validators.nameField(v, 'Employee name'),
-              maxLength: Validators.nameMax,
-              textCapitalization: TextCapitalization.words,
+              label: 'Mobile Number',
+              hint: '09XX-XXX-XXXX',
+              prefixIcon: Icons.phone_android_outlined,
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              inputFormatters: InputFormatters.phone(),
+              validator: Validators.phone,
+            ),
+            const SizedBox(height: 16),
+            CustomTextField(
+              label: 'Email Address',
+              hint: 'Email address',
+              prefixIcon: Icons.email_outlined,
+              controller: _emailController,
+              enabled: false,
             ),
             const SizedBox(height: 16),
             CustomTextField(
@@ -1034,10 +817,10 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
             ),
             const SizedBox(height: 16),
             _buildCardActionButtons(
-              onCancel: _cancelStaffEdit,
-              onSave: _saveStaffInfo,
-              isSaving: _isSavingStaff,
-              canSave: _hasStaffChanges,
+              onCancel: _cancelPersonalEdit,
+              onSave: _savePersonalInfo,
+              isSaving: _isSavingPersonal,
+              canSave: _hasPersonalChanges,
             ),
           ],
         ),

@@ -18,14 +18,12 @@ class RiderAccountDetailsScreen extends StatefulWidget {
 
 class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
   final _personalFormKey = GlobalKey<FormState>();
-  final _riderFormKey = GlobalKey<FormState>();
   final _profileService = ProfileService();
 
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
-  final _nameController = TextEditingController();
   final _vehicleController = TextEditingController();
 
   String? _avatarUrl;
@@ -33,36 +31,25 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
   bool _hasChanges = false;
   bool _isLoading = true;
 
-  // Edit states per card
+  // Edit states
   bool _isEditingPersonal = false;
   bool _isSavingPersonal = false;
-  bool _isEditingRider = false;
-  bool _isSavingRider = false;
 
   // Baseline values
   String _initialFirstName = '';
   String _initialLastName = '';
   String _initialPhone = '';
   String _initialEmail = '';
-  String _initialName = '';
   String _initialVehicle = '';
 
   bool get _hasPersonalChanges {
     return _firstNameController.text.trim() != _initialFirstName ||
         _lastNameController.text.trim() != _initialLastName ||
         _phoneController.text.trim() != _initialPhone ||
-        _emailController.text.trim().toLowerCase() !=
-            _initialEmail.toLowerCase();
-  }
-
-  bool get _hasRiderChanges {
-    return _nameController.text.trim() != _initialName ||
         _vehicleController.text.trim() != _initialVehicle;
   }
 
-  bool get _hasUnsavedChanges =>
-      (_isEditingPersonal && _hasPersonalChanges) ||
-      (_isEditingRider && _hasRiderChanges);
+  bool get _hasUnsavedChanges => _isEditingPersonal && _hasPersonalChanges;
 
   void _onFieldChanged() {
     if (mounted) setState(() {});
@@ -74,8 +61,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
     _firstNameController.addListener(_onFieldChanged);
     _lastNameController.addListener(_onFieldChanged);
     _phoneController.addListener(_onFieldChanged);
-    _emailController.addListener(_onFieldChanged);
-    _nameController.addListener(_onFieldChanged);
     _vehicleController.addListener(_onFieldChanged);
     _loadProfile();
   }
@@ -85,14 +70,11 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
     _firstNameController.removeListener(_onFieldChanged);
     _lastNameController.removeListener(_onFieldChanged);
     _phoneController.removeListener(_onFieldChanged);
-    _emailController.removeListener(_onFieldChanged);
-    _nameController.removeListener(_onFieldChanged);
     _vehicleController.removeListener(_onFieldChanged);
     _firstNameController.dispose();
     _lastNameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
-    _nameController.dispose();
     _vehicleController.dispose();
     super.dispose();
   }
@@ -109,7 +91,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
       _lastNameController.text = profile['last_name'] ?? '';
       _phoneController.text = profile['phone'] ?? employee['phone'] ?? '';
       _emailController.text = profile['email'] ?? employee['email'] ?? '';
-      _nameController.text = employee['name'] ?? '';
       _vehicleController.text = employee['vehicle_details'] ?? '';
       _avatarUrl = profile['avatar_url'] as String?;
 
@@ -117,7 +98,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
       _initialLastName = _lastNameController.text.trim();
       _initialPhone = _phoneController.text.trim();
       _initialEmail = _emailController.text.trim();
-      _initialName = _nameController.text.trim();
       _initialVehicle = _vehicleController.text.trim();
     } catch (error) {
       if (!mounted) return;
@@ -175,8 +155,8 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
 
     if (_personalFormKey.currentState?.validate() != true) return;
 
-    final firstName = _firstNameController.text.trim();
-    final lastName = _lastNameController.text.trim();
+    final firstName = Validators.cleanName(_firstNameController.text);
+    final lastName = Validators.cleanName(_lastNameController.text);
     if (firstName.isEmpty || lastName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -193,32 +173,39 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
       return;
     }
 
+    _firstNameController.text = firstName;
+    _lastNameController.text = lastName;
+
     setState(() => _isSavingPersonal = true);
 
     try {
+      final normalizedPhone =
+          Validators.normalizePhone(_phoneController.text.trim());
+      _phoneController.text = normalizedPhone;
+
       await _profileService.updateProfile(
         firstName: firstName,
         lastName: lastName,
-        phone: _phoneController.text.trim(),
+        phone: normalizedPhone,
         email: _emailController.text.trim().toLowerCase(),
       );
 
+      final vehicleDetails = _vehicleController.text.trim();
       if (_profileId != null) {
-        final riderName = _initialName.isNotEmpty
-            ? _initialName
-            : '$firstName $lastName'.trim();
+        final riderName = '$firstName $lastName'.trim();
         await _profileService.updateEmployee(
           profileId: _profileId!,
           name: riderName,
-          phone: _phoneController.text.trim(),
-          vehicleDetails: _initialVehicle,
+          phone: normalizedPhone,
+          vehicleDetails: vehicleDetails,
         );
       }
 
       _initialFirstName = firstName;
       _initialLastName = lastName;
-      _initialPhone = _phoneController.text.trim();
+      _initialPhone = normalizedPhone;
       _initialEmail = _emailController.text.trim().toLowerCase();
+      _initialVehicle = vehicleDetails;
       _hasChanges = true;
 
       if (!mounted) return;
@@ -274,122 +261,8 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
     _lastNameController.text = _initialLastName;
     _phoneController.text = _initialPhone;
     _emailController.text = _initialEmail;
-    setState(() => _isEditingPersonal = false);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // CARD ACTIONS: RIDER & VEHICLE INFO
-  // ─────────────────────────────────────────────────────────────────────────
-
-  Future<void> _saveRiderInfo() async {
-    if (!_hasRiderChanges) {
-      setState(() => _isEditingRider = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.info_outline_rounded, color: Colors.white),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'No changes made to vehicle and rider details.',
-                  style: GoogleFonts.lexend(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: AppTheme.primaryBlue,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
-      return;
-    }
-
-    if (_riderFormKey.currentState?.validate() != true) return;
-
-    setState(() => _isSavingRider = true);
-
-    try {
-      if (_profileId == null) {
-        final profile = await _profileService.getProfile();
-        _profileId = profile['id'] as String?;
-      }
-
-      final riderName = _nameController.text.trim().isNotEmpty
-          ? _nameController.text.trim()
-          : '$_initialFirstName $_initialLastName'.trim();
-      final vehicleDetails = _vehicleController.text.trim();
-
-      if (_profileId != null) {
-        await _profileService.updateEmployee(
-          profileId: _profileId!,
-          name: riderName,
-          phone: _initialPhone,
-          vehicleDetails: vehicleDetails,
-        );
-      }
-
-      _initialName = _nameController.text.trim();
-      _initialVehicle = vehicleDetails;
-      _hasChanges = true;
-
-      if (!mounted) return;
-      setState(() => _isEditingRider = false);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_outline, color: Colors.white),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Vehicle and rider details updated successfully!',
-                  style: GoogleFonts.lexend(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.green.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            mapErrorToMessage(error),
-            style: GoogleFonts.lexend(color: Colors.white),
-          ),
-          backgroundColor: AppTheme.errorRed,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isSavingRider = false);
-      }
-    }
-  }
-
-  void _cancelRiderEdit() {
-    _riderFormKey.currentState?.reset();
-    _nameController.text = _initialName;
     _vehicleController.text = _initialVehicle;
-    setState(() => _isEditingRider = false);
+    setState(() => _isEditingPersonal = false);
   }
 
   Future<bool> _showDiscardChangesDialog() async {
@@ -503,19 +376,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
                     ),
                     const SizedBox(height: 8),
                     _buildPersonalInfoCard(),
-                    const SizedBox(height: 24),
-                    _buildSectionHeader(
-                      icon: Icons.two_wheeler_rounded,
-                      title: 'Delivery & Vehicle Details',
-                      action: _isEditingRider
-                          ? null
-                          : _buildEditButton(
-                              onPressed: () =>
-                                  setState(() => _isEditingRider = true),
-                            ),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildRiderInfoCard(),
                     const SizedBox(height: 32),
                   ],
                 ),
@@ -706,11 +566,8 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
     final fullName =
         '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
             .trim();
-    final displayName = fullName.isNotEmpty
-        ? fullName
-        : (_nameController.text.trim().isNotEmpty
-            ? _nameController.text.trim()
-            : 'Delivery Rider');
+    final displayName =
+        fullName.isNotEmpty ? fullName : 'Delivery Rider';
 
     return Container(
       width: double.infinity,
@@ -875,118 +732,6 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
               value: _emailController.text.trim(),
               placeholder: 'No email address set',
             ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppTheme.accentBlue.withValues(alpha: 0.6),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.accentBlue.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Form(
-        key: _personalFormKey,
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: CustomTextField(
-                    label: 'First Name',
-                    hint: 'First name',
-                    prefixIcon: Icons.badge_outlined,
-                    controller: _firstNameController,
-                    validator: (v) => Validators.nameField(v, 'First name'),
-                    maxLength: Validators.nameMax,
-                    textCapitalization: TextCapitalization.words,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: CustomTextField(
-                    label: 'Last Name',
-                    hint: 'Last name',
-                    prefixIcon: Icons.badge_outlined,
-                    controller: _lastNameController,
-                    validator: (v) => Validators.nameField(v, 'Last name'),
-                    maxLength: Validators.nameMax,
-                    textCapitalization: TextCapitalization.words,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            CustomTextField(
-              label: 'Mobile Number',
-              hint: '09XX-XXX-XXXX',
-              prefixIcon: Icons.phone_android_outlined,
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              inputFormatters: InputFormatters.phone(),
-              validator: Validators.phone,
-            ),
-            const SizedBox(height: 16),
-            CustomTextField(
-              label: 'Email Address',
-              hint: 'Email address',
-              prefixIcon: Icons.email_outlined,
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              inputFormatters: InputFormatters.email(),
-              validator: Validators.emailField,
-            ),
-            const SizedBox(height: 16),
-            _buildCardActionButtons(
-              onCancel: _cancelPersonalEdit,
-              onSave: _savePersonalInfo,
-              isSaving: _isSavingPersonal,
-              canSave: _hasPersonalChanges,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRiderInfoCard() {
-    if (!_isEditingRider) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildInfoRow(
-              icon: Icons.person_outline_rounded,
-              label: 'Rider Display Name',
-              value: _nameController.text.trim(),
-              placeholder: 'No display name specified',
-            ),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Divider(
@@ -1023,17 +768,55 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
         ],
       ),
       child: Form(
-        key: _riderFormKey,
+        key: _personalFormKey,
         child: Column(
           children: [
+            Row(
+              children: [
+                Expanded(
+                  child: CustomTextField(
+                    label: 'First Name',
+                    hint: 'First name',
+                    prefixIcon: Icons.badge_outlined,
+                    controller: _firstNameController,
+                    inputFormatters: InputFormatters.name(),
+                    validator: (v) => Validators.nameField(v, 'First name'),
+                    maxLength: Validators.nameMax,
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: CustomTextField(
+                    label: 'Last Name',
+                    hint: 'Last name',
+                    prefixIcon: Icons.badge_outlined,
+                    controller: _lastNameController,
+                    inputFormatters: InputFormatters.name(),
+                    validator: (v) => Validators.nameField(v, 'Last name'),
+                    maxLength: Validators.nameMax,
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             CustomTextField(
-              label: 'Rider Name',
-              hint: 'Full display name',
-              prefixIcon: Icons.person_outline_rounded,
-              controller: _nameController,
-              validator: (v) => Validators.nameField(v, 'Rider name'),
-              maxLength: Validators.nameMax,
-              textCapitalization: TextCapitalization.words,
+              label: 'Mobile Number',
+              hint: '09XX-XXX-XXXX',
+              prefixIcon: Icons.phone_android_outlined,
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              inputFormatters: InputFormatters.phone(),
+              validator: Validators.phone,
+            ),
+            const SizedBox(height: 16),
+            CustomTextField(
+              label: 'Email Address',
+              hint: 'Email address',
+              prefixIcon: Icons.email_outlined,
+              controller: _emailController,
+              enabled: false,
             ),
             const SizedBox(height: 16),
             CustomTextField(
@@ -1044,10 +827,10 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
             ),
             const SizedBox(height: 16),
             _buildCardActionButtons(
-              onCancel: _cancelRiderEdit,
-              onSave: _saveRiderInfo,
-              isSaving: _isSavingRider,
-              canSave: _hasRiderChanges,
+              onCancel: _cancelPersonalEdit,
+              onSave: _savePersonalInfo,
+              isSaving: _isSavingPersonal,
+              canSave: _hasPersonalChanges,
             ),
           ],
         ),

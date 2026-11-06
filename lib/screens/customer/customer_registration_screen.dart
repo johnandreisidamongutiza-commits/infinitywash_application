@@ -60,6 +60,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   /// Terms of Service / Privacy Policy consent. Server-enforced: the
   /// registration trigger refuses the sign-up without it.
   bool _agreedToLegal = false;
+  bool _saveAccount = true;
   LatLng? _selectedLocation;
   String? _selectedAddress;
 
@@ -131,7 +132,9 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
       }
       if (profile != null && await _authService.isCustomerProfileComplete()) {
         if (!mounted) return;
-        await offerSaveAccount(context, _authService);
+        if (_saveAccount) {
+          await _authService.rememberCurrentSession();
+        }
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const CustomerMainScreen()),
@@ -175,9 +178,9 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
       customBarangay: _customBarangayController.text.trim(),
     );
     return {
-      'first_name': _firstNameController.text.trim(),
-      'last_name': _lastNameController.text.trim(),
-      'phone': _phoneController.text.trim(),
+      'first_name': Validators.cleanName(_firstNameController.text),
+      'last_name': Validators.cleanName(_lastNameController.text),
+      'phone': Validators.normalizePhone(_phoneController.text.trim()),
       'address': address,
       'landmark': _landmarkController.text.trim(),
       'role': 'customer',
@@ -277,16 +280,18 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
           customBarangay: _customBarangayController.text.trim(),
         );
         await _authService.completeCustomerProfile(
-          firstName: _firstNameController.text.trim(),
-          lastName: _lastNameController.text.trim(),
-          phone: _phoneController.text.trim(),
+          firstName: Validators.cleanName(_firstNameController.text),
+          lastName: Validators.cleanName(_lastNameController.text),
+          phone: Validators.normalizePhone(_phoneController.text.trim()),
           address: address,
           landmark: _landmarkController.text.trim(),
         );
         for (final document in requiredLegalDocuments()) {
           await _legalService.accept(document, source: 'registration');
         }
-        await offerSaveAccount(context, _authService);
+        if (_saveAccount) {
+          await _authService.rememberCurrentSession();
+        }
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
           context,
@@ -544,9 +549,9 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         CustomTextField(label: 'Email Address', hint: 'Enter your email', prefixIcon: Icons.email_outlined, controller: _emailController, keyboardType: TextInputType.emailAddress, validator: Validators.emailField),
       ]),
       Column(children: [
-        CustomTextField(label: 'First Name', hint: 'Juan', prefixIcon: Icons.person_outline, controller: _firstNameController, validator: (v) => Validators.nameField(v, 'First name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
+        CustomTextField(label: 'First Name', hint: 'Juan', prefixIcon: Icons.person_outline, controller: _firstNameController, inputFormatters: InputFormatters.name(), validator: (v) => Validators.nameField(v, 'First name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
         const SizedBox(height: 18),
-        CustomTextField(label: 'Last Name', hint: 'Dela Cruz', prefixIcon: Icons.person_outline, controller: _lastNameController, validator: (v) => Validators.nameField(v, 'Last name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
+        CustomTextField(label: 'Last Name', hint: 'Dela Cruz', prefixIcon: Icons.person_outline, controller: _lastNameController, inputFormatters: InputFormatters.name(), validator: (v) => Validators.nameField(v, 'Last name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
       ]),
       Column(children: [
         CustomTextField(label: 'Mobile Number', hint: '09XX-XXX-XXXX', prefixIcon: Icons.phone_android_outlined, controller: _phoneController, keyboardType: TextInputType.phone, inputFormatters: InputFormatters.phone(), validator: Validators.phone),
@@ -571,7 +576,67 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         ],
         const SizedBox(height: 8), Text(AddressInputWidget.buildFullAddress(houseStreet: _houseStreetController.text.trim(), selectedBarangay: _selectedBarangay, customBarangay: _customBarangayController.text.trim())),
         const SizedBox(height: 20),
-        Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppTheme.softGray, borderRadius: BorderRadius.circular(12)), child: LegalConsentCheckbox(value: _agreedToLegal, onChanged: (v) => setState(() => _agreedToLegal = v))),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.softGray,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LegalConsentCheckbox(
+                value: _agreedToLegal,
+                onChanged: (v) => setState(() => _agreedToLegal = v),
+              ),
+              const SizedBox(height: 12),
+              Divider(
+                height: 1,
+                color: AppTheme.borderGray.withValues(alpha: 0.5),
+              ),
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: () => setState(() => _saveAccount = !_saveAccount),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: Checkbox(
+                          value: _saveAccount,
+                          onChanged: (v) =>
+                              setState(() => _saveAccount = v ?? false),
+                          activeColor: AppTheme.accentBlue,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Save account on this device for quick sign-in',
+                          style: GoogleFonts.lexend(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ]),
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('We sent a 6-digit code to ${_emailController.text.trim()}. Enter it below to activate your account.'),
