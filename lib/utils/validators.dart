@@ -154,6 +154,19 @@ class Validators {
     return cleaned;
   }
 
+  /// Cleans vehicle details by trimming whitespace, collapsing multiple spaces,
+  /// and stripping stray leading/trailing punctuation.
+  ///
+  /// Examples:
+  /// - `'  Honda    Wave   110  '` -> `'Honda Wave 110'`
+  /// - `'-Yamaha Mio-'` -> `'Yamaha Mio'`
+  static String cleanVehicleDetails(String? value) {
+    if (value == null) return '';
+    var cleaned = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    cleaned = cleaned.replaceAll(RegExp(r"^[\s'\-/,.]+|[\s'\-/,.]+$"), '');
+    return cleaned;
+  }
+
   /// Free-form address (2+ chars).
   static String? address(String? value) {
     final v = value?.trim() ?? '';
@@ -179,6 +192,8 @@ class Validators {
   // ── Length constants shared by formatters and field validators ────────────
   static const int nameMin = 2;
   static const int nameMax = 50;
+  static const int vehicleDetailsMin = 3;
+  static const int vehicleDetailsMax = 60;
   static const int emailMax = 254;
   static const int passwordMax = 72; // Supabase/bcrypt practical limit
   static const int addressMax = 120;
@@ -207,6 +222,26 @@ class Validators {
     }
     if (!RegExp(r"^[a-zA-Z\u00C0-\u017F' \-]+$").hasMatch(v)) {
       return 'Please enter a valid $fieldName (letters only).';
+    }
+    return null;
+  }
+
+  /// Vehicle details validator: required, 3–60 chars, letters/numbers/spaces/safe punctuation,
+  /// must contain letters.
+  static String? vehicleDetails(String? value) {
+    final v = cleanVehicleDetails(value);
+    if (v.isEmpty) return 'Please enter your vehicle details.';
+    if (v.length < vehicleDetailsMin) {
+      return 'Vehicle details must be at least $vehicleDetailsMin characters.';
+    }
+    if (v.length > vehicleDetailsMax) {
+      return 'Vehicle details cannot exceed $vehicleDetailsMax characters.';
+    }
+    if (!RegExp(r'[a-zA-Z\u00C0-\u017F]').hasMatch(v)) {
+      return 'Vehicle details must contain letters (e.g. make or model).';
+    }
+    if (!RegExp(r"^[a-zA-Z0-9\u00C0-\u017F\s'\-/,.\(\)]+$").hasMatch(v)) {
+      return 'Vehicle details contain invalid characters.';
     }
     return null;
   }

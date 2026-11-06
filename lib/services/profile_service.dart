@@ -187,12 +187,15 @@ class ProfileService {
     String? deliveryZones,
   }) async {
     final cleanPhone = Validators.normalizePhone(phone);
+    final cleanVehicle = vehicleDetails != null
+        ? Validators.cleanVehicleDetails(vehicleDetails)
+        : null;
     await _client
         .from('employees')
         .update({
           'name': name,
           'phone': cleanPhone.isNotEmpty ? cleanPhone : phone,
-          'vehicle_details': vehicleDetails,
+          'vehicle_details': cleanVehicle ?? vehicleDetails,
           'delivery_zones': deliveryZones,
           'updated_at': DateTime.now().toIso8601String(),
         })

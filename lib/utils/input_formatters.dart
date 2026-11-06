@@ -58,6 +58,14 @@ class InputFormatters {
     ];
   }
 
+  /// Vehicle details: alphanumeric, spaces, and standard punctuation (- / . , ( ) ').
+  static List<TextInputFormatter> vehicleDetails({int maxLength = 60}) {
+    return [
+      FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z0-9\u00C0-\u017F\s'\-/,.\(\)]")),
+      LengthLimitingTextInputFormatter(maxLength),
+    ];
+  }
+
   /// Free text without control characters, capped at [maxLength].
   /// For names, notes, landmark — prevents pasting endless text.
   static List<TextInputFormatter> text({int? maxLength}) {

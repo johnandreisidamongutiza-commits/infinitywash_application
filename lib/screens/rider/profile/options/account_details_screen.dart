@@ -190,7 +190,10 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
         email: _emailController.text.trim().toLowerCase(),
       );
 
-      final vehicleDetails = _vehicleController.text.trim();
+      final vehicleDetails =
+          Validators.cleanVehicleDetails(_vehicleController.text);
+      _vehicleController.text = vehicleDetails;
+
       if (_profileId != null) {
         final riderName = '$firstName $lastName'.trim();
         await _profileService.updateEmployee(
@@ -824,6 +827,10 @@ class _RiderAccountDetailsScreenState extends State<RiderAccountDetailsScreen> {
               hint: 'e.g. Honda Wave 110 - ABC 1234',
               prefixIcon: Icons.two_wheeler_outlined,
               controller: _vehicleController,
+              validator: Validators.vehicleDetails,
+              inputFormatters: InputFormatters.vehicleDetails(),
+              maxLength: Validators.vehicleDetailsMax,
+              textCapitalization: TextCapitalization.words,
             ),
             const SizedBox(height: 16),
             _buildCardActionButtons(
