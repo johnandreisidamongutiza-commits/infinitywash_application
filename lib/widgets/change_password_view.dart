@@ -47,19 +47,6 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
     super.dispose();
   }
 
-  // ── Password Requirement Helpers ─────────────────────────────────────────
-  bool get _hasMinLength => _newPasswordController.text.length >= 6;
-  bool get _hasLettersAndNumbers =>
-      _newPasswordController.text.contains(RegExp(r'[A-Za-z]')) &&
-      _newPasswordController.text.contains(RegExp(r'[0-9]'));
-  bool get _passwordsMatch =>
-      _confirmPasswordController.text.isNotEmpty &&
-      _newPasswordController.text == _confirmPasswordController.text;
-  bool get _isDifferentFromCurrent =>
-      _currentPasswordController.text.isEmpty ||
-      _newPasswordController.text.isEmpty ||
-      _newPasswordController.text != _currentPasswordController.text;
-
   Future<void> _changePassword() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -219,11 +206,7 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
 
               // ── Password Inputs Card ──
               _buildPasswordFormCard(),
-              const SizedBox(height: 20),
-
-              // ── Password Requirements Checklist ──
-              _buildRequirementsCard(),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
 
               // ── Submit Button ──
               _buildSubmitButton(),
@@ -313,7 +296,15 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
             prefixIcon: Icons.lock_rounded,
             isPassword: true,
             controller: _newPasswordController,
-            validator: Validators.passwordField,
+            validator: (v) {
+              final err = Validators.passwordField(v);
+              if (err != null) return err;
+              if (_currentPasswordController.text.isNotEmpty &&
+                  v == _currentPasswordController.text) {
+                return 'New password must be different from current password.';
+              }
+              return null;
+            },
             maxLength: Validators.passwordMax,
             onChanged: (_) => setState(() {}),
           ),
@@ -331,78 +322,6 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildRequirementsCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Password Requirements',
-            style: GoogleFonts.lexend(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _buildRequirementItem(
-            label: 'At least 6 characters (up to 72)',
-            isMet: _hasMinLength,
-          ),
-          const SizedBox(height: 8),
-          _buildRequirementItem(
-            label: 'Contains both letters and numbers',
-            isMet: _hasLettersAndNumbers,
-          ),
-          const SizedBox(height: 8),
-          _buildRequirementItem(
-            label: 'New passwords match',
-            isMet: _passwordsMatch,
-          ),
-          const SizedBox(height: 8),
-          _buildRequirementItem(
-            label: 'Different from current password',
-            isMet: _isDifferentFromCurrent,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRequirementItem({required String label, required bool isMet}) {
-    final color = isMet ? const Color(0xFF43A047) : AppTheme.textLight;
-
-    return Row(
-      children: [
-        Icon(
-          isMet
-              ? Icons.check_circle_rounded
-              : Icons.radio_button_unchecked_rounded,
-          size: 16,
-          color: isMet ? const Color(0xFF43A047) : AppTheme.borderGray,
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
-            style: GoogleFonts.lexend(
-              fontSize: 12,
-              fontWeight: isMet ? FontWeight.w500 : FontWeight.w400,
-              color: color,
-            ),
-          ),
-        ),
-      ],
     );
   }
 
