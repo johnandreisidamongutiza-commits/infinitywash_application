@@ -448,7 +448,76 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
           },
         ),
       ),
-      body: _buildStepContent(),
+      body: Column(
+        children: [
+          if (_currentStep < 5) _buildStepProgressBar(),
+          Expanded(child: _buildStepContent()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepProgressBar() {
+    final stepLabels = [
+      'Service Options',
+      'Laundry Photos',
+      'Add-on Services',
+      'Address & Review',
+    ];
+    final currentLabel = _currentStep >= 1 && _currentStep <= 4
+        ? stepLabels[_currentStep - 1]
+        : '';
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Step $_currentStep of 4',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.textLight,
+                ),
+              ),
+              Text(
+                currentLabel,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryBlue,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: List.generate(4, (index) {
+              final isDoneOrCurrent = index < _currentStep;
+              return Expanded(
+                child: Container(
+                  height: 4,
+                  margin: EdgeInsets.only(
+                    left: index == 0 ? 0 : 3,
+                    right: index == 3 ? 0 : 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDoneOrCurrent
+                        ? AppTheme.primaryBlue
+                        : AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
     );
   }
 
@@ -478,76 +547,78 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
           children: [
             Text(
               'Collection Method',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(fontSize: 22),
+              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
-              'A rider will be dispatched to your address for laundry collection.',
+              'Door-to-door laundry pickup from your location.',
               style: AppTheme.lightTheme.textTheme.bodyMedium,
             ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline, color: AppTheme.teamMemberIconOrange, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'MINIMUM 2 LOADS REQUIRED for rider pickup/delivery service.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange.shade800,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildSelectableCard(
-              'Rider Pick-up',
-              'Door-to-door laundry collection from your address',
-              Icons.delivery_dining,
-              true,
-              () {},
-            ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 14),
+            _buildConfirmedCollectionCard(),
+            const SizedBox(height: 28),
             Text(
               'Return Method',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(fontSize: 22),
+              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               'Choose how you would like to receive your cleaned laundry.',
               style: AppTheme.lightTheme.textTheme.bodyMedium,
             ),
-            const SizedBox(height: 16),
-            _buildSelectableCard(
-              'Rider Delivery',
-              'We will deliver it back to your address',
-              Icons.local_shipping_outlined,
-              _selectedReturn == ReturnMethod.delivery,
-              () => setState(() => _selectedReturn = ReturnMethod.delivery),
+            const SizedBox(height: 14),
+            _buildReturnMethodCard(
+              title: 'Rider Delivery',
+              subtitle: 'We will deliver your clean laundry back to your doorstep.',
+              badge: 'To Your Door',
+              icon: Icons.local_shipping_outlined,
+              isSelected: _selectedReturn == ReturnMethod.delivery,
+              onTap: () => setState(() => _selectedReturn = ReturnMethod.delivery),
             ),
-            const SizedBox(height: 16),
-            _buildSelectableCard(
-              'Shop Pickup',
-              'Pick it up at our shop when ready',
-              Icons.storefront_outlined,
-              _selectedReturn == ReturnMethod.shopPickup,
-              () => setState(() => _selectedReturn = ReturnMethod.shopPickup),
+            const SizedBox(height: 12),
+            _buildReturnMethodCard(
+              title: 'Shop Pickup',
+              subtitle: 'Pick up your fresh laundry directly at our shop counter.',
+              badge: 'Self Collect',
+              icon: Icons.storefront_outlined,
+              isSelected: _selectedReturn == ReturnMethod.shopPickup,
+              onTap: () => setState(() => _selectedReturn = ReturnMethod.shopPickup),
             ),
-            const SizedBox(height: 40),
-            ElevatedButton(
-              onPressed: () => setState(() => _currentStep = 2),
-              child: const Text('Continue'),
+            const SizedBox(height: 36),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: () => setState(() => _currentStep = 2),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Continue',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Icon(Icons.arrow_forward_rounded, size: 18),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 20),
           ],
@@ -837,32 +908,231 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
     );
   }
 
-  Widget _buildSelectableCard(
-    String title,
-    String subtitle,
-    IconData icon,
-    bool isSelected,
-    VoidCallback onTap,
-  ) {
+  Widget _buildConfirmedCollectionCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.primaryBlue.withValues(alpha: 0.25),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryBlue.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.two_wheeler_rounded,
+                  color: AppTheme.primaryBlue,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'Rider Pick-up',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Included with Request',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.primaryBlue,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'A rider will be dispatched to your address for laundry collection.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppTheme.softGray,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: AppTheme.borderGray.withValues(alpha: 0.5),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 15,
+                  color: AppTheme.primaryBlue,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Minimum 2 loads required for rider collection.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReturnMethodCard({
+    required String title,
+    required String subtitle,
+    required String badge,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: isSelected ? AppStyles.selectedCardDecoration : AppStyles.cardDecoration,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.primaryBlue.withValues(alpha: 0.03)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? AppTheme.primaryBlue
+                : AppTheme.borderGray.withValues(alpha: 0.5),
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isSelected
+                  ? AppTheme.primaryBlue.withValues(alpha: 0.08)
+                  : Colors.black.withValues(alpha: 0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
         child: Row(
           children: [
-            Icon(icon, color: isSelected ? AppTheme.accentBlue : AppTheme.textLight, size: 32),
-            const SizedBox(width: 16),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isSelected ? AppTheme.primaryBlue : AppTheme.softGray,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? Colors.white : AppTheme.textLight,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                  Text(subtitle, style: const TextStyle(fontSize: 12)),
+                  Row(
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: isSelected
+                              ? AppTheme.primaryBlue
+                              : AppTheme.textDark,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppTheme.primaryBlue.withValues(alpha: 0.1)
+                              : AppTheme.softGray,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          badge,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: isSelected
+                                ? AppTheme.primaryBlue
+                                : AppTheme.textLight,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textLight,
+                    ),
+                  ),
                 ],
               ),
             ),
-            if (isSelected) const Icon(Icons.check_circle, color: AppTheme.accentBlue),
+            const SizedBox(width: 8),
+            Icon(
+              isSelected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_off,
+              color: isSelected ? AppTheme.primaryBlue : AppTheme.borderGray,
+              size: 22,
+            ),
           ],
         ),
       ),
