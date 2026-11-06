@@ -43,6 +43,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
   // ── Tab counts (cover every row, not just the loaded page) ───────
   int _unpaidCount = 0;
   int _paidCount = 0;
+  int _unpaidWalkinCount = 0;
+  int _unpaidRiderCount = 0;
+  int _paidWalkinCount = 0;
+  int _paidRiderCount = 0;
 
   @override
   void initState() {
@@ -222,12 +226,32 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final results = await Future.wait([
         _orderService.fetchPaymentBucketTotals(
           paymentStatus: 'unpaid',
-          subFilter: _subFilter,
+          subFilter: 'all',
           requireLoads: true,
         ),
         _orderService.fetchPaymentBucketTotals(
           paymentStatus: 'paid',
-          subFilter: _subFilter,
+          subFilter: 'all',
+          requireLoads: true,
+        ),
+        _orderService.fetchPaymentBucketTotals(
+          paymentStatus: 'unpaid',
+          subFilter: 'walkin',
+          requireLoads: true,
+        ),
+        _orderService.fetchPaymentBucketTotals(
+          paymentStatus: 'unpaid',
+          subFilter: 'rider',
+          requireLoads: true,
+        ),
+        _orderService.fetchPaymentBucketTotals(
+          paymentStatus: 'paid',
+          subFilter: 'walkin',
+          requireLoads: true,
+        ),
+        _orderService.fetchPaymentBucketTotals(
+          paymentStatus: 'paid',
+          subFilter: 'rider',
           requireLoads: true,
         ),
       ]);
@@ -235,6 +259,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
       setState(() {
         _unpaidCount = results[0].count;
         _paidCount = results[1].count;
+        _unpaidWalkinCount = results[2].count;
+        _unpaidRiderCount = results[3].count;
+        _paidWalkinCount = results[4].count;
+        _paidRiderCount = results[5].count;
       });
     } catch (e) {
       // Totals are cosmetic — keep the last known values if the query fails.
@@ -337,7 +365,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       child: _buildFilterTab(
                         title: 'Unpaid ($_unpaidCount)',
                         isSelected: !_showPaid,
-                        color: AppTheme.accentBlue,
+                        color: AppTheme.primaryBlue,
                         onTap: () => _selectTab(false),
                       ),
                     ),
@@ -354,17 +382,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 const SizedBox(height: 12),
                 // Sub-filter chips (All / Walk-in / Rider)
-                // Wrap: the chips stack onto a second line rather than
-                // overflowing when the text grows.
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _buildSubFilterChip('All', 'all'),
-                    _buildSubFilterChip('Walk-in', 'walkin'),
-                    _buildSubFilterChip('Rider', 'rider'),
-                  ],
-                ),
+                _buildSubFilterBar(),
                 const SizedBox(height: 12),
                 // Search Input
                 TextField(
@@ -493,7 +511,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? color.withValues(alpha: 0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? color : Colors.grey.shade300,
             width: isSelected ? 1.5 : 1,
@@ -513,24 +531,73 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ─── Sub-filter Chip ────────────────────────────────────────────
-  Widget _buildSubFilterChip(String label, String filter) {
+  // ─── Sub-filter Bar & Chips ──────────────────────────────────────
+  Widget _buildSubFilterBar() {
+    final allCount = _showPaid ? _paidCount : _unpaidCount;
+    final walkinCount = _showPaid ? _paidWalkinCount : _unpaidWalkinCount;
+    final riderCount = _showPaid ? _paidRiderCount : _unpaidRiderCount;
+
+    return Row(
+      children: [
+        _buildSubFilterChip('All', 'all', allCount),
+        const SizedBox(width: 8),
+        _buildSubFilterChip('Walk-in', 'walkin', walkinCount),
+        const SizedBox(width: 8),
+        _buildSubFilterChip('Rider', 'rider', riderCount),
+      ],
+    );
+  }
+
+  Widget _buildSubFilterChip(String label, String filter, int count) {
     final isSelected = _subFilter == filter;
-    return GestureDetector(
-      onTap: () => _setSubFilter(filter),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryBlue : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            color: isSelected ? Colors.white : Colors.grey.shade700,
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _setSubFilter(filter),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primaryBlue : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.primaryBlue
+                  : AppTheme.borderGray.withValues(alpha: 0.4),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? Colors.white : AppTheme.textDark,
+                ),
+              ),
+              if (count > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white.withValues(alpha: 0.25)
+                        : AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isSelected ? Colors.white : AppTheme.textDark,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),

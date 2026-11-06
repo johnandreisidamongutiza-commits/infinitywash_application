@@ -359,6 +359,9 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                // Sub-filter chips (All / Pickups / Deliveries)
+                _buildSubFilterBar(),
+                const SizedBox(height: 12),
                 // Search Input
                 TextField(
                   onChanged: (val) => setState(() => _searchQuery = val),
@@ -382,9 +385,6 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                     ),
                   ),
                 ),
-                // Sub-filter chips below search bar
-                const SizedBox(height: 12),
-                _buildSubFilterBar(),
               ],
             ),
           ),
@@ -537,52 +537,22 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
     final pickupCount = _showPaid ? _paidPickupCount : _unpaidPickupCount;
     final deliveryCount = _showPaid ? _paidDeliveryCount : _unpaidDeliveryCount;
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        children: [
-          _buildSubFilterChip(
-            label: 'All',
-            icon: Icons.all_inbox_rounded,
-            value: 'all',
-            count: allCount,
-            color: AppTheme.primaryBlue,
-          ),
-          const SizedBox(width: 8),
-          _buildSubFilterChip(
-            label: 'Pickups',
-            icon: Icons.inventory_2_outlined,
-            value: 'pickup',
-            count: pickupCount,
-            color: AppTheme.primaryBlue,
-          ),
-          const SizedBox(width: 8),
-          _buildSubFilterChip(
-            label: 'Deliveries',
-            icon: Icons.local_shipping_outlined,
-            value: 'delivery',
-            count: deliveryCount,
-            color: AppTheme.primaryBlue,
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        _buildSubFilterChip('All', 'all', allCount),
+        const SizedBox(width: 8),
+        _buildSubFilterChip('Pickups', 'pickup', pickupCount),
+        const SizedBox(width: 8),
+        _buildSubFilterChip('Deliveries', 'delivery', deliveryCount),
+      ],
     );
   }
 
-  Widget _buildSubFilterChip({
-    required String label,
-    required IconData icon,
-    required String value,
-    required int count,
-    required Color color,
-  }) {
+  Widget _buildSubFilterChip(String label, String value, int count) {
     final isSelected = _jobTypeFilter == value;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+    return Expanded(
+      child: GestureDetector(
         onTap: () {
           if (_jobTypeFilter == value) return;
           setState(() {
@@ -594,59 +564,45 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
             _initUnpaid();
           }
         },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected ? color : AppTheme.softGray,
-            borderRadius: BorderRadius.circular(20),
+            color: isSelected ? AppTheme.primaryBlue : Colors.white,
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected ? color : Colors.black.withValues(alpha: 0.06),
-              width: 1,
+              color: isSelected
+                  ? AppTheme.primaryBlue
+                  : AppTheme.borderGray.withValues(alpha: 0.4),
             ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.28),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 15,
-                color: isSelected ? Colors.white : color,
-              ),
-              const SizedBox(width: 6),
               Text(
                 label,
-                style: GoogleFonts.lexend(
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                   color: isSelected ? Colors.white : AppTheme.textDark,
                 ),
               ),
               if (count > 0) ...[
                 const SizedBox(width: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: isSelected
                         ? Colors.white.withValues(alpha: 0.25)
-                        : color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
+                        : AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     '$count',
-                    style: GoogleFonts.lexend(
-                      fontSize: 10,
+                    style: TextStyle(
+                      fontSize: 11,
                       fontWeight: FontWeight.bold,
-                      color: isSelected ? Colors.white : color,
+                      color: isSelected ? Colors.white : AppTheme.textDark,
                     ),
                   ),
                 ),
@@ -664,7 +620,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
     required bool isUnpaid,
     required VoidCallback onTap,
   }) {
-    final activeColor = isUnpaid ? AppTheme.accentBlue : Colors.green[700]!;
+    final activeColor = isUnpaid ? AppTheme.primaryBlue : Colors.green[700]!;
 
     return GestureDetector(
       onTap: onTap,
@@ -673,7 +629,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? activeColor.withValues(alpha: 0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? activeColor : Colors.grey.shade300,
             width: isSelected ? 1.5 : 1,
