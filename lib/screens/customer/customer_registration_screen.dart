@@ -686,7 +686,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                     ),
                     child: ClipOval(
                       child: Image.asset(
-                        'assets/images/logo.jpg',
+                        'assets/images/logo.png',
                         height: 100,
                         width: 100,
                         fit: BoxFit.cover,

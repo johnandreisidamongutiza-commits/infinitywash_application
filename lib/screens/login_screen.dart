@@ -24,7 +24,12 @@ import 'forgot_password_screen.dart';
 /// backend ([AuthService.getUserRole]) and the user is routed to the matching
 /// main screen.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final bool isAddingAccount;
+
+  const LoginScreen({
+    super.key,
+    this.isAddingAccount = false,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -56,56 +61,60 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
+      duration: const Duration(milliseconds: 650),
     );
 
     _titleFade = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: const Interval(0.10, 0.60, curve: Curves.fastOutSlowIn),
+        curve: const Interval(0.0, 0.55, curve: Curves.fastOutSlowIn),
       ),
     );
-    _titleSlide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(
+    _titleSlide = Tween<Offset>(begin: const Offset(0, 0.12), end: Offset.zero).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: const Interval(0.10, 0.60, curve: Curves.fastOutSlowIn),
+        curve: const Interval(0.0, 0.55, curve: Curves.fastOutSlowIn),
       ),
     );
 
     _formFade = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: const Interval(0.25, 0.75, curve: Curves.fastOutSlowIn),
+        curve: const Interval(0.18, 0.72, curve: Curves.fastOutSlowIn),
       ),
     );
-    _formSlide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(
+    _formSlide = Tween<Offset>(begin: const Offset(0, 0.12), end: Offset.zero).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: const Interval(0.25, 0.75, curve: Curves.fastOutSlowIn),
+        curve: const Interval(0.18, 0.72, curve: Curves.fastOutSlowIn),
       ),
     );
 
     _actionsFade = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: const Interval(0.40, 0.90, curve: Curves.fastOutSlowIn),
+        curve: const Interval(0.35, 0.88, curve: Curves.fastOutSlowIn),
       ),
     );
-    _actionsSlide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(
+    _actionsSlide = Tween<Offset>(begin: const Offset(0, 0.12), end: Offset.zero).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: const Interval(0.40, 0.90, curve: Curves.fastOutSlowIn),
+        curve: const Interval(0.35, 0.88, curve: Curves.fastOutSlowIn),
       ),
     );
 
     _footerFade = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: const Interval(0.55, 1.0, curve: Curves.fastOutSlowIn),
+        curve: const Interval(0.50, 1.0, curve: Curves.fastOutSlowIn),
       ),
     );
 
-    _animController.forward();
+    // Coordinate entrance: give the incoming Hero flight ~220ms to initiate
+    // before the form content cascades in smoothly underneath the docked logo.
+    Future.delayed(const Duration(milliseconds: 220), () {
+      if (mounted) _animController.forward();
+    });
 
     _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((state) {
       if (CustomerRegistrationScreen.googleSignupInProgress) return;
@@ -369,40 +378,44 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               children: [
                 const SizedBox(height: 8),
 
-                // Centered Hero Logo (Transitions seamlessly from Splash)
+                // Centered Hero Logo (Straight vertical flight, razor sharp)
                 Center(
                   child: Hero(
                     tag: 'app_brand_logo',
-                    child: Material(
-                      color: Colors.transparent,
-                      child: Container(
-                        width: 96,
-                        height: 96,
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: AppTheme.primaryBlue.withValues(alpha: 0.08),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
+                    createRectTween: (begin, end) => RectTween(begin: begin, end: end),
+                    child: RepaintBoundary(
+                      child: Material(
+                        color: Colors.transparent,
+                        child: Container(
+                          width: 100,
+                          height: 100,
+                          padding: const EdgeInsets.all(9),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
                               color: AppTheme.primaryBlue.withValues(alpha: 0.08),
-                              blurRadius: 16,
-                              offset: const Offset(0, 4),
+                              width: 1.5,
                             ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: Image.asset(
-                            'assets/images/logo.jpg',
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) => const Icon(
-                              Icons.local_laundry_service,
-                              size: 48,
-                              color: AppTheme.primaryBlue,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.primaryBlue.withValues(alpha: 0.06),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Image.asset(
+                              'assets/images/logo.png',
+                              fit: BoxFit.contain,
+                              filterQuality: FilterQuality.high,
+                              errorBuilder: (context, error, stackTrace) => const Icon(
+                                Icons.local_laundry_service,
+                                size: 48,
+                                color: AppTheme.primaryBlue,
+                              ),
                             ),
                           ),
                         ),
@@ -420,7 +433,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     child: Column(
                       children: [
                         Text(
-                          'Welcome to\nInfinity Wash',
+                          widget.isAddingAccount
+                              ? 'Add Account\nto Infinity Wash'
+                              : 'Welcome to\nInfinity Wash',
                           textAlign: TextAlign.center,
                           style: AppTheme.lightTheme.textTheme.displaySmall?.copyWith(
                             fontWeight: FontWeight.bold,
@@ -430,7 +445,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Sign in to continue to your account',
+                          widget.isAddingAccount
+                              ? 'Sign in to save this account on this device'
+                              : 'Sign in to continue to your account',
                           textAlign: TextAlign.center,
                           style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                             color: AppTheme.textLight,
@@ -442,31 +459,32 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 ),
                 const SizedBox(height: 24),
 
-                // Elevated Form Card (Animated Fade & Slide)
+                // Elevated Form Card (Animated Fade & Slide, GPU Isolated)
                 SlideTransition(
                   position: _formSlide,
                   child: FadeTransition(
                     opacity: _formFade,
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: AppTheme.primaryBlue.withValues(alpha: 0.08),
-                          width: 1,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.primaryBlue.withValues(alpha: 0.04),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4),
+                    child: RepaintBoundary(
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                            width: 1,
                           ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.primaryBlue.withValues(alpha: 0.04),
+                              blurRadius: 12,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
                           CustomTextField(
                             label: 'Email',
                             hint: 'Enter your email',
@@ -555,7 +573,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
+              ),
+              const SizedBox(height: 20),
 
                 // Action Buttons (Animated Fade & Slide)
                 SlideTransition(
@@ -578,7 +597,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                     )
                                   : const Icon(Icons.login),
                               const SizedBox(width: 8),
-                              Text(_isLoading ? 'Signing In...' : 'Sign In'),
+                              Text(_isLoading
+                                  ? 'Signing In...'
+                                  : (widget.isAddingAccount ? 'Sign In & Save' : 'Sign In')),
                             ],
                           ),
                         ),

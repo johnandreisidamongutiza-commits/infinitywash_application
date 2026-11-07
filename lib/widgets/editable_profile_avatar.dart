@@ -100,12 +100,12 @@ class _EditableProfileAvatarState extends State<EditableProfileAvatar> {
           file,
           fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) => Image.asset(
-            'assets/images/logo.jpg',
+            'assets/images/logo.png',
             fit: BoxFit.contain,
           ),
         );
       } else {
-        imageWidget = Image.asset('assets/images/logo.jpg', fit: BoxFit.contain);
+        imageWidget = Image.asset('assets/images/logo.png', fit: BoxFit.contain);
       }
     } else if (_currentAvatarUrl != null && _currentAvatarUrl!.trim().isNotEmpty) {
       imageWidget = CachedNetworkImage(
@@ -115,13 +115,13 @@ class _EditableProfileAvatarState extends State<EditableProfileAvatar> {
           child: CircularProgressIndicator(color: Colors.white),
         ),
         errorWidget: (context, url, error) => Image.asset(
-          'assets/images/logo.jpg',
+          'assets/images/logo.png',
           fit: BoxFit.contain,
         ),
       );
     } else {
       imageWidget = Image.asset(
-        'assets/images/logo.jpg',
+        'assets/images/logo.png',
         fit: BoxFit.contain,
       );
     }
@@ -416,7 +416,7 @@ class _EditableProfileAvatarState extends State<EditableProfileAvatar> {
       ),
       child: ClipOval(
         child: Image.asset(
-          'assets/images/logo.jpg',
+          'assets/images/logo.png',
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) => Container(
             color: AppTheme.softGray,
