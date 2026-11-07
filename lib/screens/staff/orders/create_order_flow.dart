@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../config/location_constants.dart';
 import '../../../utils/app_error.dart';
 import '../../../utils/input_formatters.dart';
@@ -101,6 +102,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   // Loyalty card controller (manual entry / NFC tap)
   final TextEditingController _loyaltyCardController = TextEditingController();
+  RealtimeChannel? _rfidScanChannel;
 
   // Form controllers
   final TextEditingController _firstNameController = TextEditingController();
@@ -167,6 +169,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   String? _loyaltyCardUid;       // Raw UID from scan / manual entry
   LoyaltyCardInfo? _loyaltyCardInfo; // Looked-up card data (null if not found / not scanned)
   bool _lookingUpCard = false;
+  int _loyaltyLookupRequest = 0;
+  String? _lastRealtimeUid;
+  DateTime? _lastRealtimeScanAt;
 
   bool _addExtraFabCon = false;
   bool _addExtraDetergent = false;
@@ -211,6 +216,38 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     _firstNameController.addListener(_checkForCustomerSuggestion);
     _lastNameController.addListener(_checkForCustomerSuggestion);
     _phoneController.addListener(_checkForCustomerSuggestion);
+    _subscribeToLiveRfidScans();
+  }
+
+  void _subscribeToLiveRfidScans() {
+    try {
+      _rfidScanChannel = SupabaseService.client
+          .channel('staff_walkin_rfid_scans')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'scanned_rfid_events',
+            callback: (payload) {
+              final uid = payload.newRecord['uid'];
+              if (uid is! String || uid.trim().isEmpty || !mounted) return;
+
+              final cleanUid = uid.trim().toUpperCase();
+              final now = DateTime.now();
+              if (_lastRealtimeUid == cleanUid &&
+                  _lastRealtimeScanAt != null &&
+                  now.difference(_lastRealtimeScanAt!) <
+                      const Duration(milliseconds: 1500)) {
+                return;
+              }
+              _lastRealtimeUid = cleanUid;
+              _lastRealtimeScanAt = now;
+              _lookupLoyaltyCard(cleanUid);
+            },
+          )
+          .subscribe();
+    } catch (e) {
+      debugPrint('Could not listen for RFID scans in walk-in order: $e');
+    }
   }
 
   /// Look up a loyalty card by UID and optionally auto-fill customer info.
@@ -218,55 +255,168 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     final cleanUid = uid.trim().toUpperCase();
     if (cleanUid.isEmpty) return;
 
+    final requestId = ++_loyaltyLookupRequest;
     setState(() {
       _lookingUpCard = true;
-      _loyaltyCardUid = cleanUid;
+      _loyaltyCardController.text = cleanUid;
+      _loyaltyCardUid = null;
       _loyaltyCardInfo = null;
     });
 
     try {
       final card = await _loyaltyService.lookupCardByUid(cleanUid);
-      if (!mounted) return;
-      setState(() {
-        _loyaltyCardInfo = card;
-        _lookingUpCard = false;
-      });
+      if (!mounted || requestId != _loyaltyLookupRequest) return;
 
-      // Auto-fill customer name/phone if fields are blank and card has an owner
-      if (card != null && card.hasOwner) {
-        final nameParts = card.ownerName.split(' ');
-        if (_firstNameController.text.trim().isEmpty) {
-          _firstNameController.text = nameParts.first;
-          if (nameParts.length > 1) {
-            _lastNameController.text = nameParts.sublist(1).join(' ');
-          }
-        }
-        if (_phoneController.text.trim().isEmpty &&
-            card.ownerPhone != null) {
-          _phoneController.text = card.ownerPhone!;
-        }
-      }
-
-      if (card == null && mounted) {
+      if (card == null) {
+        setState(() => _lookingUpCard = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Card UID "$cleanUid" not found in the loyalty database.'),
+            content: Text('Card UID "$cleanUid" was not found.'),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 3),
           ),
         );
+        return;
+      }
+
+      Map<String, dynamic>? owner;
+      if (card.customerId != null) {
+        owner = await _customerService.getCustomerById(card.customerId!);
+        if (!mounted || requestId != _loyaltyLookupRequest) return;
+      }
+
+      final hasCurrentCustomerData = _acceptedCustomerId != null ||
+          _firstNameController.text.trim().isNotEmpty ||
+          _lastNameController.text.trim().isNotEmpty ||
+          _phoneController.text.trim().isNotEmpty ||
+          _houseStreetController.text.trim().isNotEmpty ||
+          (_selectedBarangay != null && _selectedBarangay!.isNotEmpty) ||
+          _customBarangayController.text.trim().isNotEmpty ||
+          _landmarkController.text.trim().isNotEmpty ||
+          _deliveryPinLocation != null ||
+          _instructionsController.text.trim().isNotEmpty;
+      final ownerConflictsWithForm = card.isActive &&
+          card.customerId != null &&
+          hasCurrentCustomerData &&
+          _acceptedCustomerId != card.customerId;
+
+      if (ownerConflictsWithForm) {
+        final useCardOwner = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Use loyalty card customer?'),
+            content: Text(
+              'This card belongs to ${card.ownerName}. Replace the customer details and saved address currently entered in this order?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Keep current details'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Use card customer'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted || requestId != _loyaltyLookupRequest) return;
+        if (useCardOwner != true) {
+          setState(() => _lookingUpCard = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Card was not linked to this order.')),
+          );
+          return;
+        }
+      }
+
+      setState(() {
+        _loyaltyCardInfo = card;
+        _loyaltyCardUid = cleanUid;
+        _lookingUpCard = false;
+
+        if (card.isActive && card.customerId != null) {
+          _applyLoyaltyCardOwner(card, owner);
+        }
+      });
+
+      if (!card.isActive) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This loyalty card is inactive.')),
+        );
+      } else if (!card.hasOwner) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Card found, but it has no customer assigned yet.'),
+          ),
+        );
       }
     } catch (e) {
-      print('❌ Error looking up loyalty card: \$e');
-      if (!mounted) return;
-      setState(() => _lookingUpCard = false);
+      debugPrint('Error looking up loyalty card: $e');
+      if (!mounted || requestId != _loyaltyLookupRequest) return;
+      setState(() {
+        _lookingUpCard = false;
+        _loyaltyCardUid = null;
+        _loyaltyCardInfo = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(mapErrorToMessage(e))),
+      );
     }
   }
 
+  void _applyLoyaltyCardOwner(
+    LoyaltyCardInfo card,
+    Map<String, dynamic>? owner,
+  ) {
+    _searchDebounce?.cancel();
+    _dismissedSuggestion = true;
+    final firstName = (owner?['first_name'] as String?)?.trim() ?? '';
+    final lastName = (owner?['last_name'] as String?)?.trim() ?? '';
+    final cardNameParts = card.ownerName.trim().split(RegExp(r'\s+'));
+    _firstNameController.text = firstName.isNotEmpty
+        ? firstName
+        : (cardNameParts.isNotEmpty ? cardNameParts.first : '');
+    _lastNameController.text = lastName.isNotEmpty
+        ? lastName
+        : (cardNameParts.length > 1 ? cardNameParts.skip(1).join(' ') : '');
+    _phoneController.text =
+        (owner?['phone'] as String?) ?? card.ownerPhone ?? '';
+    _acceptedCustomerId = card.customerId;
+
+    final address = (owner?['address'] as String?)?.trim() ?? '';
+    if (address.isNotEmpty) {
+      _parseAndSetCustomerAddress(address);
+    } else {
+      _houseStreetController.clear();
+      _customBarangayController.clear();
+      _selectedBarangay = null;
+    }
+    _landmarkController.text = (owner?['landmark'] as String?) ?? '';
+    _deliveryPinLocation = _latLngFromCustomer(owner);
+
+    _suggestedCustomers = [];
+    _suggestionType = _SuggestionType.none;
+    _suggestionMessage = null;
+    _dismissedQuery =
+        '${_firstNameController.text}|${_lastNameController.text}|${_phoneController.text}';
+  }
+
+  LatLng? _latLngFromCustomer(Map<String, dynamic>? customer) {
+    final latitude = customer?['pin_latitude'];
+    final longitude = customer?['pin_longitude'];
+    if (latitude is num && longitude is num) {
+      return LatLng(latitude.toDouble(), longitude.toDouble());
+    }
+    return null;
+  }
+
   void _clearLoyaltyCard() {
+    _loyaltyLookupRequest++;
     setState(() {
       _loyaltyCardUid = null;
       _loyaltyCardInfo = null;
+      _lookingUpCard = false;
       _loyaltyCardController.clear();
     });
   }
@@ -717,6 +867,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   }
 
   void _applyCustomerSuggestion(_CustomerProfile customer) {
+    final linkedCardCustomerId = _loyaltyCardInfo?.customerId;
+    if (linkedCardCustomerId != null &&
+        linkedCardCustomerId != customer.customerId) {
+      _clearLoyaltyCard();
+    }
+
     setState(() {
       _firstNameController.text = customer.firstName;
       _lastNameController.text = customer.lastName;
@@ -783,6 +939,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   @override
   void dispose() {
+    _rfidScanChannel?.unsubscribe();
     _searchDebounce?.cancel();
     _firstNameController.removeListener(_checkForCustomerSuggestion);
     _lastNameController.removeListener(_checkForCustomerSuggestion);
@@ -1108,7 +1265,11 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           if (_loads.length > 1) '${_loads.length} loads: ${orderLoads.map((l) => '${l.weight}${l.unit} ${l.category}').join(', ')}',
           if (_loads.length == 1) 'Load: ${orderLoads[0].weight}${orderLoads[0].unit} ${orderLoads[0].category}',
         ],
-        if (_loyaltyCardUid != null) 'Loyalty Card: $_loyaltyCardUid',
+        if (_loyaltyCardUid != null &&
+            _loyaltyCardInfo?.isActive == true &&
+            _loyaltyCardInfo?.hasOwner == true &&
+            _acceptedCustomerId == _loyaltyCardInfo?.customerId)
+          'Loyalty Card: $_loyaltyCardUid',
         if (_selectedReturn == ReturnMethod.delivery && _selectedCollection != CollectionMethod.riderPickup && _fullDeliveryAddress.isNotEmpty)
           'Delivery Address: $_fullDeliveryAddress${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
         if (_selectedReturn == ReturnMethod.delivery && _selectedCollection == CollectionMethod.riderPickup)
@@ -2396,6 +2557,24 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   }
 
   Widget _buildStep1LoyaltyCardWidget() {
+    final card = _loyaltyCardInfo;
+    final isCardLinkedToOrderCustomer = card != null &&
+        card.isActive &&
+        card.hasOwner &&
+        _acceptedCustomerId == card.customerId;
+    final cardStatus = card == null
+        ? 'Not linked'
+        : !card.isActive
+            ? 'Inactive'
+            : !card.hasOwner
+                ? 'Unassigned'
+                : isCardLinkedToOrderCustomer
+                    ? 'Linked'
+                    : 'Not linked';
+    final cardStatusColor = isCardLinkedToOrderCustomer
+        ? Colors.green
+        : Colors.orange.shade800;
+
     if (_loyaltyCardUid != null) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -2429,18 +2608,21 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.green,
+                          color: cardStatusColor,
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text('Linked', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                        child: Text(
+                          cardStatus,
+                          style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _loyaltyCardInfo != null
-                        ? '${_loyaltyCardInfo!.ownerName} • ${_loyaltyCardInfo!.pointsBalance} pts'
-                        : 'Unregistered Card',
+                    card != null
+                        ? '${card.ownerName} • ${card.pointsBalance} pts'
+                        : 'Card details unavailable',
                     style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
                   ),
                 ],
