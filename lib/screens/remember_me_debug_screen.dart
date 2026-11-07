@@ -68,16 +68,27 @@ class _RememberMeDebugScreenState extends State<RememberMeDebugScreen> {
       if (lastAutoUser != null) {
         buffer.writeln('   ✅ Last auto-login user: $lastAutoUser');
         
-        // Check if this user has valid token
-        final hasValidToken = await _secureStorage.isTokenValid(lastAutoUser);
-        buffer.writeln('   Token valid: ${hasValidToken ? "✅ Yes" : "❌ No (expired)"}');
-        
-        if (hasValidToken) {
-          final tokenExpiry = await _secureStorage.getTokenExpiry(lastAutoUser);
-          if (tokenExpiry != null) {
-            final remaining = tokenExpiry.difference(DateTime.now());
-            buffer.writeln('   Token expires in: ${remaining.inMinutes} minutes');
-          }
+        // Access tokens expire quickly by design. The saved refresh token is
+        // what lets the app restore the session after that expiry.
+        final accessTokenIsValid =
+            await _secureStorage.isTokenValid(lastAutoUser);
+        final hasRefreshToken =
+            await _secureStorage.getRefreshToken(lastAutoUser) != null;
+        buffer.writeln(
+          '   Access token: ${accessTokenIsValid ? "✅ Valid" : "⏱️ Expired"}',
+        );
+        buffer.writeln(
+          '   Saved refresh token: ${hasRefreshToken ? "✅ Available" : "❌ Missing"}',
+        );
+
+        final tokenExpiry = await _secureStorage.getTokenExpiry(lastAutoUser);
+        if (tokenExpiry != null) {
+          final remaining = tokenExpiry.difference(DateTime.now());
+          buffer.writeln(
+            remaining.isNegative
+                ? '   Access token expired ${remaining.inMinutes.abs()} minutes ago'
+                : '   Access token expires in ${remaining.inMinutes} minutes',
+          );
         }
       } else {
         buffer.writeln('   ⚠️  No auto-login user configured');
@@ -127,11 +138,20 @@ class _RememberMeDebugScreenState extends State<RememberMeDebugScreen> {
       } else if (lastAutoUser == null) {
         buffer.writeln('⚠️  Auto-login not configured. Should be set after login.');
       } else {
-        final hasValidToken = await _secureStorage.isTokenValid(lastAutoUser);
-        if (!hasValidToken) {
-          buffer.writeln('⚠️  Token expired. Login again to refresh.');
+        final hasRefreshToken =
+            await _secureStorage.getRefreshToken(lastAutoUser) != null;
+        if (!hasRefreshToken) {
+          buffer.writeln(
+            '⚠️  No saved refresh token. Sign in again with Save account enabled.',
+          );
+        } else if (!await _secureStorage.isTokenValid(lastAutoUser)) {
+          buffer.writeln(
+            '✅ Access token expired, but a refresh token is saved for session renewal.',
+          );
         } else {
-          buffer.writeln('✅ Everything looks good! Auto-login should work.');
+          buffer.writeln(
+            '✅ Access and refresh tokens are saved for session renewal.',
+          );
         }
       }
 

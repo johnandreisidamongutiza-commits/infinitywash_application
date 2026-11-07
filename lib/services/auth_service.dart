@@ -13,6 +13,7 @@ import 'legal_service.dart';
 
 class AuthService {
   static StreamSubscription<AuthState>? _sessionPersistenceSubscription;
+  static Future<void> _sessionPersistenceQueue = Future<void>.value();
 
   final _auth = SupabaseService.client.auth;
   final _secureStorage = SecureStorageService.instance;
@@ -733,61 +734,25 @@ class AuthService {
   }
 
   Future<void> _persistRotatedSession(Session session) async {
-    try {
-      if (await _savedAccountsDb.getAccountById(session.user.id) == null) return;
-      await _secureStorage.saveAuthTokens(
-        userId: session.user.id,
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
-        expiresAt: session.expiresAt == null
-            ? null
-            : DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000),
-      );
-    } catch (error) {
-      print('Could not update saved session tokens: $error');
-    }
-  }
-
-  /// Validates and refreshes the current session when returning from the background.
-  /// If the token is near expiration (< 5 mins) or has expired, it attempts a safe refresh.
-  Future<bool> validateOrRefreshSessionOnResume() async {
-    try {
-      final session = _auth.currentSession;
-      if (session == null) {
-        // No in-memory session; attempt auto-login if saved account exists
-        final lastUser = await _secureStorage.getLastAutoLoginUser();
-        if (lastUser != null) {
-          final res = await tryAutoLogin(userId: lastUser);
-          return res?.session != null;
+    final pendingWrite = _sessionPersistenceQueue.then((_) async {
+      try {
+        if (await _savedAccountsDb.getAccountById(session.user.id) == null) {
+          return;
         }
-        return false;
+        await _secureStorage.saveAuthTokens(
+          userId: session.user.id,
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          expiresAt: session.expiresAt == null
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000),
+        );
+      } catch (error) {
+        print('Could not update saved session tokens: $error');
       }
-
-      final expiresAt = session.expiresAt;
-      final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-
-      // Check if expired or expiring within 5 minutes (300 seconds)
-      if (expiresAt != null && (expiresAt - nowSec) < 300) {
-        print('🔄 App resumed: Session token near expiry, refreshing...');
-        final refreshToken = session.refreshToken;
-        if (refreshToken != null) {
-          final res = await _auth.refreshSession(refreshToken);
-          if (res.session != null) {
-            await _persistRotatedSession(res.session!);
-            print('✅ App resumed: Session successfully refreshed');
-            return true;
-          }
-        }
-        // Fallback: tryAutoLogin
-        final res = await tryAutoLogin(userId: session.user.id);
-        return res?.session != null;
-      }
-
-      return true;
-    } catch (e) {
-      print('⚠️ App resumed: Session validation error: $e');
-      return false;
-    }
+    });
+    _sessionPersistenceQueue = pendingWrite;
+    await pendingWrite;
   }
 
   // ==================== Remember Me Functionality ====================
@@ -939,18 +904,6 @@ class AuthService {
               return null;
             }
 
-            // Update stored tokens with new ones
-            await _secureStorage.saveAuthTokens(
-              userId: targetUserId,
-              accessToken: response.session!.accessToken,
-              refreshToken: response.session!.refreshToken,
-              expiresAt: response.session!.expiresAt != null
-                  ? DateTime.fromMillisecondsSinceEpoch(
-                      response.session!.expiresAt! * 1000,
-                    )
-                  : null,
-            );
-
             await _secureStorage.saveLastAutoLoginUser(targetUserId);
             await _savedAccountsDb.updateLastLogin(targetUserId);
             // Register push for auto-logged-in users too (fire-and-forget).
@@ -961,7 +914,9 @@ class AuthService {
           print('❌ AUTO-LOGIN: Refresh failed - $e');
           // Network failures are temporary; keep the account card so the user
           // can retry. Remove only a rejected/invalid auth session.
-          if (e is AuthException) await _removeRememberMeData(targetUserId);
+          if (e is AuthException && e is! AuthRetryableFetchException) {
+            await _removeRememberMeData(targetUserId);
+          }
           return null;
         }
       }

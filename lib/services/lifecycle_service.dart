@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import 'connectivity_service.dart';
-import 'auth_service.dart';
 
 /// Centralized service for tracking and handling Android / Flutter app lifecycle states.
 ///
@@ -129,12 +128,9 @@ class LifecycleService with WidgetsBindingObserver {
       debugPrint('Error re-checking connectivity on resume: $e');
     }
 
-    // 2. Validate / refresh authentication session
-    try {
-      AuthService().validateOrRefreshSessionOnResume();
-    } catch (e) {
-      debugPrint('Error validating session on resume: $e');
-    }
+    // Supabase Flutter pauses and resumes its automatic token refresh with the
+    // app lifecycle. Avoid manually refreshing here as well; rotating refresh
+    // tokens should have one owner.
   }
 
   void _handleInactive() {
