@@ -125,15 +125,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           .getCurrentAuthenticatedCustomerId();
 
       // Fetch orders for this customer
-<<<<<<< HEAD
-      final orders = await _serviceRequestService.getOrdersByCustomerId(
-        customerId,
-      );
-
-=======
       final orders = await _serviceRequestService.getOrdersByCustomerId(customerId);
       if (!mounted) return;
->>>>>>> cb806b4b9bc572a18c892990e6a2b06cfb6af2d4
       setState(() {
         _recentOrders = orders; // Full list for active order detection; recent activity uses .take(3)
         if (!_monitorableOrders.any(
@@ -421,8 +414,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     value: order.id,
-<<<<<<< HEAD
-                    dropdownColor: AppTheme.accentBlue,
+                    dropdownColor: AppTheme.primaryBlue,
                     icon: const Icon(
                       Icons.arrow_drop_down,
                       color: Colors.white,
@@ -433,11 +425,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
-=======
-                    dropdownColor: AppTheme.primaryBlue,
-                    icon: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
->>>>>>> cb806b4b9bc572a18c892990e6a2b06cfb6af2d4
                     isDense: true,
                     items: monitorableOrders
                         .map(
@@ -451,8 +438,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         )
                         .toList(),
                     onChanged: (orderId) {
-                      if (orderId != null)
+                      if (orderId != null) {
                         setState(() => _selectedMonitorOrderId = orderId);
+                      }
                     },
                   ),
                 ),
@@ -747,7 +735,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-<<<<<<< HEAD
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -778,36 +765,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
           ],
         ),
-=======
-        Text('Recent Activity', style: AppTheme.lightTheme.textTheme.titleMedium),
->>>>>>> cb806b4b9bc572a18c892990e6a2b06cfb6af2d4
         const SizedBox(height: 12),
 
         // Loading state
         if (_loadingRecentOrders)
-<<<<<<< HEAD
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(36),
-            decoration: AppStyles.cardDecoration,
-            child: const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 12),
-                  Text(
-                    'Loading recent orders...',
-                    style: TextStyle(color: AppTheme.textLight, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          )
-=======
           _buildRecentOrdersSkeleton()
-        
->>>>>>> cb806b4b9bc572a18c892990e6a2b06cfb6af2d4
         // No recent orders
         else if (_recentOrders.isEmpty)
           Material(
