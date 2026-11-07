@@ -101,7 +101,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        PageRouteBuilder(
+          transitionDuration: const Duration(milliseconds: 500),
+          pageBuilder: (context, animation, secondaryAnimation) => const LoginScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
       );
     }
   }
@@ -125,42 +131,53 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppTheme.softGray,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.accentBlue.withValues(alpha: 0.2),
-                      blurRadius: 20,
-                      spreadRadius: 5,
+              // Centered Brand Logo (Hero transitions smoothly to LoginScreen)
+              Hero(
+                tag: 'app_brand_logo',
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    width: 104,
+                    height: 104,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: ClipOval(
-                  child: Image.asset(
-                    'assets/images/logo.jpg',
-                    height: 120,
-                    width: 120,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => const Icon(
-                      Icons.wash,
-                      size: 120,
-                      color: AppTheme.accentBlue,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.asset(
+                        'assets/images/logo.jpg',
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) => const Icon(
+                          Icons.local_laundry_service,
+                          size: 54,
+                          color: AppTheme.primaryBlue,
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 32),
 
               // App Name
               Text(
                 'Infinity Wash',
                 style: AppTheme.lightTheme.textTheme.headlineLarge?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.accentBlue,
+                  color: AppTheme.primaryBlue,
                 ),
               ),
               const SizedBox(height: 8),
@@ -170,15 +187,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   color: Colors.grey[600],
                 ),
               ),
-              const SizedBox(height: 60),
+              const SizedBox(height: 48),
 
               // Loading Indicator
               const SizedBox(
-                width: 40,
-                height: 40,
+                width: 36,
+                height: 36,
                 child: CircularProgressIndicator(
                   strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.accentBlue),
+                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryBlue),
                 ),
               ),
               const SizedBox(height: 20),

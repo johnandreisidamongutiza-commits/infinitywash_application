@@ -30,7 +30,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _saveAccount = true;
@@ -41,9 +41,72 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _handlingGoogleCallback = false;
   bool _googleSignInInProgress = false;
 
+  late final AnimationController _animController;
+  late final Animation<double> _titleFade;
+  late final Animation<Offset> _titleSlide;
+  late final Animation<double> _formFade;
+  late final Animation<Offset> _formSlide;
+  late final Animation<double> _actionsFade;
+  late final Animation<Offset> _actionsSlide;
+  late final Animation<double> _footerFade;
+
   @override
   void initState() {
     super.initState();
+
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+
+    _titleFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.10, 0.60, curve: Curves.fastOutSlowIn),
+      ),
+    );
+    _titleSlide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.10, 0.60, curve: Curves.fastOutSlowIn),
+      ),
+    );
+
+    _formFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.25, 0.75, curve: Curves.fastOutSlowIn),
+      ),
+    );
+    _formSlide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.25, 0.75, curve: Curves.fastOutSlowIn),
+      ),
+    );
+
+    _actionsFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.40, 0.90, curve: Curves.fastOutSlowIn),
+      ),
+    );
+    _actionsSlide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.40, 0.90, curve: Curves.fastOutSlowIn),
+      ),
+    );
+
+    _footerFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.55, 1.0, curve: Curves.fastOutSlowIn),
+      ),
+    );
+
+    _animController.forward();
+
     _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((state) {
       if (CustomerRegistrationScreen.googleSignupInProgress) return;
       if (state.event == AuthChangeEvent.signedIn &&
@@ -58,6 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _animController.dispose();
     _authSubscription?.cancel();
     super.dispose();
   }
@@ -282,9 +346,9 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.softGray,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         // This screen is the logged-out entry point, so only offer going
         // back when it was actually pushed on top of another route.
@@ -295,206 +359,271 @@ class _LoginScreenState extends State<LoginScreen> {
               )
             : null,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 8),
 
-            // Branding: mascot logo in a clean rounded card (Hero transition from Splash)
-            Hero(
-              tag: 'app_mascot_logo',
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: AppTheme.primaryBlue.withValues(alpha: 0.08),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.primaryBlue.withValues(alpha: 0.05),
-                        blurRadius: 14,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.asset(
-                      'assets/images/logo.jpg',
-                      height: 110,
-                      width: 110,
-                      cacheWidth: 280,
-                      cacheHeight: 280,
-                      filterQuality: FilterQuality.medium,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => const Icon(
-                        Icons.wash,
-                        size: 80,
-                        color: AppTheme.accentBlue,
+                // Centered Hero Logo (Transitions seamlessly from Splash)
+                Center(
+                  child: Hero(
+                    tag: 'app_brand_logo',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        width: 96,
+                        height: 96,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                              blurRadius: 16,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Image.asset(
+                            'assets/images/logo.jpg',
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => const Icon(
+                              Icons.local_laundry_service,
+                              size: 48,
+                              color: AppTheme.primaryBlue,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-            // Welcome heading.
-            Text(
-              'Welcome to\nInfinity Wash',
-              textAlign: TextAlign.center,
-              style: AppTheme.lightTheme.textTheme.displaySmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Sign in to continue to your account.',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 28),
-
-            CustomTextField(
-              label: 'Email',
-              hint: 'Enter your email',
-              prefixIcon: Icons.email_outlined,
-              controller: _emailController,
-              validator: Validators.emailField,
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 20),
-            CustomTextField(
-              label: 'Password',
-              hint: 'Enter your password',
-              prefixIcon: Icons.lock_outline,
-              isPassword: true,
-              controller: _passwordController,
-              validator: Validators.passwordRequired,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                InkWell(
-                  onTap: () => setState(() => _saveAccount = !_saveAccount),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                // Heading (Animated Fade & Slide)
+                SlideTransition(
+                  position: _titleSlide,
+                  child: FadeTransition(
+                    opacity: _titleFade,
+                    child: Column(
                       children: [
-                        SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: Checkbox(
-                            value: _saveAccount,
-                            onChanged: (v) =>
-                                setState(() => _saveAccount = v ?? false),
-                            activeColor: AppTheme.primaryBlue,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                            visualDensity: VisualDensity.compact,
+                        Text(
+                          'Welcome to\nInfinity Wash',
+                          textAlign: TextAlign.center,
+                          style: AppTheme.lightTheme.textTheme.displaySmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                            height: 1.2,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(height: 8),
                         Text(
-                          'Save account',
-                          style: GoogleFonts.lexend(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.textDark,
+                          'Sign in to continue to your account',
+                          textAlign: TextAlign.center,
+                          style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.textLight,
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const ForgotPasswordScreen()),
-                    );
-                  },
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 4, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(
-                    'Forgot password?',
-                    style: GoogleFonts.lexend(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryBlue,
+                const SizedBox(height: 24),
+
+                // Elevated Form Card (Animated Fade & Slide)
+                SlideTransition(
+                  position: _formSlide,
+                  child: FadeTransition(
+                    opacity: _formFade,
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.04),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          CustomTextField(
+                            label: 'Email',
+                            hint: 'Enter your email',
+                            prefixIcon: Icons.email_outlined,
+                            controller: _emailController,
+                            validator: Validators.emailField,
+                            keyboardType: TextInputType.emailAddress,
+                          ),
+                          const SizedBox(height: 16),
+                          CustomTextField(
+                            label: 'Password',
+                            hint: 'Enter your password',
+                            prefixIcon: Icons.lock_outline,
+                            isPassword: true,
+                            controller: _passwordController,
+                            validator: Validators.passwordRequired,
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              InkWell(
+                                onTap: () => setState(() => _saveAccount = !_saveAccount),
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: Checkbox(
+                                          value: _saveAccount,
+                                          onChanged: (v) =>
+                                              setState(() => _saveAccount = v ?? false),
+                                          activeColor: AppTheme.primaryBlue,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          visualDensity: VisualDensity.compact,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Save account',
+                                        style: GoogleFonts.lexend(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: AppTheme.textDark,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) => const ForgotPasswordScreen()),
+                                  );
+                                },
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 4, vertical: 4),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: Text(
+                                  'Forgot password?',
+                                  style: GoogleFonts.lexend(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.primaryBlue,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _signIn,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.login),
-                  const SizedBox(width: 8),
-                  Text(_isLoading ? 'Signing In...' : 'Sign In'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _isLoading ? null : _signInWithGoogle,
-              icon: const Icon(Icons.g_mobiledata, size: 28),
-              label: const Text('Continue with Google'),
-              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-            ),
-            const SizedBox(height: 24),
-            // Wrap so the prompt and its action stack instead of overflowing
-            // when the text gets wider than the row.
-            Wrap(
-              alignment: WrapAlignment.center,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  "Don't have an account? ",
-                  style: AppTheme.lightTheme.textTheme.bodyMedium,
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const CustomerRegistrationScreen()),
-                    );
-                  },
-                  child: const Text(
-                    'Register',
-                    style: TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
+                const SizedBox(height: 20),
+
+                // Action Buttons (Animated Fade & Slide)
+                SlideTransition(
+                  position: _actionsSlide,
+                  child: FadeTransition(
+                    opacity: _actionsFade,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ElevatedButton(
+                          onPressed: _isLoading ? null : _signIn,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _isLoading
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.login),
+                              const SizedBox(width: 8),
+                              Text(_isLoading ? 'Signing In...' : 'Sign In'),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _isLoading ? null : _signInWithGoogle,
+                          icon: const Icon(Icons.g_mobiledata, size: 28),
+                          label: const Text('Continue with Google'),
+                          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+                const SizedBox(height: 20),
+
+                // Footer (Animated Fade)
+                FadeTransition(
+                  opacity: _footerFade,
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        "Don't have an account? ",
+                        style: AppTheme.lightTheme.textTheme.bodyMedium,
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const CustomerRegistrationScreen()),
+                          );
+                        },
+                        child: const Text(
+                          'Register',
+                          style: TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
               ],
             ),
-            const SizedBox(height: 24),
-          ],
           ),
         ),
       ),

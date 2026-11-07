@@ -25,6 +25,7 @@ class AppTheme {
   static const Color primaryBlue = Color(0xFF0D3B66);
   static const Color textDark = Color(0xFF0D3B66);
   static const Color textLight = Color(0xFF707070);
+  static const Color textMuted = textLight;
 
   // ── 10% Action & Semantic Accent ───────────────────────────────────────
   /// Action & focus blue (WCAG AAA/AA compliant, calibrated from 0xFF2196F3)
