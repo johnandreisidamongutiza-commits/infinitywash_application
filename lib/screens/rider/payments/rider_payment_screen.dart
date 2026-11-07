@@ -4,7 +4,31 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/rider_service.dart';
+import '../../../services/data_change_monitor.dart';
+import '../../../widgets/skeleton_loading.dart';
 import 'rider_payment_process_screen.dart';
+
+class _RiderPaymentFilterSnapshot {
+  const _RiderPaymentFilterSnapshot({
+    required this.unpaidOrders,
+    required this.unpaidOffset,
+    required this.unpaidHasMore,
+    required this.unpaidInitialized,
+    required this.paidOrders,
+    required this.paidOffset,
+    required this.paidHasMore,
+    required this.paidInitialized,
+  });
+
+  final List<LaundryOrder> unpaidOrders;
+  final int unpaidOffset;
+  final bool unpaidHasMore;
+  final bool unpaidInitialized;
+  final List<LaundryOrder> paidOrders;
+  final int paidOffset;
+  final bool paidHasMore;
+  final bool paidInitialized;
+}
 
 /// Dedicated Payment tab screen for Riders to view and collect payments
 /// for pickup and delivery orders.
@@ -51,10 +75,15 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
   int _unpaidDeliveryCount = 0;
   int _paidPickupCount = 0;
   int _paidDeliveryCount = 0;
+  bool _dataDirty = false;
+  String? _pendingJobTypeFilter;
+  final Map<String, _RiderPaymentFilterSnapshot> _filterSnapshots = {};
 
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
     // Attach scroll listeners for infinite pagination
     _unpaidScroll.addListener(() => _onScroll(_unpaidScroll, _loadMoreUnpaid));
     _paidScroll.addListener(() => _onScroll(_paidScroll, _loadMorePaid));
@@ -72,14 +101,35 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
   @override
   void didUpdateWidget(covariant RiderPaymentScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Reload every time the tab becomes active so fresh data is always shown.
     if (widget.isActive && !oldWidget.isActive) {
-      _refreshAll();
+      if (!_unpaidInitialized) {
+        _dataDirty = false;
+        _initUnpaid();
+        _refreshCounts();
+      } else {
+        _refreshIfDirty();
+      }
     }
+  }
+
+  void _onOrdersChanged() {
+    _dataDirty = true;
+    _refreshIfDirty();
+  }
+
+  void _refreshIfDirty() {
+    if (!widget.isActive || !_dataDirty) return;
+    if (_unpaidLoading || _paidLoading || _unpaidLoadingMore || _paidLoadingMore) {
+      return;
+    }
+    _dataDirty = false;
+    _filterSnapshots.clear();
+    _refreshAll();
   }
 
   @override
   void dispose() {
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
     _unpaidScroll.dispose();
     _paidScroll.dispose();
     super.dispose();
@@ -105,6 +155,77 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
     setState(() => _showPaid = showPaid);
     // Lazy-load the Paid tab the first time it is opened.
     if (showPaid && !_paidInitialized) _initPaid();
+  }
+
+  void _setJobTypeFilter(String filter) {
+    if (_jobTypeFilter == filter) {
+      _pendingJobTypeFilter = null;
+      return;
+    }
+    if (_unpaidLoading || _paidLoading || _unpaidLoadingMore || _paidLoadingMore) {
+      _pendingJobTypeFilter = filter;
+      return;
+    }
+    _pendingJobTypeFilter = null;
+    _saveCurrentFilterSnapshot();
+    final snapshot = _filterSnapshots[filter];
+    setState(() {
+      _jobTypeFilter = filter;
+      if (snapshot == null) {
+        _resetUnpaidState();
+        _resetPaidState();
+      } else {
+        _restoreFilterSnapshot(snapshot);
+      }
+    });
+    if (_showPaid && !_paidInitialized) _initPaid();
+    if (!_showPaid && !_unpaidInitialized) _initUnpaid();
+  }
+
+  void _saveCurrentFilterSnapshot() {
+    _filterSnapshots[_jobTypeFilter] = _RiderPaymentFilterSnapshot(
+      unpaidOrders: List.of(_unpaidOrders),
+      unpaidOffset: _unpaidOffset,
+      unpaidHasMore: _unpaidHasMore,
+      unpaidInitialized: _unpaidInitialized,
+      paidOrders: List.of(_paidOrders),
+      paidOffset: _paidOffset,
+      paidHasMore: _paidHasMore,
+      paidInitialized: _paidInitialized,
+    );
+  }
+
+  void _restoreFilterSnapshot(_RiderPaymentFilterSnapshot snapshot) {
+    _unpaidOrders
+      ..clear()
+      ..addAll(snapshot.unpaidOrders);
+    _unpaidOffset = snapshot.unpaidOffset;
+    _unpaidHasMore = snapshot.unpaidHasMore;
+    _unpaidInitialized = snapshot.unpaidInitialized;
+    _unpaidLoading = false;
+    _unpaidLoadingMore = false;
+    _paidOrders
+      ..clear()
+      ..addAll(snapshot.paidOrders);
+    _paidOffset = snapshot.paidOffset;
+    _paidHasMore = snapshot.paidHasMore;
+    _paidInitialized = snapshot.paidInitialized;
+    _paidLoading = false;
+    _paidLoadingMore = false;
+  }
+
+  void _resetUnpaidState() {
+    _unpaidOrders.clear();
+    _unpaidOffset = 0;
+    _unpaidHasMore = true;
+    _unpaidInitialized = false;
+  }
+
+  void _resetPaidState() {
+    _paidOrders.clear();
+    _paidOffset = 0;
+    _paidHasMore = true;
+    _paidInitialized = false;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -145,6 +266,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
         _unpaidLoading = false;
         _unpaidLoadingMore = false;
       });
+      _saveCurrentFilterSnapshot();
     } catch (e) {
       debugPrint('❌ Error loading rider unpaid orders: $e');
       if (!mounted) return;
@@ -154,6 +276,8 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
       });
       _showError(e);
     }
+    _refreshIfDirty();
+    _applyPendingJobTypeFilter();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -194,6 +318,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
         _paidLoading = false;
         _paidLoadingMore = false;
       });
+      _saveCurrentFilterSnapshot();
     } catch (e) {
       debugPrint('❌ Error loading rider paid orders: $e');
       if (!mounted) return;
@@ -203,6 +328,20 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
       });
       _showError(e);
     }
+    _refreshIfDirty();
+    _applyPendingJobTypeFilter();
+  }
+
+  void _applyPendingJobTypeFilter() {
+    final filter = _pendingJobTypeFilter;
+    if (filter == null ||
+        _unpaidLoading ||
+        _paidLoading ||
+        _unpaidLoadingMore ||
+        _paidLoadingMore) {
+      return;
+    }
+    _setJobTypeFilter(filter);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -240,6 +379,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
   /// Pull-to-refresh / refresh button / tab re-activation: reloads both tabs
   /// and the badges.
   Future<void> _refreshAll() async {
+    _filterSnapshots.clear();
     await Future.wait([
       _initUnpaid(),
       if (_paidInitialized) _initPaid(),
@@ -392,8 +532,10 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
           // Orders List
           Expanded(
             child: _activeLoading && _activeOrders.isEmpty
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppTheme.accentBlue),
+                ? const SkeletonCardList(
+                    itemCount: 4,
+                    padding: EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    spacing: 12,
                   )
                 : displayedOrders.isEmpty
                     ? RefreshIndicator(

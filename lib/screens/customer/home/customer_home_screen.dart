@@ -12,13 +12,17 @@ import '../notifications/customer_notifications_screen.dart';
 import '../orders/customer_order_details_screen.dart';
 import '../../../widgets/legal_consent_banner.dart';
 import '../../../widgets/home_header.dart';
+import '../../../widgets/skeleton_loading.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/profile_local_db.dart';
 import '../../../services/supabase_service.dart';
+import '../../../services/data_change_monitor.dart';
 import '../profile/options/account_details_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
-  const CustomerHomeScreen({super.key});
+  final bool isActive;
+
+  const CustomerHomeScreen({super.key, this.isActive = true});
 
   @override
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
@@ -35,15 +39,39 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   
   // Recent activity state
   bool _loadingRecentOrders = false;
+  bool _ordersDirty = false;
+  bool _hasLoadedOrders = false;
   List<LaundryOrder> _recentOrders = [];
   String? _selectedMonitorOrderId;
 
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
     _loadUserProfile();
     _loadUnreadCount();
-    _loadRecentOrders();
+    if (widget.isActive) _loadRecentOrders();
+  }
+
+  @override
+  void didUpdateWidget(covariant CustomerHomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive &&
+        (!_hasLoadedOrders || _ordersDirty)) {
+      _loadRecentOrders(force: !_hasLoadedOrders);
+    }
+  }
+
+  @override
+  void dispose() {
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
+    super.dispose();
+  }
+
+  void _onOrdersChanged() {
+    _ordersDirty = true;
+    if (widget.isActive) _loadRecentOrders(force: false);
   }
 
   Future<void> _loadUserProfile() async {
@@ -78,10 +106,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   /// Load recent customer orders (last 3 orders)
-  Future<void> _loadRecentOrders() async {
+  Future<void> _loadRecentOrders({bool force = true}) async {
+    if (!force && !_ordersDirty && _hasLoadedOrders) return;
+    if (_loadingRecentOrders) {
+      _ordersDirty = true;
+      return;
+    }
+
     setState(() {
       _loadingRecentOrders = true;
     });
+    _ordersDirty = false;
 
     try {
       // Get authenticated customer ID
@@ -89,20 +124,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       
       // Fetch orders for this customer
       final orders = await _serviceRequestService.getOrdersByCustomerId(customerId);
-      
+      if (!mounted) return;
       setState(() {
         _recentOrders = orders; // Full list for active order detection; recent activity uses .take(3)
         if (!_monitorableOrders.any((order) => order.id == _selectedMonitorOrderId)) {
           _selectedMonitorOrderId = null;
         }
         _loadingRecentOrders = false;
+        _hasLoadedOrders = true;
       });
       debugPrint('✅ Loaded ${orders.length} recent orders for home screen');
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _loadingRecentOrders = false;
+        _hasLoadedOrders = false;
       });
       debugPrint('❌ Error loading recent orders: $e');
+    }
+
+    if (_ordersDirty && widget.isActive) {
+      _loadRecentOrders(force: false);
     }
   }
 
@@ -583,6 +625,48 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
+  Widget _buildRecentOrdersSkeleton() {
+    return Column(
+      children: List.generate(
+        2,
+        (index) => Padding(
+          padding: EdgeInsets.only(bottom: index == 1 ? 0 : 12),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: AppStyles.cardDecoration,
+            child: SkeletonShimmer(
+              child: Row(
+                children: [
+                  const SkeletonBlock(width: 36, height: 36, borderRadius: 11),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SkeletonBlock(
+                          width: index == 0 ? 104 : 88,
+                          height: 14,
+                        ),
+                        const SizedBox(height: 8),
+                        SkeletonBlock(
+                          width: index == 0 ? 118 : 102,
+                          height: 10,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const SkeletonBlock(width: 52, height: 22, borderRadius: 12),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildRecentActivity(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -592,21 +676,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         
         // Loading state
         if (_loadingRecentOrders)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(36),
-            decoration: AppStyles.cardDecoration,
-            child: const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 12),
-                  Text('Loading recent orders...', style: TextStyle(color: AppTheme.textLight, fontSize: 12)),
-                ],
-              ),
-            ),
-          )
+          _buildRecentOrdersSkeleton()
         
         // No recent orders
         else if (_recentOrders.isEmpty)

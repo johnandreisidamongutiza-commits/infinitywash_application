@@ -5,6 +5,7 @@ import '../../../../utils/input_formatters.dart';
 import '../../../../utils/validators.dart';
 import '../../../../services/loyalty_service.dart';
 import '../../../../services/customer_service.dart';
+import '../../../../widgets/skeleton_loading.dart';
 
 class CustomerLoyaltyCardScreen extends StatefulWidget {
   const CustomerLoyaltyCardScreen({super.key});
@@ -106,7 +107,7 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoyaltyCardScreenSkeleton()
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(

@@ -6,6 +6,9 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
+import '../../../services/data_change_monitor.dart';
+import '../../../services/supabase_service.dart';
+import '../../../widgets/skeleton_loading.dart';
 
 /// Rejected requests accumulate forever, so they are loaded a page at a time.
 const int _kRejectedPageSize = 8;
@@ -18,12 +21,22 @@ class RejectedRequestsScreen extends StatefulWidget {
 }
 
 class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
+  static List<LaundryOrder>? _cachedOrders;
+  static String? _cachedQuery;
+  static int? _cachedPage;
+  static int? _cachedOrderVersion;
+  static String? _cachedUserId;
+  static int _cachedTotalCount = 0;
+  static DateTime? _lastCleanupAt;
+
   final OrderService _orderService = OrderService();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
 
   final List<LaundryOrder> _rejectedOrders = [];
   bool _isLoading = true;
+  bool _isFetching = false;
+  bool _refreshQueued = false;
   int _currentPage = 1;
   int _totalCount = 0;
   String _searchQuery = '';
@@ -32,11 +45,24 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchPage(1);
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
+    if (_cachedOrders != null &&
+        _cachedUserId == SupabaseService.client.auth.currentUser?.id &&
+        _cachedQuery == '' &&
+        _cachedPage == 1 &&
+        _cachedOrderVersion == DataChangeMonitor.instance.ordersVersion.value) {
+      _rejectedOrders.addAll(_cachedOrders!);
+      _totalCount = _cachedTotalCount;
+      _isLoading = false;
+    } else {
+      _fetchPage(1);
+    }
   }
 
   @override
   void dispose() {
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
     _searchDebounce?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
@@ -59,15 +85,24 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
   }
 
   Future<void> _fetchPage(int page) async {
+    if (_isFetching) {
+      _refreshQueued = true;
+      return;
+    }
+    _isFetching = true;
     setState(() {
       _isLoading = true;
       _currentPage = page;
     });
 
     try {
-      if (page == 1) {
+      final now = DateTime.now();
+      if (page == 1 &&
+          (_lastCleanupAt == null ||
+              now.difference(_lastCleanupAt!) > const Duration(minutes: 10))) {
         await _orderService.autoRejectExpiredRequests();
         await _orderService.purgeOldRejectedOrders(days: 30);
+        _lastCleanupAt = now;
       }
 
       final query = _searchQuery.trim().isEmpty ? null : _searchQuery.trim();
@@ -93,6 +128,12 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
         _rejectedOrders.addAll(pageOrders);
         _isLoading = false;
       });
+      _cachedOrders = List.of(pageOrders);
+      _cachedUserId = SupabaseService.client.auth.currentUser?.id;
+      _cachedQuery = query ?? '';
+      _cachedPage = page;
+      _cachedTotalCount = count;
+      _cachedOrderVersion = DataChangeMonitor.instance.ordersVersion.value;
 
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -110,6 +151,21 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      _isFetching = false;
+      if (_refreshQueued && mounted) {
+        _refreshQueued = false;
+        _fetchPage(_currentPage);
+      }
+    }
+  }
+
+  void _onOrdersChanged() {
+    _cachedOrderVersion = null;
+    if (_isFetching) {
+      _refreshQueued = true;
+    } else if (mounted) {
+      _fetchPage(_currentPage);
     }
   }
 
@@ -587,8 +643,12 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _fetchPage(_currentPage),
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+              child: _isLoading && _rejectedOrders.isEmpty
+                  ? const SkeletonCardList(
+                      itemCount: 4,
+                      padding: EdgeInsets.fromLTRB(16, 4, 16, 16),
+                      spacing: 14,
+                    )
                   : _rejectedOrders.isEmpty
                       ? _buildEmptyState()
                       : ListView.separated(

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
@@ -11,13 +10,17 @@ import '../notifications/staff_notifications_screen.dart';
 import '../../../services/order_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../widgets/home_header.dart';
+import '../../../widgets/skeleton_loading.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/profile_local_db.dart';
 import '../../../services/supabase_service.dart';
+import '../../../services/data_change_monitor.dart';
 import '../profile/options/account_details_screen.dart';
 
 class StaffHomeScreen extends StatefulWidget {
-  const StaffHomeScreen({super.key});
+  final bool isActive;
+
+  const StaffHomeScreen({super.key, this.isActive = true});
 
   @override
   State<StaffHomeScreen> createState() => _StaffHomeScreenState();
@@ -32,17 +35,19 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   int _unreadNotificationCount = 0;
   String? _avatarUrl;
   String? _localAvatarPath;
-  bool _isLoading = true;
+  bool _isLoading = false;
+  bool _ordersDirty = false;
+  bool _hasLoadedOrders = false;
   String? _error;
-  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
     _loadUserProfile();
-    _loadOrders();
+    if (widget.isActive) _loadOrders();
     _loadUnreadCount();
-    _startAutoRefresh();
     // One-time backlog cleanup: purge laundry photos from completed/cancelled orders to reclaim storage
     _orderService.purgeCompletedOrdersPhotos();
   }
@@ -73,22 +78,22 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
 
   @override
   void dispose() {
-    _autoRefreshTimer?.cancel();
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
     super.dispose();
   }
 
-  /// Start auto-refresh timer (45 seconds for staff dashboard)
-  void _startAutoRefresh() {
-    _autoRefreshTimer = Timer.periodic(
-      const Duration(seconds: 45),
-      (timer) {
-        if (mounted && !_isLoading) {
-          _loadOrders();
-          _loadUnreadCount();
-        }
-      },
-    );
-    print('✅ Started staff auto-refresh timer (45s interval)');
+  @override
+  void didUpdateWidget(covariant StaffHomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive &&
+        (!_hasLoadedOrders || _ordersDirty)) {
+      _loadOrders(force: !_hasLoadedOrders);
+    }
+  }
+
+  void _onOrdersChanged() {
+    _ordersDirty = true;
+    if (widget.isActive) _loadOrders(force: false);
   }
 
   Future<void> _loadUnreadCount() async {
@@ -98,11 +103,18 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
     }
   }
 
-  Future<void> _loadOrders() async {
+  Future<void> _loadOrders({bool force = true}) async {
+    if (!force && !_ordersDirty && _hasLoadedOrders) return;
+    if (_isLoading) {
+      _ordersDirty = true;
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _error = null;
     });
+    _ordersDirty = false;
 
     try {
       final results = await Future.wait([
@@ -118,6 +130,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
         _queueCounts = results[0] as TodayQueueCounts;
         _processingOrdersList = results[1] as List<LaundryOrder>;
         _isLoading = false;
+        _hasLoadedOrders = true;
       });
 
       print('✅ Loaded accurate queue counts: '
@@ -130,10 +143,13 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
       setState(() {
         _error = mapErrorToMessage(e);
         _isLoading = false;
+        _hasLoadedOrders = false;
       });
 
       print('❌ Error loading staff home data: $e');
     }
+
+    if (_ordersDirty && widget.isActive) _loadOrders(force: false);
   }
 
   List<LaundryOrder> get _processingOrders => _processingOrdersList;
@@ -242,8 +258,33 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: AppStyles.cardDecoration,
-        child: const Center(
-          child: CircularProgressIndicator(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Today\'s Queue', style: AppTheme.lightTheme.textTheme.titleMedium),
+            const SizedBox(height: 20),
+            SkeletonShimmer(
+              child: Row(
+                children: List.generate(
+                  4,
+                  (index) => Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(right: index == 3 ? 0 : 8),
+                      child: Column(
+                        children: const [
+                          SkeletonBlock(width: 45, height: 45, borderRadius: 24),
+                          SizedBox(height: 8),
+                          SkeletonBlock(width: 30, height: 18),
+                          SizedBox(height: 7),
+                          SkeletonBlock(width: 52, height: 11),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }

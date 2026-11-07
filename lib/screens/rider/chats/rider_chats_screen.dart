@@ -6,6 +6,7 @@ import '../../../models/dispatch_job.dart';
 import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/rider_service.dart';
+import '../../../services/data_change_monitor.dart';
 import '../../../services/supabase_service.dart';
 import '../../../services/order_number_resolver.dart';
 import 'rider_chat_detail_screen.dart';
@@ -108,7 +109,9 @@ class _RiderChatItem {
 }
 
 class RiderChatsScreen extends StatefulWidget {
-  const RiderChatsScreen({super.key});
+  final bool isActive;
+
+  const RiderChatsScreen({super.key, this.isActive = true});
 
   @override
   State<RiderChatsScreen> createState() => _RiderChatsScreenState();
@@ -134,13 +137,34 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
   Map<String, DispatchJob> _activeJobsByOrderId = {};
   Map<String, DispatchJob> _completedJobsByOrderId = {};
   bool _isLoadingJobs = false;
+  bool _jobsDirty = false;
+  bool _hasLoadedJobs = false;
 
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.operationalDataVersion
+        .addListener(_onDispatchJobsChanged);
     OrderNumberResolver.changeNotifier.addListener(_onOrderResolved);
-    _loadProfileAndEnsureDispatchChat();
-    _loadActiveJobs();
+    if (widget.isActive) {
+      _loadProfileAndEnsureDispatchChat();
+      _loadActiveJobs();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant RiderChatsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      if (!_isProfileLoaded) _loadProfileAndEnsureDispatchChat();
+      if (!_hasLoadedJobs || _jobsDirty) _loadActiveJobs();
+    }
+  }
+
+  void _onDispatchJobsChanged() {
+    _jobsDirty = true;
+    if (widget.isActive) _loadActiveJobs();
   }
 
   Future<void> _loadProfileAndEnsureDispatchChat() async {
@@ -178,12 +202,14 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
 
   Future<void> _loadActiveJobs() async {
     if (_isLoadingJobs) return;
+    _jobsDirty = false;
     setState(() => _isLoadingJobs = true);
     try {
-      final pickups = await _riderService.fetchActivePickupJobs();
-      final deliveries = await _riderService.fetchActiveDeliveryJobs();
-      final completedPickups = await _riderService.fetchCompletedPickupJobs();
-      final completedDeliveries = await _riderService.fetchCompletedDeliveryJobs();
+      final overview = await _riderService.fetchRiderJobOverview();
+      final pickups = overview.activePickupJobs;
+      final deliveries = overview.activeDeliveryJobs;
+      final completedPickups = overview.completedPickupJobs;
+      final completedDeliveries = overview.completedDeliveryJobs;
       final allActive = [...pickups, ...deliveries];
       final allCompletedToday = [...completedPickups, ...completedDeliveries];
 
@@ -193,12 +219,19 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
           _activeJobsByOrderId = {for (final j in allActive) j.orderId: j};
           _completedJobsByOrderId = {for (final j in allCompletedToday) j.orderId: j};
           _isLoadingJobs = false;
+          _hasLoadedJobs = true;
         });
       }
     } catch (e) {
       debugPrint('Error loading active jobs in rider chats: $e');
-      if (mounted) setState(() => _isLoadingJobs = false);
+      if (mounted) {
+        setState(() {
+          _isLoadingJobs = false;
+          _hasLoadedJobs = false;
+        });
+      }
     }
+    if (_jobsDirty && widget.isActive) _loadActiveJobs();
   }
 
   void _onOrderResolved() {
@@ -208,6 +241,8 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
   @override
   void dispose() {
     OrderNumberResolver.changeNotifier.removeListener(_onOrderResolved);
+    DataChangeMonitor.instance.operationalDataVersion
+        .removeListener(_onDispatchJobsChanged);
     _searchController.dispose();
     super.dispose();
   }

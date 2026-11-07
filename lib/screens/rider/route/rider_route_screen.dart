@@ -9,6 +9,8 @@ import 'rider_route_map_screen.dart';
 import 'rider_route_screen_new.dart';
 import '../rider_main_screen.dart';
 import '../../../widgets/top_notification.dart';
+import '../../../widgets/skeleton_loading.dart';
+import '../../../services/data_change_monitor.dart';
 
 class RiderRouteScreen extends StatefulWidget {
   final VoidCallback? onBackToHome;
@@ -26,7 +28,8 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
   
   int _currentStopIndex = 0;
   NavigationPhase _phase = NavigationPhase.onTheWay;
-  bool _isLoading = true;
+  bool _isLoading = false;
+  bool _dataDirty = false;
   String? _error;
   
   List<LaundryOrder> _pickupOrders = [];
@@ -39,31 +42,44 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
   @override
   void initState() {
     super.initState();
-    _loadOrders();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.operationalDataVersion
+        .addListener(_onRouteDataChanged);
+    _loadOrders(force: false);
   }
 
-  Future<void> _loadOrders() async {
+  @override
+  void dispose() {
+    DataChangeMonitor.instance.operationalDataVersion
+        .removeListener(_onRouteDataChanged);
+    super.dispose();
+  }
+
+  void _onRouteDataChanged() {
+    _dataDirty = true;
+    _riderService.clearAdapterCache();
+    if (!_isLoading) _loadOrders(force: false);
+  }
+
+  Future<void> _loadOrders({bool force = false}) async {
+    if (_isLoading) {
+      _dataDirty = true;
+      return;
+    }
     setState(() {
       _isLoading = true;
       _error = null;
     });
+    _dataDirty = false;
 
     try {
-      // Clear adapter cache for fresh data
-      _riderService.clearAdapterCache();
-      
-      // Fetch active dispatch jobs
-      final pickupJobs = await _riderService.fetchActivePickupJobs();
-      final deliveryJobs = await _riderService.fetchActiveDeliveryJobs();
-      
-      // Convert to LaundryOrders using adapter
-      final results = await Future.wait([
-        _riderService.fetchActivePickupOrders(),
-        _riderService.fetchActiveDeliveryOrders(),
-      ]);
+      if (force) _riderService.clearAdapterCache();
+      final overview = await _riderService.fetchRiderJobOverview(force: force);
+      final pickupJobs = overview.activePickupJobs;
+      final deliveryJobs = overview.activeDeliveryJobs;
 
-      _pickupOrders = results[0];
-      _deliveryOrders = results[1];
+      _pickupOrders = await _riderService.adaptDispatchJobsToOrders(pickupJobs);
+      _deliveryOrders = await _riderService.adaptDispatchJobsToOrders(deliveryJobs);
       
       // Build mapping from order ID to dispatch job ID
       _orderToJobMap.clear();
@@ -97,6 +113,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
         });
       }
     }
+    if (_dataDirty && mounted) _loadOrders(force: false);
   }
 
   LaundryOrder? get _currentOrder =>
@@ -183,7 +200,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
         });
 
         // Reload orders to get fresh data
-        await _loadOrders();
+        await _loadOrders(force: true);
       }
     } catch (e) {
       print('❌ Error confirming stop: $e');
@@ -242,7 +259,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_isLoading && _routeOrders.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
@@ -251,8 +268,10 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
           elevation: 0,
           centerTitle: true,
         ),
-        body: const Center(
-          child: CircularProgressIndicator(),
+        body: const SkeletonCardList(
+          itemCount: 4,
+          padding: EdgeInsets.all(24),
+          spacing: 16,
         ),
       );
     }
@@ -286,7 +305,7 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
-                  onPressed: _loadOrders,
+                  onPressed: () => _loadOrders(force: true),
                   icon: const Icon(Icons.refresh),
                   label: const Text('Retry'),
                 ),

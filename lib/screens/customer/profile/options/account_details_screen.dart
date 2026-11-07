@@ -12,6 +12,7 @@ import '../../../../widgets/custom_text_field.dart';
 import '../../../../services/supabase_service.dart';
 import '../../../../widgets/editable_profile_avatar.dart';
 import '../../../../widgets/location_picker_widget.dart';
+import '../../../../widgets/skeleton_loading.dart';
 
 class CustomerAccountDetailsScreen extends StatefulWidget {
   const CustomerAccountDetailsScreen({super.key});
@@ -569,12 +570,7 @@ class _CustomerAccountDetailsScreenState
           ),
         ),
         body: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  color: AppTheme.accentBlue,
-                  strokeWidth: 2.5,
-                ),
-              )
+            ? const AccountDetailsSkeleton(showAddressSection: true)
             : SingleChildScrollView(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 16),

@@ -32,11 +32,9 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
         index: _currentIndex,
         children: [
           RiderHomeScreen(
+            isActive: _currentIndex == 0,
             onSelectTab: (index) {
               setState(() => _currentIndex = index);
-              if (index == 2) {
-                _paymentScreenKey.currentState?.refreshOrders();
-              }
             },
           ),
           RiderRouteScreenNew(
@@ -47,7 +45,7 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
             key: _paymentScreenKey,
             isActive: _currentIndex == 2,
           ),
-          const RiderChatsScreen(),
+          RiderChatsScreen(isActive: _currentIndex == 3),
           const RiderProfileScreen(),
         ],
       ),
@@ -64,13 +62,9 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
-            final prevIndex = _currentIndex;
             setState(() {
               _currentIndex = index;
             });
-            if (index == 2 && prevIndex != 2) {
-              _paymentScreenKey.currentState?.refreshOrders();
-            }
           },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,

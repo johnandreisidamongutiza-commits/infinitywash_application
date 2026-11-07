@@ -5,6 +5,7 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/dispatch_job.dart';
 import '../../../services/rider_service.dart';
+import '../../../services/data_change_monitor.dart';
 import '../../../services/supabase_service.dart';
 import '../../../services/routing_service.dart';
 import '../../../config/location_constants.dart';
@@ -14,6 +15,7 @@ import '../../../widgets/cached_tile_provider.dart';
 import '../jobs/rider_job_details_screen.dart';
 import 'rider_active_route_screen.dart';
 import '../../../widgets/address_input_widget.dart';
+import '../../../widgets/skeleton_loading.dart';
 
 /// Route Overview Screen - Shows rider's route with all stops
 /// Displays real map with route lines from Supabase data
@@ -39,6 +41,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
   List<DispatchJob> _completedPickupJobs = [];
   List<DispatchJob> _completedDeliveryJobs = [];
   bool _isLoading = false;
+  bool _jobsDirty = false;
   String? _error;
   LatLng? _riderLocation;
   String _filter = 'all'; // 'all', 'pickup', 'delivery', 'completed'
@@ -53,11 +56,14 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.operationalDataVersion
+        .addListener(_onDispatchJobsChanged);
     _initializeLocation();
     // Defer _loadJobs until the Route tab is actually active (lazy-load route polylines)
     if (widget.isActive) {
       _hasLoadedOnce = true;
-      _loadJobs();
+      _loadJobs(force: false);
     }
     
     // Hide loading after 2 seconds
@@ -71,11 +77,25 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
   @override
   void didUpdateWidget(covariant RiderRouteScreenNew oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Lazy-load: when the tab becomes active, fetch jobs + calculate route
-    if (widget.isActive && !oldWidget.isActive) {
+    // Load on first activation; reuse this route until a job actually changes.
+    if (widget.isActive && !oldWidget.isActive &&
+        (!_hasLoadedOnce || _jobsDirty)) {
       _hasLoadedOnce = true;
-      _loadJobs();
+      _loadJobs(force: false);
     }
+  }
+
+  @override
+  void dispose() {
+    DataChangeMonitor.instance.operationalDataVersion
+        .removeListener(_onDispatchJobsChanged);
+    _gpsProvider.stopTracking();
+    super.dispose();
+  }
+
+  void _onDispatchJobsChanged() {
+    _jobsDirty = true;
+    if (widget.isActive) _loadJobs(force: false);
   }
 
   Future<void> _initializeLocation() async {
@@ -100,11 +120,16 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
     }
   }
 
-  Future<void> _loadJobs() async {
+  Future<void> _loadJobs({bool force = false}) async {
+    if (_isLoading) {
+      _jobsDirty = true;
+      return;
+    }
     setState(() {
       _isLoading = true;
       _error = null;
     });
+    _jobsDirty = false;
 
     try {
       final riderId = SupabaseService.client.auth.currentUser?.id;
@@ -112,13 +137,11 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
         throw Exception('Not authenticated');
       }
 
-      // Fetch active jobs (pending/in_progress only)
-      final activePickupJobs = await _riderService.fetchActivePickupJobs();
-      final activeDeliveryJobs = await _riderService.fetchActiveDeliveryJobs();
-      
-      // Fetch completed jobs (today only)
-      final completedPickupJobs = await _riderService.fetchCompletedPickupJobs();
-      final completedDeliveryJobs = await _riderService.fetchCompletedDeliveryJobs();
+      final overview = await _riderService.fetchRiderJobOverview(force: force);
+      final activePickupJobs = overview.activePickupJobs;
+      final activeDeliveryJobs = overview.activeDeliveryJobs;
+      final completedPickupJobs = overview.completedPickupJobs;
+      final completedDeliveryJobs = overview.completedDeliveryJobs;
       
       print('🔍 DEBUG - Completed jobs fetched:');
       print('   Completed Pickups: ${completedPickupJobs.length}');
@@ -161,6 +184,8 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
         });
       }
     }
+
+    if (_jobsDirty && widget.isActive) _loadJobs(force: false);
   }
 
   /// Calculate the actual road route through all job locations
@@ -311,15 +336,49 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
           IconButton(
             icon: const Icon(Icons.refresh, color: AppTheme.primaryBlue),
             tooltip: 'Refresh Route',
-            onPressed: _isLoading ? null : _loadJobs,
+            onPressed: _isLoading ? null : () => _loadJobs(force: true),
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+      body: _isLoading && _allJobs.isEmpty
+          ? _buildRouteSkeleton()
           : _error != null
               ? _buildErrorState()
               : _buildRouteView(),
+    );
+  }
+
+  Widget _buildRouteSkeleton() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SkeletonShimmer(
+            child: SkeletonBlock(height: 220, borderRadius: 18),
+          ),
+          const SizedBox(height: 14),
+          SkeletonShimmer(
+            child: Row(
+              children: const [
+                SkeletonBlock(width: 74, height: 34, borderRadius: 17),
+                SizedBox(width: 8),
+                SkeletonBlock(width: 82, height: 34, borderRadius: 17),
+                SizedBox(width: 8),
+                SkeletonBlock(width: 92, height: 34, borderRadius: 17),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Expanded(
+            child: SkeletonCardList(
+              itemCount: 3,
+              padding: EdgeInsets.zero,
+              spacing: 10,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -891,7 +950,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
               MaterialPageRoute(
                 builder: (context) => RiderJobDetailsScreen(job: job),
               ),
-            ).then((_) => _loadJobs());
+            ).then((_) => _loadJobs(force: true));
           },
           child: Padding(
             padding: const EdgeInsets.all(12.0),
@@ -1097,7 +1156,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                       initialRiderLocation: _riderLocation,
                     ),
                   ),
-                ).then((_) => _loadJobs());
+                ).then((_) => _loadJobs(force: true));
               }
             },
             icon: const Icon(Icons.navigation_outlined, size: 18),
@@ -1299,7 +1358,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                         MaterialPageRoute(
                           builder: (context) => RiderJobDetailsScreen(job: job),
                         ),
-                      ).then((_) => _loadJobs());
+                      ).then((_) => _loadJobs(force: true));
                     },
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -1322,7 +1381,7 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
                               initialRiderLocation: _riderLocation,
                             ),
                           ),
-                        ).then((_) => _loadJobs());
+                        ).then((_) => _loadJobs(force: true));
                       },
                       icon: const Icon(Icons.navigation_outlined, size: 16),
                       label: const Text('Start Route', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -1402,9 +1461,4 @@ class _RiderRouteScreenNewState extends State<RiderRouteScreenNew> {
     }
   }
 
-  @override
-  void dispose() {
-    _gpsProvider.stopTracking();
-    super.dispose();
-  }
 }

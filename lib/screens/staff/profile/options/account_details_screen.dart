@@ -7,6 +7,7 @@ import '../../../../utils/input_formatters.dart';
 import '../../../../utils/validators.dart';
 import '../../../../widgets/custom_text_field.dart';
 import '../../../../widgets/editable_profile_avatar.dart';
+import '../../../../widgets/skeleton_loading.dart';
 
 class AccountDetailsScreen extends StatefulWidget {
   const AccountDetailsScreen({super.key});
@@ -340,12 +341,7 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
           ),
         ),
         body: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  color: AppTheme.accentBlue,
-                  strokeWidth: 2.5,
-                ),
-              )
+            ? const AccountDetailsSkeleton()
             : SingleChildScrollView(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 16),

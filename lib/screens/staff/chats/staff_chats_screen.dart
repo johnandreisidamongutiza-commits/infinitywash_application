@@ -151,6 +151,7 @@ class _StaffChatsScreenState extends State<StaffChatsScreen> {
             ),
           ),
           floatingActionButton: FloatingActionButton.extended(
+            heroTag: 'staff_chats_new_chat',
             onPressed: () => _showNewChatModal(context),
             backgroundColor: AppTheme.accentBlue,
             foregroundColor: Colors.white,

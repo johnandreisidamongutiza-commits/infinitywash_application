@@ -3,10 +3,36 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
+import '../../../services/data_change_monitor.dart';
+import '../../../widgets/skeleton_loading.dart';
 import 'payment_process_screen.dart';
 
+class _PaymentFilterSnapshot {
+  const _PaymentFilterSnapshot({
+    required this.unpaidOrders,
+    required this.unpaidOffset,
+    required this.unpaidHasMore,
+    required this.unpaidInitialized,
+    required this.paidOrders,
+    required this.paidOffset,
+    required this.paidHasMore,
+    required this.paidInitialized,
+  });
+
+  final List<LaundryOrder> unpaidOrders;
+  final int unpaidOffset;
+  final bool unpaidHasMore;
+  final bool unpaidInitialized;
+  final List<LaundryOrder> paidOrders;
+  final int paidOffset;
+  final bool paidHasMore;
+  final bool paidInitialized;
+}
+
 class PaymentScreen extends StatefulWidget {
-  const PaymentScreen({super.key});
+  final bool isActive;
+
+  const PaymentScreen({super.key, this.isActive = true});
 
   @override
   State<PaymentScreen> createState() => _PaymentScreenState();
@@ -47,20 +73,57 @@ class _PaymentScreenState extends State<PaymentScreen> {
   int _unpaidRiderCount = 0;
   int _paidWalkinCount = 0;
   int _paidRiderCount = 0;
+  bool _dataDirty = false;
+  String? _pendingSubFilter;
+  final Map<String, _PaymentFilterSnapshot> _filterSnapshots = {};
 
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
     // Attach scroll listeners for infinite pagination
     _unpaidScroll.addListener(() => _onScroll(_unpaidScroll, _loadMoreUnpaid));
     _paidScroll.addListener(() => _onScroll(_paidScroll, _loadMorePaid));
 
-    _initUnpaid();
-    _refreshTotals();
+    if (widget.isActive) {
+      _initUnpaid();
+      _refreshTotals();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant PaymentScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      if (!_unpaidInitialized) {
+        _dataDirty = false;
+        _initUnpaid();
+        _refreshTotals();
+      } else {
+        _refreshIfDirty();
+      }
+    }
+  }
+
+  void _onOrdersChanged() {
+    _dataDirty = true;
+    _refreshIfDirty();
+  }
+
+  void _refreshIfDirty() {
+    if (!widget.isActive || !_dataDirty) return;
+    if (_unpaidLoading || _paidLoading || _unpaidLoadingMore || _paidLoadingMore) {
+      return;
+    }
+    _dataDirty = false;
+    _filterSnapshots.clear();
+    _refreshAll();
   }
 
   @override
   void dispose() {
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
     _unpaidScroll.dispose();
     _paidScroll.dispose();
     super.dispose();
@@ -88,20 +151,60 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   void _setSubFilter(String filter) {
-    if (_subFilter == filter) return;
+    if (_subFilter == filter) {
+      _pendingSubFilter = null;
+      return;
+    }
+    if (_unpaidLoading || _paidLoading || _unpaidLoadingMore || _paidLoadingMore) {
+      _pendingSubFilter = filter;
+      return;
+    }
+    _pendingSubFilter = null;
+    _saveCurrentFilterSnapshot();
+    final snapshot = _filterSnapshots[filter];
     setState(() {
       _subFilter = filter;
-      _resetUnpaidState();
-      _resetPaidState();
+      if (snapshot == null) {
+        _resetUnpaidState();
+        _resetPaidState();
+      } else {
+        _restoreFilterSnapshot(snapshot);
+      }
     });
-    // The active tab is reloaded immediately; the other tab reloads lazily when
-    // it is next opened.
-    if (_showPaid) {
-      _initPaid();
-    } else {
-      _initUnpaid();
-    }
-    _refreshTotals();
+    if (_showPaid && !_paidInitialized) _initPaid();
+    if (!_showPaid && !_unpaidInitialized) _initUnpaid();
+  }
+
+  void _saveCurrentFilterSnapshot() {
+    _filterSnapshots[_subFilter] = _PaymentFilterSnapshot(
+      unpaidOrders: List.of(_unpaidOrders),
+      unpaidOffset: _unpaidOffset,
+      unpaidHasMore: _unpaidHasMore,
+      unpaidInitialized: _unpaidInitialized,
+      paidOrders: List.of(_paidOrders),
+      paidOffset: _paidOffset,
+      paidHasMore: _paidHasMore,
+      paidInitialized: _paidInitialized,
+    );
+  }
+
+  void _restoreFilterSnapshot(_PaymentFilterSnapshot snapshot) {
+    _unpaidOrders
+      ..clear()
+      ..addAll(snapshot.unpaidOrders);
+    _unpaidOffset = snapshot.unpaidOffset;
+    _unpaidHasMore = snapshot.unpaidHasMore;
+    _unpaidInitialized = snapshot.unpaidInitialized;
+    _unpaidLoading = false;
+    _unpaidLoadingMore = false;
+    _paidOrders
+      ..clear()
+      ..addAll(snapshot.paidOrders);
+    _paidOffset = snapshot.paidOffset;
+    _paidHasMore = snapshot.paidHasMore;
+    _paidInitialized = snapshot.paidInitialized;
+    _paidLoading = false;
+    _paidLoadingMore = false;
   }
 
   void _resetUnpaidState() {
@@ -157,6 +260,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _unpaidLoading = false;
         _unpaidLoadingMore = false;
       });
+      _saveCurrentFilterSnapshot();
     } catch (e) {
       debugPrint('❌ Error loading unpaid payments: $e');
       if (!mounted) return;
@@ -166,6 +270,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       });
       _showError(e);
     }
+    _refreshIfDirty();
+    _applyPendingSubFilter();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -207,6 +313,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _paidLoading = false;
         _paidLoadingMore = false;
       });
+      _saveCurrentFilterSnapshot();
     } catch (e) {
       debugPrint('❌ Error loading paid payments: $e');
       if (!mounted) return;
@@ -216,6 +323,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
       });
       _showError(e);
     }
+    _refreshIfDirty();
+    _applyPendingSubFilter();
+  }
+
+  void _applyPendingSubFilter() {
+    final filter = _pendingSubFilter;
+    if (filter == null ||
+        _unpaidLoading ||
+        _paidLoading ||
+        _unpaidLoadingMore ||
+        _paidLoadingMore) {
+      return;
+    }
+    _setSubFilter(filter);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -272,6 +393,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   /// Pull-to-refresh / refresh button: reloads both tabs and the header.
   Future<void> _refreshAll() async {
+    _filterSnapshots.clear();
     await Future.wait([
       _initUnpaid(),
       if (_paidInitialized) _initPaid(),
@@ -414,8 +536,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
           // Orders List
           Expanded(
             child: _activeLoading && _activeOrders.isEmpty
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppTheme.accentBlue),
+                ? const SkeletonCardList(
+                    itemCount: 4,
+                    padding: EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    spacing: 12,
                   )
                 : displayedOrders.isEmpty
                     ? RefreshIndicator(
