@@ -295,12 +295,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         width: double.infinity,
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: AppTheme.accentBlue,
+          gradient: const LinearGradient(
+            colors: [AppTheme.primaryBlue, Color(0xFF1557A6)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: AppTheme.accentBlue.withValues(alpha: 0.3),
-              blurRadius: 15,
+              color: AppTheme.primaryBlue.withValues(alpha: 0.25),
+              blurRadius: 16,
               offset: const Offset(0, 8),
             ),
           ],
@@ -349,7 +353,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     value: order.id,
-                    dropdownColor: AppTheme.accentBlue,
+                    dropdownColor: AppTheme.primaryBlue,
                     icon: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
                     style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
                     isDense: true,
@@ -498,7 +502,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 'New Request',
                 Icons.add_shopping_cart,
                 AppTheme.lightBlue,
-                AppTheme.accentBlue,
+                AppTheme.primaryBlue,
                 onTap: () async {
                   final result = await Navigator.push(
                     context,
@@ -598,7 +602,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   _loadRecentOrders();
                 }
               },
-              child: const Text('View All', style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold)),
+              child: const Text('View All', style: TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -655,7 +659,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       child: const Icon(
                         Icons.local_laundry_service_outlined,
                         size: 36,
-                        color: AppTheme.accentBlue,
+                        color: AppTheme.primaryBlue,
                       ),
                     ),
                     const SizedBox(height: 12),

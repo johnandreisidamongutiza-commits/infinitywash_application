@@ -74,7 +74,7 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
           },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
-          selectedItemColor: AppTheme.accentBlue,
+          selectedItemColor: AppTheme.primaryBlue,
           unselectedItemColor: AppTheme.textLight.withValues(alpha: 0.5),
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
           unselectedLabelStyle: const TextStyle(fontSize: 12),

@@ -16,13 +16,20 @@ class StatusStyle {
 }
 
 class AppTheme {
-  static const Color primaryBlue = Color(0xFF0D3B66);
-  static const Color lightBlue = Color(0xFFE3F2FD);
-  static const Color accentBlue = Color(0xFF2196F3);
+  // ── 60% Canvas & Neutral Base ──────────────────────────────────────────
   static const Color softGray = Color(0xFFF5F7F9);
+  static const Color borderGray = Color(0xFFE0E0E0);
+  static const Color lightBlue = Color(0xFFE3F2FD);
+
+  // ── 30% Brand Structure & Content ──────────────────────────────────────
+  static const Color primaryBlue = Color(0xFF0D3B66);
   static const Color textDark = Color(0xFF0D3B66);
   static const Color textLight = Color(0xFF707070);
-  static const Color borderGray = Color(0xFFE0E0E0);
+
+  // ── 10% Action & Semantic Accent ───────────────────────────────────────
+  /// Action & focus blue (WCAG AAA/AA compliant, calibrated from 0xFF2196F3)
+  static const Color actionBlue = Color(0xFF0284C7);
+  static const Color accentBlue = Color(0xFF0284C7);
   static const Color errorRed = Color(0xFFE53935);
   static const Color teamMemberOrange = Color(0xFFFFF3E0);
   static const Color teamMemberIconOrange = Color(0xFFFF9800);
@@ -101,7 +108,7 @@ class AppTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryBlue,
         primary: primaryBlue,
-        secondary: accentBlue,
+        secondary: primaryBlue,
         surface: Colors.white,
       ),
       textTheme: GoogleFonts.lexendTextTheme().copyWith(
@@ -131,7 +138,7 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: accentBlue,
+          backgroundColor: primaryBlue,
           foregroundColor: Colors.white,
           minimumSize: const Size(double.infinity, 56),
           shape: RoundedRectangleBorder(
@@ -165,10 +172,10 @@ class AppStyles {
   static BoxDecoration selectedCardDecoration = BoxDecoration(
     color: Colors.white,
     borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: AppTheme.accentBlue, width: 2),
+    border: Border.all(color: AppTheme.primaryBlue, width: 2),
     boxShadow: [
       BoxShadow(
-        color: AppTheme.accentBlue.withValues(alpha: 0.1),
+        color: AppTheme.primaryBlue.withValues(alpha: 0.1),
         blurRadius: 10,
         offset: const Offset(0, 4),
       ),

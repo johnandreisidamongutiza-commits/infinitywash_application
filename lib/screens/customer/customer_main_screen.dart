@@ -46,7 +46,7 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
           onTap: (index) => setState(() => _currentIndex = index),
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
-          selectedItemColor: AppTheme.accentBlue,
+          selectedItemColor: AppTheme.primaryBlue,
           unselectedItemColor: AppTheme.textLight.withValues(alpha: 0.5),
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
           unselectedLabelStyle: const TextStyle(fontSize: 11),
@@ -73,7 +73,7 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: AppTheme.accentBlue,
+                        color: AppTheme.primaryBlue,
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 1.5),
                       ),
@@ -92,7 +92,7 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: AppTheme.accentBlue,
+                        color: AppTheme.primaryBlue,
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 1.5),
                       ),

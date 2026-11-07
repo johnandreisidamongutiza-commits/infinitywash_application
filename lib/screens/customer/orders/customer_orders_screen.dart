@@ -889,7 +889,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
             _initRequests();
           }
         },
-        backgroundColor: AppTheme.accentBlue,
+        backgroundColor: AppTheme.primaryBlue,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded),
         label: Text(
@@ -1650,7 +1650,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                                     onPressed: () =>
                                         _payWithGcash(order, displayPrice),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.accentBlue,
+                                      backgroundColor: AppTheme.primaryBlue,
                                       foregroundColor: Colors.white,
                                       minimumSize: Size.zero,
                                       tapTargetSize:
@@ -2206,7 +2206,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                         style: GoogleFonts.lexend(
                             fontWeight: FontWeight.w600)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.accentBlue,
+                      backgroundColor: AppTheme.primaryBlue,
                       foregroundColor: Colors.white,
                       minimumSize: Size.zero,
                       padding: const EdgeInsets.symmetric(

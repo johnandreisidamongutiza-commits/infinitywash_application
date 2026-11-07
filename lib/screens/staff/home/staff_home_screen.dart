@@ -211,21 +211,21 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppTheme.accentBlue.withValues(alpha: 0.1),
+          color: AppTheme.primaryBlue.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
+          border: Border.all(color: AppTheme.primaryBlue.withValues(alpha: 0.2)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.online_prediction, color: AppTheme.accentBlue),
+            const Icon(Icons.online_prediction, color: AppTheme.primaryBlue),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 'You have $pendingCount new service requests!',
-                style: const TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
+                style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.accentBlue),
+            const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.primaryBlue),
           ],
         ),
       ),
@@ -299,7 +299,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                   'Requests',
                   Icons.online_prediction,
                   AppTheme.lightBlue,
-                  AppTheme.accentBlue,
+                  AppTheme.primaryBlue,
                   onTap: () async {
                     await Navigator.push(
                       context,
@@ -433,7 +433,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                 context,
                 'New Walk-in\nOrder',
                 Icons.add_shopping_cart_outlined,
-                AppTheme.accentBlue,
+                AppTheme.primaryBlue,
                 AppTheme.lightBlue,
                 () async {
                   print('🔵 HOME: Opening create order flow...');
@@ -622,7 +622,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                             order.displayNumber,
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.accentBlue,
+                              color: AppTheme.primaryBlue,
                               fontSize: 13,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -677,13 +677,13 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.nfc_outlined, size: 14, color: AppTheme.accentBlue.withValues(alpha: 0.7)),
+                              Icon(Icons.nfc_outlined, size: 14, color: AppTheme.primaryBlue.withValues(alpha: 0.7)),
                               const SizedBox(width: 4),
                               Text(
                                 order.rfidTag!,
                                 style: const TextStyle(
                                   fontSize: 12,
-                                  color: AppTheme.accentBlue,
+                                  color: AppTheme.primaryBlue,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),

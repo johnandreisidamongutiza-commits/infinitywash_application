@@ -81,7 +81,7 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
           },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
-          selectedItemColor: AppTheme.accentBlue,
+          selectedItemColor: AppTheme.primaryBlue,
           unselectedItemColor: AppTheme.textLight.withValues(alpha: 0.5),
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
           unselectedLabelStyle: const TextStyle(fontSize: 12),
@@ -108,7 +108,7 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentBlue,
+                          color: AppTheme.primaryBlue,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 1.5),
                         ),
@@ -140,7 +140,7 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentBlue,
+                          color: AppTheme.primaryBlue,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 1.5),
                         ),

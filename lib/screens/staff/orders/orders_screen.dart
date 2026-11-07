@@ -740,7 +740,7 @@ class OrdersScreenState extends State<OrdersScreen>
                 print('🔵 FAB: Order not created (result != true)');
               }
             },
-            backgroundColor: AppTheme.accentBlue,
+            backgroundColor: AppTheme.primaryBlue,
             foregroundColor: Colors.white,
             icon: const Icon(Icons.add_rounded),
             label: Text(

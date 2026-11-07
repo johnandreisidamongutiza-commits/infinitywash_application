@@ -266,7 +266,7 @@ class _LoginScreenState extends State<LoginScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('OK', style: TextStyle(color: AppTheme.accentBlue)),
+              child: Text('OK', style: TextStyle(color: AppTheme.primaryBlue)),
             ),
           ],
         ),
@@ -396,7 +396,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             value: _saveAccount,
                             onChanged: (v) =>
                                 setState(() => _saveAccount = v ?? false),
-                            activeColor: AppTheme.accentBlue,
+                            activeColor: AppTheme.primaryBlue,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(4),
                             ),
@@ -437,7 +437,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: GoogleFonts.lexend(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: AppTheme.accentBlue,
+                      color: AppTheme.primaryBlue,
                     ),
                   ),
                 ),
@@ -488,7 +488,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   },
                   child: const Text(
                     'Register',
-                    style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],

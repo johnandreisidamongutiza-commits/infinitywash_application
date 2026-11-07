@@ -187,7 +187,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             borderRadius: BorderRadius.circular(20),
             gradient: hasOrders
                 ? const LinearGradient(
-                    colors: [AppTheme.accentBlue, Color(0xFF1557A6)],
+                    colors: [AppTheme.primaryBlue, Color(0xFF1557A6)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   )
@@ -196,7 +196,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             boxShadow: hasOrders
                 ? [
                     BoxShadow(
-                      color: AppTheme.accentBlue.withValues(alpha: 0.35),
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.35),
                       blurRadius: 14,
                       offset: const Offset(0, 5),
                     ),
@@ -423,8 +423,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                               point: LocationConstants.shopLocation,
                               radius: LocationConstants.deliveryRadiusMeters,
                               useRadiusInMeter: true,
-                              color: AppTheme.accentBlue.withValues(alpha: 0.08),
-                              borderColor: AppTheme.accentBlue.withValues(alpha: 0.25),
+                              color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                              borderColor: AppTheme.primaryBlue.withValues(alpha: 0.25),
                               borderStrokeWidth: 1.5,
                             ),
                           ],
@@ -846,10 +846,10 @@ class RouteSectionHeader extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: AppTheme.accentBlue.withValues(alpha: 0.1),
+            color: AppTheme.primaryBlue.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: const Icon(Icons.route_outlined, color: AppTheme.accentBlue, size: 18),
+          child: const Icon(Icons.route_outlined, color: AppTheme.primaryBlue, size: 18),
         ),
         const SizedBox(width: 8),
         // Expanded (not an intrinsic Text): the chip and the button keep their
@@ -895,7 +895,7 @@ class RouteSectionHeader extends StatelessWidget {
           child: const Text(
             'View Map',
             style: TextStyle(
-              color: AppTheme.accentBlue,
+              color: AppTheme.primaryBlue,
               fontWeight: FontWeight.w600,
               fontSize: 13,
             ),
