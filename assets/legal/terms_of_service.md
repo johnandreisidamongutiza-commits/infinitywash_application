@@ -87,7 +87,7 @@ These Terms are governed by the laws of the Republic of the Philippines. Please 
 ## 14. Contact us
 
 Infinity Wash
-Email: support@infinitywash.example
+Email: infinitywash001@gmail.com
 Mobile: +63 900 000 0000
 Business address: [insert registered business address]
 

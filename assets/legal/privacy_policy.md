@@ -100,7 +100,7 @@ We update this policy when our processing or the law changes. The version and ef
 ## 13. Contact us and the NPC
 
 Infinity Wash — Data Protection Officer
-Email: privacy@infinitywash.example
+Email: infinitywash001@gmail.com
 Mobile: +63 900 000 0000
 Business address: [insert registered business address]
 
