@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -12,7 +14,7 @@ import '../../widgets/custom_text_field.dart';
 import '../../widgets/legal_consent_checkbox.dart';
 import '../../services/auth_service.dart';
 import '../../services/legal_service.dart';
-import '../../utils/save_account_prompt.dart';
+import '../../services/customer_registration_service.dart';
 import 'customer_main_screen.dart';
 
 class GoogleProfileCompletionScreen extends StatefulWidget {
@@ -26,6 +28,7 @@ class _GoogleProfileCompletionScreenState extends State<GoogleProfileCompletionS
   final _formKey = GlobalKey<FormState>();
   final _authService = AuthService();
   final _legalService = LegalService();
+  final _registrationService = CustomerRegistrationService();
   final _phone = TextEditingController();
   final _street = TextEditingController();
   final _customBarangay = TextEditingController();
@@ -36,6 +39,11 @@ class _GoogleProfileCompletionScreenState extends State<GoogleProfileCompletionS
   bool _accepted = false;
   bool _saveAccount = true;
   bool _saving = false;
+
+  // ── Phone availability check ───────────────────────────────────────────────
+  bool? _phoneChecking;
+  bool _phoneTaken = false;
+  Timer? _phoneDebounce;
 
   @override
   void initState() {
@@ -54,11 +62,49 @@ class _GoogleProfileCompletionScreenState extends State<GoogleProfileCompletionS
     _street.dispose();
     _customBarangay.dispose();
     _landmark.dispose();
+    _phoneDebounce?.cancel();
     super.dispose();
+  }
+
+  // ── Debounced phone availability check ────────────────────────────────────
+  void _onPhoneChanged(String value) {
+    _phoneDebounce?.cancel();
+    setState(() {
+      _phoneChecking = null;
+      _phoneTaken = false;
+    });
+    if (Validators.phone(value.trim()) != null) return;
+    final normalized = Validators.normalizePhone(value.trim());
+    _phoneDebounce = Timer(const Duration(milliseconds: 700), () async {
+      if (!mounted) return;
+      setState(() => _phoneChecking = true);
+      try {
+        final taken = await _registrationService.isPhoneTaken(
+          normalized,
+          excludeUserId: Supabase.instance.client.auth.currentUser?.id,
+        );
+        if (!mounted) return;
+        setState(() {
+          _phoneChecking = false;
+          _phoneTaken = taken;
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _phoneChecking = null);
+      }
+    });
   }
 
   Future<void> _complete() async {
     if (_formKey.currentState?.validate() != true) return;
+    if (_phoneChecking == true) {
+      _message('Please wait while we check your mobile number.');
+      return;
+    }
+    if (_phoneTaken) {
+      _message('This mobile number is already registered. Please use a different number.');
+      return;
+    }
     if (!_accepted) {
       _message('Please read and accept the Terms of Service and Privacy Policy.');
       return;
@@ -98,6 +144,94 @@ class _GoogleProfileCompletionScreenState extends State<GoogleProfileCompletionS
 
   void _message(String value) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
 
+  Widget _buildPhoneField() {
+    Widget? suffixIcon;
+    if (_phoneChecking == true) {
+      suffixIcon = const Padding(
+        padding: EdgeInsets.all(14),
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    } else if (_phoneChecking == false && !_phoneTaken) {
+      suffixIcon = const Icon(Icons.check_circle, color: Colors.green);
+    } else if (_phoneTaken) {
+      suffixIcon = const Icon(Icons.cancel, color: Colors.red);
+    }
+
+    final borderRadius = BorderRadius.circular(16);
+    final errorBorder = OutlineInputBorder(
+      borderRadius: borderRadius,
+      borderSide: const BorderSide(color: Colors.red, width: 2),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Mobile Number',
+          style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _phone,
+          keyboardType: TextInputType.phone,
+          inputFormatters: InputFormatters.phone(),
+          onChanged: _onPhoneChanged,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          validator: (v) {
+            final base = Validators.phone(v);
+            if (base != null) return base;
+            if (_phoneTaken) return 'This mobile number is already registered.';
+            return null;
+          },
+          decoration: InputDecoration(
+            hintText: '09XX-XXX-XXXX',
+            hintStyle: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+              color: AppTheme.textLight.withValues(alpha: 0.5),
+            ),
+            prefixIcon: Icon(
+              Icons.phone_android_outlined,
+              color: AppTheme.textDark.withValues(alpha: 0.5),
+            ),
+            suffixIcon: suffixIcon,
+            errorText: _phoneTaken ? 'This mobile number is already registered.' : null,
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            errorMaxLines: 2,
+            errorStyle: const TextStyle(fontSize: 12),
+            border: OutlineInputBorder(
+              borderRadius: borderRadius,
+              borderSide: const BorderSide(color: AppTheme.borderGray),
+            ),
+            enabledBorder: _phoneTaken
+                ? errorBorder
+                : OutlineInputBorder(
+                    borderRadius: borderRadius,
+                    borderSide: const BorderSide(color: AppTheme.borderGray),
+                  ),
+            focusedBorder: _phoneTaken
+                ? errorBorder
+                : OutlineInputBorder(
+                    borderRadius: borderRadius,
+                    borderSide:
+                        const BorderSide(color: AppTheme.accentBlue, width: 2),
+                  ),
+            errorBorder: errorBorder,
+            focusedErrorBorder: errorBorder,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Complete your profile')),
@@ -117,7 +251,7 @@ class _GoogleProfileCompletionScreenState extends State<GoogleProfileCompletionS
                   const SizedBox(height: 16),
                   CustomTextField(label: 'Last Name', hint: 'Dela Cruz', prefixIcon: Icons.person_outline, controller: _lastName, inputFormatters: InputFormatters.name(), validator: (v) => Validators.nameField(v, 'Last name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
                   const SizedBox(height: 16),
-                  CustomTextField(label: 'Mobile Number', hint: '09XX-XXX-XXXX', prefixIcon: Icons.phone_android_outlined, controller: _phone, keyboardType: TextInputType.phone, inputFormatters: InputFormatters.phone(), validator: Validators.phone),
+                  _buildPhoneField(),
                   const SizedBox(height: 16),
                   AddressInputWidget(houseStreetController: _street, customBarangayController: _customBarangay, landmarkController: _landmark, selectedBarangay: _barangay, onBarangayChanged: (value) => setState(() => _barangay = value), helperText: 'Santa Cruz, Laguna only. Select "Other" if outside.', landmarkHint: 'e.g. Near church, blue gate'),
                   const SizedBox(height: 20),
@@ -183,7 +317,13 @@ class _GoogleProfileCompletionScreenState extends State<GoogleProfileCompletionS
                     ),
                   ),
                   const SizedBox(height: 24),
-                  SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _saving ? null : _complete, child: _saving ? const CircularProgressIndicator() : const Text('Save and continue'))),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: (_saving || _phoneTaken || _phoneChecking == true) ? null : _complete,
+                      child: _saving ? const CircularProgressIndicator() : const Text('Save and continue'),
+                    ),
+                  ),
                 ],
               ),
             ),

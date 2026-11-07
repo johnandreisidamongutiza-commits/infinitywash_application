@@ -12,6 +12,48 @@ class CustomerRegistrationService {
     return _invoke({'action': 'check', 'email': email});
   }
 
+  /// Returns `true` if the given phone number is already registered
+  /// by another user in `profiles` or `customers`.
+  Future<bool> isPhoneTaken(String normalizedPhone, {String? excludeUserId}) async {
+    try {
+      final digits = normalizedPhone.replaceAll(RegExp(r'[^0-9]'), '');
+      final variants = <String>{normalizedPhone};
+      if (digits.startsWith('09') && digits.length == 11) {
+        variants.add('+63${digits.substring(1)}');
+        variants.add('63${digits.substring(1)}');
+        variants.add(digits.substring(1));
+      } else if (digits.startsWith('639') && digits.length == 12) {
+        variants.add('0${digits.substring(2)}');
+        variants.add('+63${digits.substring(2)}');
+        variants.add(digits.substring(2));
+      } else if (digits.startsWith('9') && digits.length == 10) {
+        variants.add('0$digits');
+        variants.add('+63$digits');
+        variants.add('63$digits');
+      }
+
+      var profileQuery = _client
+          .from('profiles')
+          .select('id, supabase_user_id')
+          .inFilter('phone', variants.toList());
+      if (excludeUserId != null) {
+        profileQuery = profileQuery.neq('supabase_user_id', excludeUserId);
+      }
+      final profileResult = await profileQuery.limit(1);
+      if ((profileResult as List).isNotEmpty) return true;
+
+      final customerResult = await _client
+          .from('customers')
+          .select('id')
+          .inFilter('phone', variants.toList())
+          .limit(1);
+      return (customerResult as List).isNotEmpty;
+    } catch (_) {
+      // On error, don't block the user — let server-side validation catch it.
+      return false;
+    }
+  }
+
   Future<void> requestCode({
     required String email,
     Map<String, dynamic>? registrationData,

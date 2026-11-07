@@ -19,7 +19,6 @@ import '../../services/customer_registration_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/google_sign_in_service.dart';
 import '../../services/supabase_service.dart';
-import '../../utils/save_account_prompt.dart';
 import '../../widgets/legal_consent_checkbox.dart';
 import 'customer_main_screen.dart';
 
@@ -58,6 +57,14 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   bool _isPendingResume = false;
   int _step = 0;
 
+  // ── Phone availability check ───────────────────────────────────────────────
+  /// `null`  = idle / not yet checked
+  /// `true`  = checking in progress (spinner)
+  /// `false` = finished (green check or red border based on [_phoneTaken])
+  bool? _phoneChecking;
+  bool _phoneTaken = false;
+  Timer? _phoneDebounce;
+
   /// Terms of Service / Privacy Policy consent. Server-enforced: the
   /// registration trigger refuses the sign-up without it.
   bool _agreedToLegal = false;
@@ -91,7 +98,39 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     _confirmPasswordController.dispose();
     _otpController.dispose();
     _authSubscription?.cancel();
+    _phoneDebounce?.cancel();
     super.dispose();
+  }
+
+  // ── Debounced phone availability check ────────────────────────────────────
+  void _onPhoneChanged(String value) {
+    _phoneDebounce?.cancel();
+    // Reset state while the user is still typing.
+    setState(() {
+      _phoneChecking = null;
+      _phoneTaken = false;
+    });
+    final normalized = Validators.normalizePhone(value.trim());
+    // Only check once the number looks complete (passes format validation).
+    if (Validators.phone(value.trim()) != null) return;
+    _phoneDebounce = Timer(const Duration(milliseconds: 700), () async {
+      if (!mounted) return;
+      setState(() => _phoneChecking = true);
+      try {
+        final taken = await _registrationService.isPhoneTaken(
+          normalized,
+          excludeUserId: SupabaseService.client.auth.currentUser?.id,
+        );
+        if (!mounted) return;
+        setState(() {
+          _phoneChecking = false;
+          _phoneTaken = taken;
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _phoneChecking = null);
+      }
+    });
   }
 
   Future<void> _continueWithGoogle() async {
@@ -245,6 +284,17 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     }
     if (_step == 0 || _step == 1 || _step == 2 || _step == 3) {
       if (_formKey.currentState?.validate() != true) return;
+      if (_step == 2) {
+        // Block if phone is still being checked or already taken.
+        if (_phoneChecking == true) {
+          _showMessage('Please wait while we check your mobile number.');
+          return;
+        }
+        if (_phoneTaken) {
+          _showMessage('This mobile number is already registered. Please use a different number.');
+          return;
+        }
+      }
       if (_step == 3) {
         if (_houseStreetController.text.trim().isEmpty) {
           _showMessage('Please enter your house and street address.');
@@ -537,6 +587,98 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     );
   }
 
+  // ── Phone field with debounced availability check ──────────────────────────
+  Widget _buildPhoneField() {
+    Widget? suffixIcon;
+    if (_phoneChecking == true) {
+      // Spinner while checking
+      suffixIcon = const Padding(
+        padding: EdgeInsets.all(14),
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    } else if (_phoneChecking == false && !_phoneTaken) {
+      // Green check — number is available
+      suffixIcon = const Icon(Icons.check_circle, color: Colors.green);
+    } else if (_phoneTaken) {
+      // Red X — number already taken
+      suffixIcon = const Icon(Icons.cancel, color: Colors.red);
+    }
+
+    final borderRadius = BorderRadius.circular(16);
+    final errorBorder = OutlineInputBorder(
+      borderRadius: borderRadius,
+      borderSide: const BorderSide(color: Colors.red, width: 2),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Mobile Number',
+          style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          inputFormatters: InputFormatters.phone(),
+          onChanged: _onPhoneChanged,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          validator: (v) {
+            final base = Validators.phone(v);
+            if (base != null) return base;
+            if (_phoneTaken) return 'This mobile number is already registered.';
+            return null;
+          },
+          decoration: InputDecoration(
+            hintText: '09XX-XXX-XXXX',
+            hintStyle: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+              color: AppTheme.textLight.withValues(alpha: 0.5),
+            ),
+            prefixIcon: Icon(
+              Icons.phone_android_outlined,
+              color: AppTheme.textDark.withValues(alpha: 0.5),
+            ),
+            suffixIcon: suffixIcon,
+            errorText: _phoneTaken ? 'This mobile number is already registered.' : null,
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            errorMaxLines: 2,
+            errorStyle: const TextStyle(fontSize: 12),
+            border: OutlineInputBorder(
+              borderRadius: borderRadius,
+              borderSide: const BorderSide(color: AppTheme.borderGray),
+            ),
+            enabledBorder: _phoneTaken
+                ? errorBorder
+                : OutlineInputBorder(
+                    borderRadius: borderRadius,
+                    borderSide: const BorderSide(color: AppTheme.borderGray),
+                  ),
+            focusedBorder: _phoneTaken
+                ? errorBorder
+                : OutlineInputBorder(
+                    borderRadius: borderRadius,
+                    borderSide:
+                        const BorderSide(color: AppTheme.accentBlue, width: 2),
+                  ),
+            errorBorder: errorBorder,
+            focusedErrorBorder: errorBorder,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final titles = ['Sign up', 'Your name', 'Contact details', 'Your address', 'Set a password', 'Review and consent', 'Verify your email'];
@@ -555,7 +697,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         CustomTextField(label: 'Last Name', hint: 'Dela Cruz', prefixIcon: Icons.person_outline, controller: _lastNameController, inputFormatters: InputFormatters.name(), validator: (v) => Validators.nameField(v, 'Last name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
       ]),
       Column(children: [
-        CustomTextField(label: 'Mobile Number', hint: '09XX-XXX-XXXX', prefixIcon: Icons.phone_android_outlined, controller: _phoneController, keyboardType: TextInputType.phone, inputFormatters: InputFormatters.phone(), validator: Validators.phone),
+        _buildPhoneField(),
         if (_isGoogleRegistration) Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [const Icon(Icons.verified, size: 18, color: Colors.green), const SizedBox(width: 6), Expanded(child: Text('${_emailController.text} is verified by Google. OTP is not needed.'))])),
       ]),
       Column(children: [
@@ -718,7 +860,9 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                 pageFields[_step],
                 const SizedBox(height: 24),
                 ElevatedButton(
-                  onPressed: _isLoading ? null : (_step == 6 ? _verifyCode : _nextStep),
+                  onPressed: (_isLoading || (_step == 2 && (_phoneTaken || _phoneChecking == true)))
+                      ? null
+                      : (_step == 6 ? _verifyCode : _nextStep),
                   child: _isLoading
                       ? const SizedBox(
                           height: 20,
