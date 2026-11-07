@@ -77,7 +77,29 @@ Deno.serve(async (req) => {
     const admin = await adminClient()
     if (action === "check") {
       const existingUser = await findUserByEmail(admin, email)
-      if (existingUser?.email_confirmed_at) return reply({ status: "registered" })
+      if (existingUser) {
+        const { data: profile } = await admin.from("profiles")
+          .select("role, status, first_name, last_name, phone, address")
+          .eq("supabase_user_id", existingUser.id)
+          .maybeSingle()
+
+        const isProfileComplete = profile &&
+          profile.role === "customer" &&
+          profile.status === "active" &&
+          Boolean(profile.first_name?.trim()) &&
+          Boolean(profile.last_name?.trim()) &&
+          Boolean(profile.phone?.trim()) &&
+          Boolean(profile.address?.trim())
+
+        const isGoogle = existingUser.app_metadata?.provider === "google" ||
+          (Array.isArray(existingUser.app_metadata?.providers) && existingUser.app_metadata.providers.includes("google"))
+
+        if (!isProfileComplete) {
+          return reply({ status: "incomplete_profile", is_google: isGoogle })
+        }
+
+        if (existingUser.email_confirmed_at) return reply({ status: "registered", is_google: isGoogle })
+      }
       const { data: pending, error } = await admin.from("pending_customer_registrations")
         .select("email, created_at")
         .eq("email", email)

@@ -82,6 +82,16 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         _finishGoogleRegistration();
       }
     });
+    // If the user already authenticated via Google but has not completed their
+    // customer profile, resume the profile completion flow right away.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final user = SupabaseService.client.auth.currentUser;
+      if (user != null && user.appMetadata['provider'] == 'google') {
+        if (!await _authService.isCustomerProfileComplete()) {
+          _finishGoogleRegistration();
+        }
+      }
+    });
   }
 
   @override
@@ -237,12 +247,88 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
       _showMessage('No internet connection. Please check your connection and try again.');
       return;
     }
+
+    final email = _emailController.text.trim();
+
+    // If currently signed in user matches this email and profile is incomplete,
+    // immediately transition to profile completion without blocking.
+    final currentUser = SupabaseService.client.auth.currentUser;
+    if (currentUser != null &&
+        currentUser.email?.trim().toLowerCase() == email.toLowerCase()) {
+      final ready = await _authService.isCustomerProfileComplete();
+      if (!ready) {
+        await _finishGoogleRegistration();
+        return;
+      }
+    }
+
     setState(() => _isLoading = true);
     try {
-      final result = await _registrationService.checkEmail(_emailController.text.trim());
+      final result = await _registrationService.checkEmail(email);
       if (!mounted) return;
+
+      bool isIncomplete = result['status'] == 'incomplete_profile';
+      final bool isGoogleFromBackend = result['is_google'] == true;
+
+      // If backend returned 'registered', double-check whether the profile is
+      // actually complete or still missing required contact/address fields.
+      if (!isIncomplete && result['status'] == 'registered') {
+        try {
+          final profile = await SupabaseService.client
+              .from('profiles')
+              .select('role, status, first_name, last_name, phone, address')
+              .eq('email', email)
+              .maybeSingle();
+          if (profile == null) {
+            isIncomplete = true;
+          } else {
+            final hasPhone = (profile['phone'] as String? ?? '').trim().isNotEmpty;
+            final hasAddress = (profile['address'] as String? ?? '').trim().isNotEmpty;
+            final hasName = (profile['first_name'] as String? ?? '').trim().isNotEmpty;
+            if (!hasPhone || !hasAddress || !hasName) {
+              isIncomplete = true;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (isIncomplete) {
+        if (!mounted) return;
+        final isGmail = isGoogleFromBackend || email.toLowerCase().endsWith('@gmail.com');
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Finish setting up'),
+            content: Text(
+              isGmail
+                  ? 'An account with this email ($email) was started with Google, but profile setup is not yet complete.\n\nContinue with Google to finish setting up your account.'
+                  : 'An account with this email ($email) has not finished setup yet.\n\nContinue to finish setting up your account.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  if (isGmail) {
+                    _continueWithGoogle();
+                  } else {
+                    setState(() => _step = 1);
+                  }
+                },
+                child: Text(isGmail ? 'Continue with Google' : 'Finish setup'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
       switch (result['status']) {
         case 'registered':
+          if (!mounted) return;
           await showDialog<void>(
             context: context,
             builder: (dialogContext) => AlertDialog(
