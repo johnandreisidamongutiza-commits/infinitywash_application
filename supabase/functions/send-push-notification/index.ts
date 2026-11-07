@@ -183,7 +183,13 @@ async function sendToFcm(
         token,
         notification: { title, body },
         data,
-        android: { priority: "high" },
+        android: {
+          priority: "high",
+          notification: {
+            channel_id: "infinitywash_default",
+            sound: "default",
+          },
+        },
         apns: { headers: { "apns-priority": "10" } },
       },
     }),
