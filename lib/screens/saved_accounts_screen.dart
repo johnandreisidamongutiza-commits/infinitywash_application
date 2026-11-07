@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/saved_account.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/role_entry_transition.dart';
 import 'customer/customer_main_screen.dart';
 import 'customer/google_profile_completion_screen.dart';
 import 'login_screen.dart';
@@ -164,7 +165,7 @@ class _SavedAccountsScreenState extends State<SavedAccountsScreen> with SingleTi
   void _replaceWith(Widget screen) {
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (_) => screen),
+      RoleEntryTransition.route(screen),
       (_) => false,
     );
   }

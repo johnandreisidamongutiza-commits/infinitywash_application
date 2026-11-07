@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../utils/role_entry_transition.dart';
 import '../services/auth_service.dart';
 import '../models/saved_account.dart';
 import 'login_screen.dart';
@@ -120,7 +121,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         _showMessage('Switched to ${account.displayName}');
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => destination),
+          RoleEntryTransition.route(destination),
           (route) => false,
         );
       } else {

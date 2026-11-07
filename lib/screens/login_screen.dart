@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_error.dart';
+import '../utils/role_entry_transition.dart';
 import '../utils/validators.dart';
 import '../services/connectivity_service.dart';
 import '../widgets/custom_text_field.dart';
@@ -110,11 +111,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       ),
     );
 
-    // Coordinate entrance: give the incoming Hero flight ~220ms to initiate
-    // before the form content cascades in smoothly underneath the docked logo.
-    Future.delayed(const Duration(milliseconds: 220), () {
-      if (mounted) _animController.forward();
-    });
+    _animController.forward();
 
     _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((state) {
       if (CustomerRegistrationScreen.googleSignupInProgress) return;
@@ -214,7 +211,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           if (!mounted) return;
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (_) => const GoogleProfileCompletionScreen()),
+            RoleEntryTransition.route(const GoogleProfileCompletionScreen()),
             (_) => false,
           );
           return;
@@ -227,7 +224,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (context) => destination),
+        RoleEntryTransition.route(destination),
         (route) => false,
       );
     } catch (error) {
@@ -285,7 +282,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         if (!ready) {
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (_) => const GoogleProfileCompletionScreen()),
+            RoleEntryTransition.route(const GoogleProfileCompletionScreen()),
             (_) => false,
           );
           return;
@@ -295,7 +292,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         }
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const CustomerMainScreen()),
+          RoleEntryTransition.route(const CustomerMainScreen()),
           (_) => false,
         );
         return;
@@ -310,7 +307,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       if (_saveAccount) {
         await _authService.rememberCurrentSession();
       }
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => destination), (_) => false);
+      Navigator.pushAndRemoveUntil(
+        context,
+        RoleEntryTransition.route(destination),
+        (_) => false,
+      );
     } catch (error) {
       if (mounted) _showMessage(mapErrorToMessage(error));
     } finally {

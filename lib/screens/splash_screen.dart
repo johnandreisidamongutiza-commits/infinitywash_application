@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/role_entry_transition.dart';
 import 'customer/customer_main_screen.dart';
 import 'customer/google_profile_completion_screen.dart';
 import 'login_screen.dart';
@@ -25,12 +26,6 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     _checkAutoLogin();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    precacheImage(const AssetImage('assets/images/logo.png'), context);
   }
 
   Future<void> _checkAutoLogin() async {
@@ -128,7 +123,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute<void>(builder: (_) => screen),
+      RoleEntryTransition.route(screen),
       (_) => false,
     );
   }
@@ -137,50 +132,7 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.softGray,
-      body: Center(
-        child: Hero(
-          tag: 'app_brand_logo',
-          createRectTween: (begin, end) => RectTween(begin: begin, end: end),
-          child: RepaintBoundary(
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                width: 116,
-                height: 116,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(26),
-                  border: Border.all(
-                    color: AppTheme.primaryBlue.withValues(alpha: 0.08),
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.primaryBlue.withValues(alpha: 0.06),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                    errorBuilder: (context, error, stackTrace) => const Icon(
-                      Icons.local_laundry_service,
-                      size: 56,
-                      color: AppTheme.primaryBlue,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      body: const SizedBox.expand(),
     );
   }
 }

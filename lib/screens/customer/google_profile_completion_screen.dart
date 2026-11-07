@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/legal_documents.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/role_entry_transition.dart';
 import '../../utils/input_formatters.dart';
 import '../../utils/validators.dart';
 import '../../widgets/address_input_widget.dart';
@@ -85,7 +86,7 @@ class _GoogleProfileCompletionScreenState extends State<GoogleProfileCompletionS
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const CustomerMainScreen()),
+        RoleEntryTransition.route(const CustomerMainScreen()),
         (_) => false,
       );
     } catch (error) {

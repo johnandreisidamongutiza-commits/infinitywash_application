@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/legal_documents.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/input_formatters.dart';
+import '../../utils/role_entry_transition.dart';
 import '../../utils/validators.dart';
 import '../../services/connectivity_service.dart';
 import '../../widgets/custom_text_field.dart';
@@ -137,7 +138,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         }
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const CustomerMainScreen()),
+          RoleEntryTransition.route(const CustomerMainScreen()),
           (_) => false,
         );
         return;
@@ -295,7 +296,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const CustomerMainScreen()),
+          RoleEntryTransition.route(const CustomerMainScreen()),
           (_) => false,
         );
       } catch (error) {
