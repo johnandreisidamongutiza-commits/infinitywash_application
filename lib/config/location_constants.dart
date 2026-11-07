@@ -22,7 +22,7 @@ class LocationConstants {
   static const String shopName = 'Infinity Wash';
   
   /// Shop Contact
-  static const String shopPhone = '+63 XXX XXX XXXX'; // Update with actual number
+  static const String shopPhone = '0917-555-9274';
   
   // Additional shop locations can be added here if there are multiple branches
   // Example:

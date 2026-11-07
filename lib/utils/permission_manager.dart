@@ -115,9 +115,7 @@ class PermissionManager {
     BuildContext context,
     AppPermission kind,
   ) async {
-    final userId = kind == AppPermission.camera
-        ? SupabaseService.currentUser?.id
-        : null;
+    final userId = SupabaseService.currentUser?.id;
     if (userId != null &&
         await SecureStorageService.instance.hasAcceptedPermissionRationale(
           userId: userId,

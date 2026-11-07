@@ -1,13 +1,16 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
+import '../../../services/data_change_monitor.dart';
+import '../../../services/supabase_service.dart';
+import '../../../widgets/skeleton_loading.dart';
 
 /// Rejected requests accumulate forever, so they are loaded a page at a time.
-/// Matches the page size used by the Orders screen next door.
 const int _kRejectedPageSize = 8;
 
 class RejectedRequestsScreen extends StatefulWidget {
@@ -18,113 +21,538 @@ class RejectedRequestsScreen extends StatefulWidget {
 }
 
 class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
+  static List<LaundryOrder>? _cachedOrders;
+  static String? _cachedQuery;
+  static int? _cachedPage;
+  static int? _cachedOrderVersion;
+  static String? _cachedUserId;
+  static int _cachedTotalCount = 0;
+  static DateTime? _lastCleanupAt;
+
   final OrderService _orderService = OrderService();
   final ScrollController _scrollController = ScrollController();
-  // Only ever mutated (cleared / appended to) while paging; never reassigned.
+  final TextEditingController _searchController = TextEditingController();
+
   final List<LaundryOrder> _rejectedOrders = [];
   bool _isLoading = true;
-  bool _isLoadingMore = false;
-  bool _hasMore = true;
-  int _offset = 0;
+  bool _isFetching = false;
+  bool _refreshQueued = false;
+  int _currentPage = 1;
+  int _totalCount = 0;
+  String _searchQuery = '';
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
-    _loadRejectedOrders();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
+    if (_cachedOrders != null &&
+        _cachedUserId == SupabaseService.client.auth.currentUser?.id &&
+        _cachedQuery == '' &&
+        _cachedPage == 1 &&
+        _cachedOrderVersion == DataChangeMonitor.instance.ordersVersion.value) {
+      _rejectedOrders.addAll(_cachedOrders!);
+      _totalCount = _cachedTotalCount;
+      _isLoading = false;
+    } else {
+      _fetchPage(1);
+    }
   }
 
   @override
   void dispose() {
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final position = _scrollController.position;
-    if (position.pixels >= position.maxScrollExtent - 200) {
-      _loadMoreRejected();
+  int get _totalPages {
+    if (_totalCount == 0) return 1;
+    return (_totalCount / _kRejectedPageSize).ceil();
+  }
+
+  int get _startItem {
+    if (_totalCount == 0 || _rejectedOrders.isEmpty) return 0;
+    return ((_currentPage - 1) * _kRejectedPageSize) + 1;
+  }
+
+  int get _endItem {
+    if (_totalCount == 0 || _rejectedOrders.isEmpty) return 0;
+    return (_startItem + _rejectedOrders.length - 1);
+  }
+
+  Future<void> _fetchPage(int page) async {
+    if (_isFetching) {
+      _refreshQueued = true;
+      return;
     }
-  }
-
-  Future<void> _loadMoreRejected() async {
-    if (_isLoading || _isLoadingMore || !_hasMore) return;
-    setState(() => _isLoadingMore = true);
-    await _fetchRejected(reset: false);
-  }
-
-  /// Loads the first page. Also used by pull-to-refresh, which is why it
-  /// returns a Future that completes only once the request has finished.
-  Future<void> _loadRejectedOrders() async {
+    _isFetching = true;
     setState(() {
       _isLoading = true;
-      _hasMore = true;
+      _currentPage = page;
     });
-    await _fetchRejected(reset: true);
-  }
 
-  Future<void> _fetchRejected({required bool reset}) async {
     try {
-      if (reset) {
+      final now = DateTime.now();
+      if (page == 1 &&
+          (_lastCleanupAt == null ||
+              now.difference(_lastCleanupAt!) > const Duration(minutes: 10))) {
         await _orderService.autoRejectExpiredRequests();
+        await _orderService.purgeOldRejectedOrders(days: 30);
+        _lastCleanupAt = now;
       }
-      final page = await _orderService.fetchOrders(
+
+      final query = _searchQuery.trim().isEmpty ? null : _searchQuery.trim();
+      final count = await _orderService.fetchOrderCount(
         statuses: ['rejected'],
-        limit: _kRejectedPageSize,
-        offset: reset ? 0 : _offset,
+        isDismissed: false,
+        search: query,
       );
+
+      final offset = (page - 1) * _kRejectedPageSize;
+      final pageOrders = await _orderService.fetchOrders(
+        statuses: ['rejected'],
+        isDismissed: false,
+        limit: _kRejectedPageSize,
+        offset: offset,
+        search: query,
+      );
+
       if (!mounted) return;
       setState(() {
-        if (reset) {
-          _rejectedOrders.clear();
-        }
-        _rejectedOrders.addAll(page);
-        _offset = _rejectedOrders.length;
-        // A short page means we reached the end of the list.
-        _hasMore = page.length == _kRejectedPageSize;
+        _totalCount = count;
+        _rejectedOrders.clear();
+        _rejectedOrders.addAll(pageOrders);
         _isLoading = false;
-        _isLoadingMore = false;
       });
+      _cachedOrders = List.of(pageOrders);
+      _cachedUserId = SupabaseService.client.auth.currentUser?.id;
+      _cachedQuery = query ?? '';
+      _cachedPage = page;
+      _cachedTotalCount = count;
+      _cachedOrderVersion = DataChangeMonitor.instance.ordersVersion.value;
+
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _isLoadingMore = false;
-        // Let the user retry the page that failed rather than losing the list.
-        if (!reset) _hasMore = true;
-      });
+      setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(mapErrorToMessage(e)),
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      _isFetching = false;
+      if (_refreshQueued && mounted) {
+        _refreshQueued = false;
+        _fetchPage(_currentPage);
+      }
     }
   }
 
-  Widget _buildPaginationFooter() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Center(
-        child: _isLoadingMore
-            ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppTheme.accentBlue,
-                ),
-              )
-            : _hasMore
-                ? const SizedBox.shrink()
-                : Text(
-                    'No more rejected requests',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textLight.withValues(alpha: 0.5),
+  void _onOrdersChanged() {
+    _cachedOrderVersion = null;
+    if (_isFetching) {
+      _refreshQueued = true;
+    } else if (mounted) {
+      _fetchPage(_currentPage);
+    }
+  }
+
+  void _onSearchChanged(String val) {
+    _searchDebounce?.cancel();
+    setState(() => _searchQuery = val);
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      _fetchPage(1);
+    });
+  }
+
+  Future<void> _dismissOrder(LaundryOrder order) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Dismiss Request?'),
+        content: Text(
+          'This will permanently dismiss ${order.customerName}\'s request and remove it from this list. It will also clear the notification badge.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            ),
+            child: const Text('Dismiss', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await _orderService.dismissRejectedOrder(order.id);
+      if (!mounted) return;
+      setState(() {
+        _rejectedOrders.removeWhere((o) => o.id == order.id);
+        _totalCount = (_totalCount - 1).clamp(0, 999999);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Request dismissed and removed from list.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      if (_rejectedOrders.isEmpty && _currentPage > 1) {
+        _fetchPage(_currentPage - 1);
+      } else {
+        _fetchPage(_currentPage);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to dismiss request: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _dismissAll() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Dismiss All Requests?'),
+        content: const Text(
+          'This will permanently dismiss all rejected requests and remove them from this list. It will also clear your notification badge.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            ),
+            child: const Text('Dismiss All', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final count = await _orderService.dismissAllRejectedOrders();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Dismissed $count request(s) and cleared notification badge.'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      _fetchPage(1);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to dismiss all requests: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _reopenOrder(LaundryOrder order) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reopen Request?'),
+        content: Text(
+          'Reopening will move ${order.customerName}\'s request back to the Requests tab '
+          'under "Pending Approval" for staff review.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accentBlue,
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            ),
+            child: const Text('Reopen', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await _orderService.reopenRejectedOrder(order.id);
+      if (!mounted) return;
+      setState(() {
+        _rejectedOrders.removeWhere((o) => o.id == order.id);
+        _totalCount = (_totalCount - 1).clamp(0, 999999);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Request moved back to Pending Requests.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      if (_rejectedOrders.isEmpty && _currentPage > 1) {
+        _fetchPage(_currentPage - 1);
+      } else {
+        _fetchPage(_currentPage);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to reopen request: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      color: const Color(0xFFF7F8FA),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.black.withValues(alpha: 0.08),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: TextField(
+          controller: _searchController,
+          onChanged: _onSearchChanged,
+          style: const TextStyle(
+            fontSize: 14,
+            color: AppTheme.textDark,
+          ),
+          decoration: InputDecoration(
+            hintText: 'Search by customer, phone, or order #...',
+            hintStyle: TextStyle(
+              fontSize: 13,
+              color: AppTheme.textLight.withValues(alpha: 0.7),
+            ),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              color: AppTheme.textLight,
+              size: 20,
+            ),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(
+                      Icons.cancel_rounded,
+                      color: AppTheme.textLight,
+                      size: 18,
                     ),
+                    splashRadius: 18,
+                    onPressed: () {
+                      _searchController.clear();
+                      _onSearchChanged('');
+                    },
+                  )
+                : null,
+            border: InputBorder.none,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    final isSearching = _searchQuery.trim().isNotEmpty;
+    return Center(
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: (isSearching ? Colors.blue : Colors.green).withValues(alpha: 0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isSearching ? Icons.search_off_rounded : Icons.check_circle_outline,
+                  size: 64,
+                  color: isSearching ? AppTheme.accentBlue : Colors.green,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                isSearching ? 'No Matching Requests' : 'No Rejected Requests',
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isSearching
+                    ? 'No rejected requests match "$_searchQuery". Try searching with different keywords.'
+                    : 'All rejected requests have been reviewed and dismissed. Notification badge is clear!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.textLight.withValues(alpha: 0.8),
+                  height: 1.4,
+                ),
+              ),
+              if (isSearching) ...[
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    _searchController.clear();
+                    _onSearchChanged('');
+                  },
+                  icon: const Icon(Icons.clear, size: 16),
+                  label: const Text('Clear Search'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.accentBlue,
+                    side: BorderSide(color: AppTheme.accentBlue.withValues(alpha: 0.4)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaginationBar() {
+    final canPrev = _currentPage > 1;
+    final canNext = _currentPage < _totalPages;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Previous Button
+          OutlinedButton.icon(
+            onPressed: canPrev && !_isLoading ? () => _fetchPage(_currentPage - 1) : null,
+            icon: const Icon(Icons.chevron_left_rounded, size: 18),
+            label: const Text('Previous'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.textDark,
+              disabledForegroundColor: AppTheme.textLight.withValues(alpha: 0.35),
+              side: BorderSide(
+                color: canPrev ? Colors.grey.shade300 : Colors.grey.shade200,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              visualDensity: VisualDensity.compact,
+              minimumSize: Size.zero,
+            ),
+          ),
+
+          // Page info
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Page $_currentPage of $_totalPages',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Showing $_startItem–$_endItem of $_totalCount',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppTheme.textLight.withValues(alpha: 0.8),
+                ),
+              ),
+            ],
+          ),
+
+          // Next Button
+          OutlinedButton.icon(
+            onPressed: canNext && !_isLoading ? () => _fetchPage(_currentPage + 1) : null,
+            icon: const Icon(Icons.chevron_right_rounded, size: 18),
+            label: const Text('Next'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.accentBlue,
+              disabledForegroundColor: AppTheme.textLight.withValues(alpha: 0.35),
+              side: BorderSide(
+                color: canNext ? AppTheme.accentBlue.withValues(alpha: 0.5) : Colors.grey.shade200,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              visualDensity: VisualDensity.compact,
+              minimumSize: Size.zero,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -173,70 +601,72 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
           icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          if (_totalCount > 0)
+            TextButton.icon(
+              onPressed: _dismissAll,
+              icon: const Icon(Icons.done_all, size: 18, color: AppTheme.accentBlue),
+              label: const Text(
+                'Dismiss All',
+                style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+        ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _loadRejectedOrders,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _rejectedOrders.isEmpty
-                ? Center(
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withValues(alpha: 0.08),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.do_disturb_alt_outlined,
-                                size: 64,
-                                color: Colors.red,
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            const Text(
-                              'No Rejected Requests',
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textDark,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Requests you decline or reject will show up here for your records.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppTheme.textLight.withValues(alpha: 0.8),
-                                height: 1.4,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+      body: Column(
+        children: [
+          _buildSearchBar(),
+          if (_totalCount > 0 && !_isLoading)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '$_totalCount rejected request${_totalCount == 1 ? '' : 's'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textLight.withValues(alpha: 0.9),
                     ),
-                  )
-                : ListView.separated(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    // +1 for the pagination footer.
-                    itemCount: _rejectedOrders.length + 1,
-                    separatorBuilder: (context, index) => const SizedBox(height: 14),
-                    itemBuilder: (context, index) {
-                      if (index == _rejectedOrders.length) {
-                        return _buildPaginationFooter();
-                      }
-                      return _buildRejectedCard(_rejectedOrders[index]);
-                    },
                   ),
+                  Text(
+                    'Showing $_startItem–$_endItem',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textLight.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => _fetchPage(_currentPage),
+              child: _isLoading && _rejectedOrders.isEmpty
+                  ? const SkeletonCardList(
+                      itemCount: 4,
+                      padding: EdgeInsets.fromLTRB(16, 4, 16, 16),
+                      spacing: 14,
+                    )
+                  : _rejectedOrders.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.separated(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemCount: _rejectedOrders.length + (_totalPages > 1 ? 1 : 0),
+                          separatorBuilder: (context, index) => const SizedBox(height: 14),
+                          itemBuilder: (context, index) {
+                            if (index == _rejectedOrders.length) {
+                              return _buildPaginationBar();
+                            }
+                            return _buildRejectedCard(_rejectedOrders[index]);
+                          },
+                        ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -250,7 +680,9 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.15)),
+        border: Border.all(
+          color: Colors.red.withValues(alpha: 0.2),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -264,7 +696,7 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Row: ID, Collection Method & Rejected badge
+            // Top Row: ID, Collection Method & Rejected / Dismissed badge
             Row(
               children: [
                 Expanded(
@@ -518,6 +950,59 @@ class _RejectedRequestsScreenState extends State<RejectedRequestsScreen> {
                       ? 'Rejected ${_formatDateTime(order.reviewedAt)}'
                       : 'Requested ${_formatDateTime(order.createdAt)}',
                   style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                ),
+              ],
+            ),
+
+            // Actions: Dismiss & Reopen
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _dismissOrder(order),
+                    icon: const Icon(Icons.archive_outlined, size: 16, color: Color(0xFFDC2626)),
+                    label: const Text(
+                      'Dismiss',
+                      style: TextStyle(
+                        color: Color(0xFFDC2626),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFEF2F2),
+                      side: const BorderSide(color: Color(0xFFFECACA)),
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      minimumSize: Size.zero,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _reopenOrder(order),
+                    icon: const Icon(Icons.replay_rounded, size: 16, color: Colors.white),
+                    label: const Text(
+                      'Reopen Request',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accentBlue,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      minimumSize: Size.zero,
+                    ),
+                  ),
                 ),
               ],
             ),

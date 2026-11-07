@@ -21,6 +21,7 @@ class _CustomerChatsScreenState extends State<CustomerChatsScreen> {
 
   String _searchQuery = '';
   bool _isSearching = false;
+  int _selectedFilterIndex = 0; // 0: All, 1: Shop Staff, 2: Riders
   String _currentCustomerId = '';
   String _currentCustomerName = 'Customer';
   bool _isProfileLoaded = false;
@@ -140,6 +141,8 @@ class _CustomerChatsScreenState extends State<CustomerChatsScreen> {
           body: SafeArea(
             child: Column(
               children: [
+                if (!_isSearching && conversations.isNotEmpty)
+                  _buildFilterTabs(conversations),
                 Expanded(
                   child: filtered.isEmpty
                       ? _buildEmptyState()
@@ -162,9 +165,15 @@ class _CustomerChatsScreenState extends State<CustomerChatsScreen> {
   }
 
   List<ChatConversation> _filterChats(List<ChatConversation> chats) {
-    if (_searchQuery.trim().isEmpty) return chats;
+    List<ChatConversation> list = chats;
+    if (_selectedFilterIndex == 1) {
+      list = list.where((c) => c.chatType == ChatType.customerSupport).toList();
+    } else if (_selectedFilterIndex == 2) {
+      list = list.where((c) => c.chatType == ChatType.customerRider).toList();
+    }
+    if (_searchQuery.trim().isEmpty) return list;
     final q = _searchQuery.trim().toLowerCase();
-    return chats.where((c) {
+    return list.where((c) {
       final name =
           c.getOtherParticipantName(_currentCustomerId, 'customer').toLowerCase();
       final role =
@@ -176,6 +185,80 @@ class _CustomerChatsScreenState extends State<CustomerChatsScreen> {
           order.contains(q) ||
           lastMsg.contains(q);
     }).toList();
+  }
+
+  Widget _buildFilterTabs(List<ChatConversation> all) {
+    final staffCount =
+        all.where((c) => c.chatType == ChatType.customerSupport).length;
+    final riderCount =
+        all.where((c) => c.chatType == ChatType.customerRider).length;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+      child: Row(
+        children: [
+          _buildFilterChip('All', 0, all.length),
+          const SizedBox(width: 8),
+          _buildFilterChip('Shop Staff', 1, staffCount),
+          const SizedBox(width: 8),
+          _buildFilterChip('Riders', 2, riderCount),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, int index, int count) {
+    final isSelected = _selectedFilterIndex == index;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedFilterIndex = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primaryBlue : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.primaryBlue
+                  : AppTheme.borderGray.withValues(alpha: 0.4),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? Colors.white : AppTheme.textDark,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.25)
+                      : AppTheme.softGray,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: isSelected ? Colors.white : AppTheme.textDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildChatCard(ChatConversation conversation) {
@@ -328,9 +411,9 @@ class _CustomerChatsScreenState extends State<CustomerChatsScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            conversation.lastMessage.isEmpty
+                            conversation.displayLastMessage.isEmpty
                                 ? 'No messages yet'
-                                : conversation.lastMessage,
+                                : conversation.displayLastMessage,
                             style: TextStyle(
                               fontSize: 13,
                               color: hasUnread

@@ -51,7 +51,7 @@ class LoyaltyCardInfo {
     return LoyaltyCardInfo(
       cardId: json['card_id'] as String,
       uid: json['uid'] as String,
-      status: json['status'] as String? ?? 'active',
+      status: (json['card_status'] ?? json['status']) as String? ?? 'active',
       customerId: json['customer_id'] as String?,
       ownerName: json['owner_name'] as String? ?? 'Unassigned Customer',
       ownerPhone: json['owner_phone'] as String?,
@@ -59,9 +59,11 @@ class LoyaltyCardInfo {
       totalOrders: (json['total_orders'] as num?)?.toInt() ?? 0,
       totalLoads: (json['total_loads'] as num?)?.toInt() ?? 0,
       pointsBalance: (json['points_balance'] as num?)?.toInt() ?? 0,
-      createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
-          : DateTime.now(),
+      createdAt: json['card_created_at'] != null
+          ? DateTime.parse(json['card_created_at'] as String)
+          : (json['created_at'] != null
+              ? DateTime.parse(json['created_at'] as String)
+              : DateTime.now()),
     );
   }
 }
@@ -163,16 +165,15 @@ class LoyaltyService {
 
       final response = await _client
           .from('rfid_loyalty_cards')
-          .insert({
+          .upsert({
             'uid': cleanUid,
             'customer_id': customerId,
             'status': 'active',
             'points_balance': 0,
             'total_orders': 0,
             'total_loads': 0,
-            'created_at': DateTime.now().toIso8601String(),
             'updated_at': DateTime.now().toIso8601String(),
-          })
+          }, onConflict: 'uid')
           .select('id')
           .single();
 
@@ -235,10 +236,32 @@ class LoyaltyService {
 
   /// Award points to a card when an order is completed.
   /// 1 load = 1 point.
+    /// Resolve profile_id for a given customerId (needed because loyalty_points_history.customer_id FK references profiles.id).
+  Future<String?> _resolveProfileId(String? customerId) async {
+    if (customerId == null) return null;
+    try {
+      final cust = await _client
+          .from('customers')
+          .select('profile_id')
+          .eq('id', customerId)
+          .maybeSingle();
+      if (cust != null && cust['profile_id'] != null) {
+        return cust['profile_id'] as String?;
+      }
+      final prof = await _client
+          .from('profiles')
+          .select('id')
+          .eq('id', customerId)
+          .maybeSingle();
+      if (prof != null) return customerId;
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> awardPoints({
     required String cardId,
     required String? customerId,
-    required String orderId,
+    String? orderId,
     required int loadsCompleted,
     String? orderNumber,
   }) async {
@@ -269,9 +292,11 @@ class LoyaltyService {
           .eq('id', cardId);
 
       // 3. Log history entry
+      final profileId = await _resolveProfileId(customerId);
+
       await _client.from('loyalty_points_history').insert({
         'card_id': cardId,
-        'customer_id': customerId,
+        'customer_id': profileId,
         'order_id': orderId,
         'transaction_type': 'earned',
         'points': loadsCompleted,
@@ -295,7 +320,7 @@ class LoyaltyService {
     required String cardId,
     required String? customerId,
     required int freeLoadsToRedeem,
-    required String orderId,
+    String? orderId,
     String? orderNumber,
   }) async {
     const int pointsPerLoad = 10;
@@ -332,9 +357,11 @@ class LoyaltyService {
           .eq('id', cardId);
 
       // 3. Log history entry
+      final profileId = await _resolveProfileId(customerId);
+
       await _client.from('loyalty_points_history').insert({
         'card_id': cardId,
-        'customer_id': customerId,
+        'customer_id': profileId,
         'order_id': orderId,
         'transaction_type': 'redeemed',
         'points': -pointsToDeduct,
@@ -378,17 +405,31 @@ class LoyaltyService {
 
   // ─── Customer Search ──────────────────────────────────────────────────────────
 
-  /// Search profiles by name or phone (for card registration flow).
+  /// Search customers table directly by Name, Phone, or Customer Code (finds walk-ins & app users).
   Future<List<Map<String, dynamic>>> searchCustomers(String query) async {
     try {
-      final q = query.trim().toLowerCase();
+      final q = query.trim();
       if (q.isEmpty) return [];
 
-      final response = await _client
-          .from('profiles')
-          .select('id, first_name, last_name, phone, email, username')
-          .or('first_name.ilike.%$q%,last_name.ilike.%$q%,phone.ilike.%$q%,email.ilike.%$q%')
-          .limit(10);
+      final digitsOnly = q.replaceAll(RegExp(r'[^0-9]'), '');
+
+      var queryBuilder = _client
+          .from('customers')
+          .select('id, customer_code, first_name, last_name, phone, email, customer_type, status');
+
+      if (digitsOnly.length >= 4) {
+        queryBuilder = queryBuilder.or(
+          'first_name.ilike.%$q%,last_name.ilike.%$q%,phone.ilike.%$digitsOnly%,customer_code.ilike.%$q%,email.ilike.%$q%'
+        );
+      } else {
+        queryBuilder = queryBuilder.or(
+          'first_name.ilike.%$q%,last_name.ilike.%$q%,customer_code.ilike.%$q%,email.ilike.%$q%'
+        );
+      }
+
+      final response = await queryBuilder
+          .eq('status', 'active')
+          .limit(15);
 
       return response.cast<Map<String, dynamic>>();
     } catch (e) {
@@ -465,7 +506,7 @@ class LoyaltyService {
           .from('vw_rfid_loyalty_cards')
           .select()
           .eq('customer_id', customerId)
-          .eq('status', 'active')
+          .eq('card_status', 'active')
           .maybeSingle();
 
       if (response == null) {

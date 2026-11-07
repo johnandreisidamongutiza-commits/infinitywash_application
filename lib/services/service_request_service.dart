@@ -777,6 +777,8 @@ class ServiceRequestService {
         // Release the review lock once a decision is recorded.
         'under_review_by': null,
         'under_review_at': null,
+        // Clear 24-hour request review expiry so active orders never expire
+        'expires_at': null,
       };
 
       // Only set reviewed_by if an employee record exists in employees table
@@ -826,6 +828,8 @@ class ServiceRequestService {
         // Release the review lock when a decision is made.
         'under_review_by': null,
         'under_review_at': null,
+        // Clear 24-hour request review expiry so active orders never expire
+        'expires_at': null,
       };
 
       // Only set reviewed_by if an employee record exists in employees table

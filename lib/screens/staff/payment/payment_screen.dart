@@ -3,10 +3,36 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
+import '../../../services/data_change_monitor.dart';
+import '../../../widgets/skeleton_loading.dart';
 import 'payment_process_screen.dart';
 
+class _PaymentFilterSnapshot {
+  const _PaymentFilterSnapshot({
+    required this.unpaidOrders,
+    required this.unpaidOffset,
+    required this.unpaidHasMore,
+    required this.unpaidInitialized,
+    required this.paidOrders,
+    required this.paidOffset,
+    required this.paidHasMore,
+    required this.paidInitialized,
+  });
+
+  final List<LaundryOrder> unpaidOrders;
+  final int unpaidOffset;
+  final bool unpaidHasMore;
+  final bool unpaidInitialized;
+  final List<LaundryOrder> paidOrders;
+  final int paidOffset;
+  final bool paidHasMore;
+  final bool paidInitialized;
+}
+
 class PaymentScreen extends StatefulWidget {
-  const PaymentScreen({super.key});
+  final bool isActive;
+
+  const PaymentScreen({super.key, this.isActive = true});
 
   @override
   State<PaymentScreen> createState() => _PaymentScreenState();
@@ -40,25 +66,64 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _paidInitialized = false;
   final ScrollController _paidScroll = ScrollController();
 
-  // ── Header aggregates (cover every row, not just the loaded page) ───────
+  // ── Tab counts (cover every row, not just the loaded page) ───────
   int _unpaidCount = 0;
-  double _unpaidTotal = 0;
   int _paidCount = 0;
-  double _paidTotal = 0;
+  int _unpaidWalkinCount = 0;
+  int _unpaidRiderCount = 0;
+  int _paidWalkinCount = 0;
+  int _paidRiderCount = 0;
+  bool _dataDirty = false;
+  String? _pendingSubFilter;
+  final Map<String, _PaymentFilterSnapshot> _filterSnapshots = {};
 
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
     // Attach scroll listeners for infinite pagination
     _unpaidScroll.addListener(() => _onScroll(_unpaidScroll, _loadMoreUnpaid));
     _paidScroll.addListener(() => _onScroll(_paidScroll, _loadMorePaid));
 
-    _initUnpaid();
-    _refreshTotals();
+    if (widget.isActive) {
+      _initUnpaid();
+      _refreshTotals();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant PaymentScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      if (!_unpaidInitialized) {
+        _dataDirty = false;
+        _initUnpaid();
+        _refreshTotals();
+      } else {
+        _refreshIfDirty();
+      }
+    }
+  }
+
+  void _onOrdersChanged() {
+    _dataDirty = true;
+    _refreshIfDirty();
+  }
+
+  void _refreshIfDirty() {
+    if (!widget.isActive || !_dataDirty) return;
+    if (_unpaidLoading || _paidLoading || _unpaidLoadingMore || _paidLoadingMore) {
+      return;
+    }
+    _dataDirty = false;
+    _filterSnapshots.clear();
+    _refreshAll();
   }
 
   @override
   void dispose() {
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
     _unpaidScroll.dispose();
     _paidScroll.dispose();
     super.dispose();
@@ -86,20 +151,60 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   void _setSubFilter(String filter) {
-    if (_subFilter == filter) return;
+    if (_subFilter == filter) {
+      _pendingSubFilter = null;
+      return;
+    }
+    if (_unpaidLoading || _paidLoading || _unpaidLoadingMore || _paidLoadingMore) {
+      _pendingSubFilter = filter;
+      return;
+    }
+    _pendingSubFilter = null;
+    _saveCurrentFilterSnapshot();
+    final snapshot = _filterSnapshots[filter];
     setState(() {
       _subFilter = filter;
-      _resetUnpaidState();
-      _resetPaidState();
+      if (snapshot == null) {
+        _resetUnpaidState();
+        _resetPaidState();
+      } else {
+        _restoreFilterSnapshot(snapshot);
+      }
     });
-    // The active tab is reloaded immediately; the other tab reloads lazily when
-    // it is next opened.
-    if (_showPaid) {
-      _initPaid();
-    } else {
-      _initUnpaid();
-    }
-    _refreshTotals();
+    if (_showPaid && !_paidInitialized) _initPaid();
+    if (!_showPaid && !_unpaidInitialized) _initUnpaid();
+  }
+
+  void _saveCurrentFilterSnapshot() {
+    _filterSnapshots[_subFilter] = _PaymentFilterSnapshot(
+      unpaidOrders: List.of(_unpaidOrders),
+      unpaidOffset: _unpaidOffset,
+      unpaidHasMore: _unpaidHasMore,
+      unpaidInitialized: _unpaidInitialized,
+      paidOrders: List.of(_paidOrders),
+      paidOffset: _paidOffset,
+      paidHasMore: _paidHasMore,
+      paidInitialized: _paidInitialized,
+    );
+  }
+
+  void _restoreFilterSnapshot(_PaymentFilterSnapshot snapshot) {
+    _unpaidOrders
+      ..clear()
+      ..addAll(snapshot.unpaidOrders);
+    _unpaidOffset = snapshot.unpaidOffset;
+    _unpaidHasMore = snapshot.unpaidHasMore;
+    _unpaidInitialized = snapshot.unpaidInitialized;
+    _unpaidLoading = false;
+    _unpaidLoadingMore = false;
+    _paidOrders
+      ..clear()
+      ..addAll(snapshot.paidOrders);
+    _paidOffset = snapshot.paidOffset;
+    _paidHasMore = snapshot.paidHasMore;
+    _paidInitialized = snapshot.paidInitialized;
+    _paidLoading = false;
+    _paidLoadingMore = false;
   }
 
   void _resetUnpaidState() {
@@ -155,6 +260,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _unpaidLoading = false;
         _unpaidLoadingMore = false;
       });
+      _saveCurrentFilterSnapshot();
     } catch (e) {
       debugPrint('❌ Error loading unpaid payments: $e');
       if (!mounted) return;
@@ -164,6 +270,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       });
       _showError(e);
     }
+    _refreshIfDirty();
+    _applyPendingSubFilter();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -205,6 +313,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _paidLoading = false;
         _paidLoadingMore = false;
       });
+      _saveCurrentFilterSnapshot();
     } catch (e) {
       debugPrint('❌ Error loading paid payments: $e');
       if (!mounted) return;
@@ -214,6 +323,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
       });
       _showError(e);
     }
+    _refreshIfDirty();
+    _applyPendingSubFilter();
+  }
+
+  void _applyPendingSubFilter() {
+    final filter = _pendingSubFilter;
+    if (filter == null ||
+        _unpaidLoading ||
+        _paidLoading ||
+        _unpaidLoadingMore ||
+        _paidLoadingMore) {
+      return;
+    }
+    _setSubFilter(filter);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -224,21 +347,43 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final results = await Future.wait([
         _orderService.fetchPaymentBucketTotals(
           paymentStatus: 'unpaid',
-          subFilter: _subFilter,
+          subFilter: 'all',
           requireLoads: true,
         ),
         _orderService.fetchPaymentBucketTotals(
           paymentStatus: 'paid',
-          subFilter: _subFilter,
+          subFilter: 'all',
+          requireLoads: true,
+        ),
+        _orderService.fetchPaymentBucketTotals(
+          paymentStatus: 'unpaid',
+          subFilter: 'walkin',
+          requireLoads: true,
+        ),
+        _orderService.fetchPaymentBucketTotals(
+          paymentStatus: 'unpaid',
+          subFilter: 'rider',
+          requireLoads: true,
+        ),
+        _orderService.fetchPaymentBucketTotals(
+          paymentStatus: 'paid',
+          subFilter: 'walkin',
+          requireLoads: true,
+        ),
+        _orderService.fetchPaymentBucketTotals(
+          paymentStatus: 'paid',
+          subFilter: 'rider',
           requireLoads: true,
         ),
       ]);
       if (!mounted) return;
       setState(() {
         _unpaidCount = results[0].count;
-        _unpaidTotal = results[0].total;
         _paidCount = results[1].count;
-        _paidTotal = results[1].total;
+        _unpaidWalkinCount = results[2].count;
+        _unpaidRiderCount = results[3].count;
+        _paidWalkinCount = results[4].count;
+        _paidRiderCount = results[5].count;
       });
     } catch (e) {
       // Totals are cosmetic — keep the last known values if the query fails.
@@ -248,6 +393,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   /// Pull-to-refresh / refresh button: reloads both tabs and the header.
   Future<void> _refreshAll() async {
+    _filterSnapshots.clear();
     await Future.wait([
       _initUnpaid(),
       if (_paidInitialized) _initPaid(),
@@ -328,9 +474,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ),
       body: Column(
         children: [
-          // Stats Header
-          _buildStatsHeader(),
-
           // Filter & Search Section
           Container(
             color: Colors.white,
@@ -344,7 +487,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       child: _buildFilterTab(
                         title: 'Unpaid ($_unpaidCount)',
                         isSelected: !_showPaid,
-                        color: AppTheme.accentBlue,
+                        color: AppTheme.primaryBlue,
                         onTap: () => _selectTab(false),
                       ),
                     ),
@@ -361,17 +504,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 const SizedBox(height: 12),
                 // Sub-filter chips (All / Walk-in / Rider)
-                // Wrap: the chips stack onto a second line rather than
-                // overflowing when the text grows.
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _buildSubFilterChip('All', 'all'),
-                    _buildSubFilterChip('Walk-in', 'walkin'),
-                    _buildSubFilterChip('Rider', 'rider'),
-                  ],
-                ),
+                _buildSubFilterBar(),
                 const SizedBox(height: 12),
                 // Search Input
                 TextField(
@@ -403,8 +536,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
           // Orders List
           Expanded(
             child: _activeLoading && _activeOrders.isEmpty
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppTheme.accentBlue),
+                ? const SkeletonCardList(
+                    itemCount: 4,
+                    padding: EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    spacing: 12,
                   )
                 : displayedOrders.isEmpty
                     ? RefreshIndicator(
@@ -486,93 +621,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ─── Stats Header ──────────────────────────────────────────────
-  Widget _buildStatsHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.shade200, width: 1),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildStatItem(
-              icon: Icons.pending_actions,
-              iconColor: Colors.amber.shade700,
-              iconBg: Colors.amber.shade50,
-              label: 'Unpaid',
-              value: '₱${_unpaidTotal.toStringAsFixed(0)}',
-              subValue: '$_unpaidCount orders',
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 44,
-            color: Colors.grey.shade200,
-          ),
-          Expanded(
-            child: _buildStatItem(
-              icon: Icons.check_circle_outline,
-              iconColor: Colors.green.shade700,
-              iconBg: Colors.green.shade50,
-              label: 'Collected',
-              value: '₱${_paidTotal.toStringAsFixed(0)}',
-              subValue: '$_paidCount orders',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatItem({
-    required IconData icon,
-    required Color iconColor,
-    required Color iconBg,
-    required String label,
-    required String value,
-    required String subValue,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: iconBg,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, size: 18, color: iconColor),
-        ),
-        const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              value,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: Colors.black87,
-              ),
-            ),
-            Text(
-              subValue,
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey.shade500,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
   // ─── Filter Tab ─────────────────────────────────────────────────
   Widget _buildFilterTab({
     required String title,
@@ -587,7 +635,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? color.withValues(alpha: 0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? color : Colors.grey.shade300,
             width: isSelected ? 1.5 : 1,
@@ -607,24 +655,73 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  // ─── Sub-filter Chip ────────────────────────────────────────────
-  Widget _buildSubFilterChip(String label, String filter) {
+  // ─── Sub-filter Bar & Chips ──────────────────────────────────────
+  Widget _buildSubFilterBar() {
+    final allCount = _showPaid ? _paidCount : _unpaidCount;
+    final walkinCount = _showPaid ? _paidWalkinCount : _unpaidWalkinCount;
+    final riderCount = _showPaid ? _paidRiderCount : _unpaidRiderCount;
+
+    return Row(
+      children: [
+        _buildSubFilterChip('All', 'all', allCount),
+        const SizedBox(width: 8),
+        _buildSubFilterChip('Walk-in', 'walkin', walkinCount),
+        const SizedBox(width: 8),
+        _buildSubFilterChip('Rider', 'rider', riderCount),
+      ],
+    );
+  }
+
+  Widget _buildSubFilterChip(String label, String filter, int count) {
     final isSelected = _subFilter == filter;
-    return GestureDetector(
-      onTap: () => _setSubFilter(filter),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryBlue : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            color: isSelected ? Colors.white : Colors.grey.shade700,
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _setSubFilter(filter),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primaryBlue : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.primaryBlue
+                  : AppTheme.borderGray.withValues(alpha: 0.4),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? Colors.white : AppTheme.textDark,
+                ),
+              ),
+              if (count > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white.withValues(alpha: 0.25)
+                        : AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isSelected ? Colors.white : AppTheme.textDark,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -678,7 +775,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         onTap: () {
           if (isPaid) {
             _showReceiptSheet(order, total);
-          } else if (!isRider) {
+          } else {
             _openPaymentProcess(order);
           }
         },
@@ -904,7 +1001,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       Flexible(
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.accentBlue,
+                            backgroundColor: AppTheme.primaryBlue,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                             minimumSize: const Size(0, 36),
@@ -1125,7 +1222,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               height: 48,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accentBlue,
+                  backgroundColor: AppTheme.primaryBlue,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 onPressed: () => Navigator.pop(context),

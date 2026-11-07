@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/legal_documents.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/role_entry_transition.dart';
 import '../../utils/input_formatters.dart';
 import '../../utils/validators.dart';
 import '../../widgets/address_input_widget.dart';
@@ -32,6 +34,7 @@ class _GoogleProfileCompletionScreenState extends State<GoogleProfileCompletionS
   late final TextEditingController _lastName;
   String? _barangay;
   bool _accepted = false;
+  bool _saveAccount = true;
   bool _saving = false;
 
   @override
@@ -68,20 +71,22 @@ class _GoogleProfileCompletionScreenState extends State<GoogleProfileCompletionS
         customBarangay: _customBarangay.text.trim(),
       );
       await _authService.completeCustomerProfile(
-        firstName: _firstName.text.trim(),
-        lastName: _lastName.text.trim(),
-        phone: _phone.text.trim(),
+        firstName: Validators.cleanName(_firstName.text),
+        lastName: Validators.cleanName(_lastName.text),
+        phone: Validators.normalizePhone(_phone.text.trim()),
         address: address,
         landmark: _landmark.text.trim(),
       );
       for (final document in requiredLegalDocuments()) {
         await _legalService.accept(document, source: 'registration');
       }
-      await offerSaveAccount(context, _authService);
+      if (_saveAccount) {
+        await _authService.rememberCurrentSession();
+      }
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const CustomerMainScreen()),
+        RoleEntryTransition.route(const CustomerMainScreen()),
         (_) => false,
       );
     } catch (error) {
@@ -108,15 +113,75 @@ class _GoogleProfileCompletionScreenState extends State<GoogleProfileCompletionS
                   const SizedBox(height: 8),
                   const Text('Add the contact and delivery details needed to place an order.'),
                   const SizedBox(height: 24),
-                  CustomTextField(label: 'First Name', hint: 'Juan', prefixIcon: Icons.person_outline, controller: _firstName, validator: (v) => Validators.nameField(v, 'First name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
+                  CustomTextField(label: 'First Name', hint: 'Juan', prefixIcon: Icons.person_outline, controller: _firstName, inputFormatters: InputFormatters.name(), validator: (v) => Validators.nameField(v, 'First name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
                   const SizedBox(height: 16),
-                  CustomTextField(label: 'Last Name', hint: 'Dela Cruz', prefixIcon: Icons.person_outline, controller: _lastName, validator: (v) => Validators.nameField(v, 'Last name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
+                  CustomTextField(label: 'Last Name', hint: 'Dela Cruz', prefixIcon: Icons.person_outline, controller: _lastName, inputFormatters: InputFormatters.name(), validator: (v) => Validators.nameField(v, 'Last name'), maxLength: Validators.nameMax, textCapitalization: TextCapitalization.words),
                   const SizedBox(height: 16),
                   CustomTextField(label: 'Mobile Number', hint: '09XX-XXX-XXXX', prefixIcon: Icons.phone_android_outlined, controller: _phone, keyboardType: TextInputType.phone, inputFormatters: InputFormatters.phone(), validator: Validators.phone),
                   const SizedBox(height: 16),
                   AddressInputWidget(houseStreetController: _street, customBarangayController: _customBarangay, landmarkController: _landmark, selectedBarangay: _barangay, onBarangayChanged: (value) => setState(() => _barangay = value), helperText: 'Santa Cruz, Laguna only. Select "Other" if outside.', landmarkHint: 'e.g. Near church, blue gate'),
                   const SizedBox(height: 20),
-                  LegalConsentCheckbox(value: _accepted, onChanged: (value) => setState(() => _accepted = value)),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.softGray,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        LegalConsentCheckbox(
+                          value: _accepted,
+                          onChanged: (value) => setState(() => _accepted = value),
+                        ),
+                        const SizedBox(height: 12),
+                        Divider(
+                          height: 1,
+                          color: AppTheme.borderGray.withValues(alpha: 0.5),
+                        ),
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: () => setState(() => _saveAccount = !_saveAccount),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 4, horizontal: 2),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: Checkbox(
+                                    value: _saveAccount,
+                                    onChanged: (v) => setState(
+                                        () => _saveAccount = v ?? false),
+                                    activeColor: AppTheme.accentBlue,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Save account on this device for quick sign-in',
+                                    style: GoogleFonts.lexend(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppTheme.textDark,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 24),
                   SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _saving ? null : _complete, child: _saving ? const CircularProgressIndicator() : const Text('Save and continue'))),
                 ],

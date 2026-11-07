@@ -9,6 +9,8 @@ import 'order_status_screen.dart';
 import 'review_request_screen.dart';
 import 'rejected_requests_screen.dart';
 import '../../../services/order_service.dart';
+import '../../../services/data_change_monitor.dart';
+import '../../../widgets/skeleton_loading.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page sizes per tab
@@ -20,7 +22,13 @@ const int _kHistoryPageSize = 10;
 class OrdersScreen extends StatefulWidget {
   final int initialTab;
   final VoidCallback? onBecameVisible;
-  const OrdersScreen({super.key, this.initialTab = 1, this.onBecameVisible});
+  final bool isActive;
+  const OrdersScreen({
+    super.key,
+    this.initialTab = 1,
+    this.onBecameVisible,
+    this.isActive = true,
+  });
 
   @override
   State<OrdersScreen> createState() => OrdersScreenState();
@@ -63,6 +71,10 @@ class OrdersScreenState extends State<OrdersScreen>
 
   // ── Rejected count (badge only, not paginated) ──────────────────────────
   int _rejectedCount = 0;
+  final Set<int> _dirtyTabs = {};
+  bool _metadataDirty = true;
+  DateTime? _lastRejectedCleanupAt;
+  bool _isRunningRejectedCleanup = false;
 
   // ── Search state — debounced, server-side ────────────────────────────────
   final TextEditingController _searchController = TextEditingController();
@@ -89,6 +101,8 @@ class OrdersScreenState extends State<OrdersScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
     _tabController = TabController(
       length: 3,
       vsync: this,
@@ -102,22 +116,45 @@ class OrdersScreenState extends State<OrdersScreen>
     // Tab-change listener: lazy-load a tab on first visit
     _tabController.addListener(_onTabChanged);
 
-    // Load the initial tab eagerly + rejected badge + status counts
-    _loadTabForIndex(widget.initialTab);
-    _loadRejectedCount();
-    _loadActiveStatusCounts();
-    // Also check for pending requests in background to keep badge accurate
-    if (widget.initialTab != 0) {
-      _initRequests();
+    // Screens inside the role IndexedStack stay mounted. Defer their reads
+    // until the Orders destination is actually selected.
+    if (widget.isActive) {
+      _loadTabForIndex(widget.initialTab);
+      _refreshMetadata();
+      if (widget.initialTab != 0) _initRequests();
     }
+  }
+
+  @override
+  void didUpdateWidget(covariant OrdersScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _loadTabForIndex(_tabController.index);
+      if (_metadataDirty) _refreshMetadata();
+      if (_tabController.index != 0 && !_requestsInitialized) _initRequests();
+    }
+  }
+
+  void _onOrdersChanged() {
+    _dirtyTabs.addAll(const [0, 1, 2]);
+    _metadataDirty = true;
+    if (widget.isActive) refreshCurrentTab();
+  }
+
+  void _afterTabLoad(int index) {
+    if (!mounted || !widget.isActive || !_dirtyTabs.contains(index)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.isActive) _loadTabForIndex(index);
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      print('🔵 ORDERS SCREEN: App resumed, refreshing current tab...');
-      refreshCurrentTab();
+      _dirtyTabs.addAll(const [0, 1, 2]);
+      _metadataDirty = true;
+      if (widget.isActive) refreshCurrentTab();
     }
   }
 
@@ -125,6 +162,7 @@ class OrdersScreenState extends State<OrdersScreen>
   void dispose() {
     _searchDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     _searchController.dispose();
@@ -151,21 +189,50 @@ class OrdersScreenState extends State<OrdersScreen>
   // Tab change — lazy-init tabs that haven't been visited yet
   // ─────────────────────────────────────────────────────────────────────────
   void _onTabChanged() {
-    if (_tabController.indexIsChanging) return;
+    if (_tabController.indexIsChanging || !widget.isActive) return;
     _loadTabForIndex(_tabController.index);
   }
 
   void _loadTabForIndex(int index) {
+    if (!widget.isActive) return;
     switch (index) {
       case 0:
-        if (!_requestsInitialized) _initRequests();
+        if (!_requestsInitialized || _dirtyTabs.contains(0)) _initRequests();
         break;
       case 1:
-        if (!_activeInitialized) _initActive();
+        if (!_activeInitialized || _dirtyTabs.contains(1)) _initActive();
         break;
       case 2:
-        if (!_historyInitialized) _initHistory();
+        if (!_historyInitialized || _dirtyTabs.contains(2)) _initHistory();
         break;
+    }
+  }
+
+  Future<void> _refreshMetadata() async {
+    _metadataDirty = false;
+    await Future.wait([_loadRejectedCount(), _loadActiveStatusCounts()]);
+  }
+
+  Future<int> _cleanupRejectedIfNeeded() async {
+    final now = DateTime.now();
+    if (_isRunningRejectedCleanup ||
+        (_lastRejectedCleanupAt != null &&
+            now.difference(_lastRejectedCleanupAt!) <=
+                const Duration(minutes: 10))) {
+      return 0;
+    }
+    _isRunningRejectedCleanup = true;
+    try {
+      final expiredCount = await _orderService.autoRejectExpiredRequests();
+      await _orderService.purgeOldRejectedOrders(days: 30);
+      _lastRejectedCleanupAt = DateTime.now();
+      return expiredCount;
+    } catch (error) {
+      debugPrint('Could not run rejected-order cleanup: $error');
+      _lastRejectedCleanupAt = DateTime.now();
+      return 0;
+    } finally {
+      _isRunningRejectedCleanup = false;
     }
   }
 
@@ -174,9 +241,11 @@ class OrdersScreenState extends State<OrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _loadRejectedCount() async {
     try {
-      // Auto-reject any expired requests so the badge count is always accurate.
-      await _orderService.autoRejectExpiredRequests();
-      final count = await _orderService.fetchOrderCount(statuses: ['rejected']);
+      await _cleanupRejectedIfNeeded();
+      final count = await _orderService.fetchOrderCount(
+        statuses: ['rejected'],
+        isDismissed: false,
+      );
       if (mounted) setState(() => _rejectedCount = count);
     } catch (_) {}
   }
@@ -208,6 +277,7 @@ class OrdersScreenState extends State<OrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _initRequests() async {
     if (_requestsLoading) return;
+    _dirtyTabs.remove(0);
     setState(() {
       _requestsLoading = true;
       _requestsInitialized = true;
@@ -215,11 +285,9 @@ class OrdersScreenState extends State<OrdersScreen>
       _requestsOffset = 0;
       _requestsHasMore = true;
     });
-    // Auto-reject any requests that expired past the 24h window before fetching
-    final expiredCount = await _orderService.autoRejectExpiredRequests();
-    if (expiredCount > 0) {
-      _loadRejectedCount();
-    }
+    // Run expiration cleanup occasionally, not on every visit to Requests.
+    final expiredCount = await _cleanupRejectedIfNeeded();
+    if (expiredCount > 0) _loadRejectedCount();
     await _fetchRequests(reset: true);
   }
 
@@ -256,6 +324,7 @@ class OrdersScreenState extends State<OrdersScreen>
         _showError(e);
       }
     }
+    _afterTabLoad(0);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -263,6 +332,7 @@ class OrdersScreenState extends State<OrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _initActive() async {
     if (_activeLoading) return;
+    _dirtyTabs.remove(1);
     setState(() {
       _activeLoading = true;
       _activeInitialized = true;
@@ -320,6 +390,7 @@ class OrdersScreenState extends State<OrdersScreen>
       });
       _showError(e);
     }
+    _afterTabLoad(1);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -327,6 +398,7 @@ class OrdersScreenState extends State<OrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _initHistory() async {
     if (_historyLoading) return;
+    _dirtyTabs.remove(2);
     setState(() {
       _historyLoading = true;
       _historyInitialized = true;
@@ -383,6 +455,7 @@ class OrdersScreenState extends State<OrdersScreen>
       setState(() => _historyLoading = false);
       _showError(e);
     }
+    _afterTabLoad(2);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -401,67 +474,32 @@ class OrdersScreenState extends State<OrdersScreen>
   /// Called after returning from sub-screens (FAB, review, order status).
   /// Forces refresh of Active tab since new orders always go there.
   Future<void> _refreshAllTabs() async {
-    print('🔵 _refreshAllTabs: Starting refresh...');
-    
-    // Always force refresh Active tab (new orders go here)
-    print('🔵 _refreshAllTabs: Calling _initActive()...');
-    await _initActive();
-    print('🔵 _refreshAllTabs: _initActive() complete');
-    
-    // Refresh other tabs only if they were already loaded
-    if (_requestsInitialized) {
-      print('🔵 _refreshAllTabs: Refreshing Requests tab...');
-      await _initRequests();
-    }
-    if (_historyInitialized) {
-      print('🔵 _refreshAllTabs: Refreshing History tab...');
-      await _initHistory();
-    }
-    
-    // Refresh rejected count badge & status counts
-    print('🔵 _refreshAllTabs: Refreshing rejected count & status counts...');
-    await _loadRejectedCount();
-    await _loadActiveStatusCounts();
-    print('🔵 _refreshAllTabs: All refreshes complete!');
+    _dirtyTabs.addAll(const [0, 1, 2]);
+    _metadataDirty = true;
+    if (!widget.isActive) return;
+    await refreshCurrentTab();
   }
 
   /// Refresh only the currently visible tab
   Future<void> refreshCurrentTab() async {
+    if (!widget.isActive) {
+      _dirtyTabs.addAll(const [0, 1, 2]);
+      _metadataDirty = true;
+      return;
+    }
     final currentIndex = _tabController.index;
-    print('🔵 refreshCurrentTab: Refreshing tab $currentIndex');
-    print('🔵 refreshCurrentTab: _requestsInitialized=$_requestsInitialized, _activeInitialized=$_activeInitialized, _historyInitialized=$_historyInitialized');
-    
     switch (currentIndex) {
       case 0:
-        if (_requestsInitialized) {
-          print('🔵 refreshCurrentTab: Calling _initRequests()');
-          await _initRequests();
-        } else {
-          print('🔵 refreshCurrentTab: Requests tab not initialized yet');
-        }
+        await _initRequests();
         break;
       case 1:
-        if (_activeInitialized) {
-          print('🔵 refreshCurrentTab: Calling _initActive()');
-          await _initActive();
-        } else {
-          print('🔵 refreshCurrentTab: Active tab not initialized yet, loading for first time');
-          _loadTabForIndex(1);
-        }
-        _loadActiveStatusCounts();
+        await _initActive();
         break;
       case 2:
-        if (_historyInitialized) {
-          print('🔵 refreshCurrentTab: Calling _initHistory()');
-          await _initHistory();
-        } else {
-          print('🔵 refreshCurrentTab: History tab not initialized yet');
-        }
+        await _initHistory();
         break;
     }
-    
-    await _loadRejectedCount();
-    print('🔵 refreshCurrentTab: Complete!');
+    if (_metadataDirty) await _refreshMetadata();
   }
 
   void _showError(Object e) {
@@ -617,11 +655,11 @@ class OrdersScreenState extends State<OrdersScreen>
               controller: _tabController,
               labelPadding: const EdgeInsets.symmetric(horizontal: 4),
               indicator: BoxDecoration(
-                color: AppTheme.accentBlue,
+                color: AppTheme.primaryBlue,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.accentBlue.withValues(alpha: 0.3),
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -717,6 +755,7 @@ class OrdersScreenState extends State<OrdersScreen>
           if (isHistoryTab) return const SizedBox.shrink();
 
           return FloatingActionButton.extended(
+            heroTag: 'staff_orders_new_order',
             onPressed: () async {
               print('🔵 FAB: Opening create order flow...');
               final result = await Navigator.push(
@@ -736,7 +775,7 @@ class OrdersScreenState extends State<OrdersScreen>
                 print('🔵 FAB: Order not created (result != true)');
               }
             },
-            backgroundColor: AppTheme.accentBlue,
+            backgroundColor: AppTheme.primaryBlue,
             foregroundColor: Colors.white,
             icon: const Icon(Icons.add_rounded),
             label: Text(
@@ -761,12 +800,7 @@ class OrdersScreenState extends State<OrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildRequestsTab() {
     if (_requestsLoading && _requests.isEmpty) {
-      return Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.accentBlue,
-          strokeWidth: 2.5,
-        ),
-      );
+      return const SkeletonCardList();
     }
 
     if (_searchQuery.trim().isNotEmpty && _filteredRequests.isEmpty) {
@@ -814,12 +848,7 @@ class OrdersScreenState extends State<OrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildActiveTab() {
     if (_activeLoading && _active.isEmpty) {
-      return Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.accentBlue,
-          strokeWidth: 2.5,
-        ),
-      );
+      return const SkeletonCardList();
     }
 
     if (_searchQuery.trim().isNotEmpty && _filteredActive.isEmpty) {
@@ -884,12 +913,7 @@ class OrdersScreenState extends State<OrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildHistoryTab() {
     if (_historyLoading && _history.isEmpty) {
-      return Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.accentBlue,
-          strokeWidth: 2.5,
-        ),
-      );
+      return const SkeletonCardList();
     }
 
     if (_searchQuery.trim().isNotEmpty && _filteredHistory.isEmpty) {
@@ -1185,7 +1209,7 @@ class OrdersScreenState extends State<OrdersScreen>
             final isSelected = _selectedActiveStatus == status;
             final label = status == null ? 'All' : _statusLabel(status);
             final icon = status == null ? Icons.all_inbox_rounded : _statusIcon(status);
-            final color = status == null ? AppTheme.primaryBlue : _statusColor(status);
+            const color = AppTheme.primaryBlue;
 
             final countKey = status == null ? 'all' : status.name;
             final count = _activeStatusCounts[countKey];

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/order.dart';
 import '../../../widgets/order_timeline_view.dart';
 import '../../../services/mock_data_service.dart';
 import '../route/rider_route_screen.dart';
+import '../../../utils/phone_helper.dart';
 
 class RiderOrderDetailsScreen extends StatefulWidget {
   final LaundryOrder order;
@@ -490,7 +492,7 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
     // Show success and go back
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('✅ Pickup confirmed! $actualLoadCount loads (₱${actualLoadCount * 170})'),
+        content: Text('Pickup confirmed! $actualLoadCount loads (₱${actualLoadCount * 170})'),
         backgroundColor: Colors.green,
       ),
     );
@@ -613,9 +615,10 @@ class _RiderOrderDetailsScreenState extends State<RiderOrderDetailsScreen> {
               subtitle: Text(phoneNumber),
               onTap: () {
                 Navigator.pop(context);
-                // In production, implement actual phone call
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Calling $phoneNumber...')),
+                PhoneHelper.openDialer(
+                  context,
+                  phone: phoneNumber,
+                  contactName: customerName,
                 );
               },
             ),

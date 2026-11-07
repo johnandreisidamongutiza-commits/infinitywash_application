@@ -10,6 +10,7 @@ import '../../../config/location_constants.dart';
 import '../../../services/delivery_tracking_service.dart';
 import '../../../services/routing_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/phone_helper.dart';
 import '../../../widgets/cached_tile_provider.dart';
 import '../../../widgets/top_notification.dart';
 import '../chats/customer_chat_detail_screen.dart';
@@ -676,6 +677,7 @@ class _OrderDeliveryTrackingScreenState extends State<OrderDeliveryTrackingScree
                     recipientRole: delivery.isPickup ? 'Pickup Rider' : 'Delivery Rider',
                     recipientType: ChatRecipientType.rider,
                     orderId: delivery.order.id,
+                    orderNumber: delivery.order.displayNumber,
                     phoneNumber: phone,
                   ),
                 ),
@@ -693,9 +695,9 @@ class _OrderDeliveryTrackingScreenState extends State<OrderDeliveryTrackingScree
           ),
           const SizedBox(width: 8),
 
-          // Phone Call Action
+          // Call Rider Action (Opens dialer with number pre-filled and copies to clipboard)
           InkWell(
-            onTap: () => _handlePhoneAction(phone, riderName),
+            onTap: () => PhoneHelper.openDialer(context, phone: phone, contactName: riderName),
             borderRadius: BorderRadius.circular(12),
             child: Container(
               padding: const EdgeInsets.all(10),
@@ -711,44 +713,9 @@ class _OrderDeliveryTrackingScreenState extends State<OrderDeliveryTrackingScree
     );
   }
 
-  /// Triggers direct phone dialing or copies number if call cannot be placed.
+  /// Opens native dialer with pre-filled number and copies to clipboard.
   Future<void> _handlePhoneAction(String? phone, String name) async {
-    if (phone == null || phone.trim().isEmpty) {
-      showTopNotification(
-        context,
-        message: '$name does not have a public phone number on file.',
-        icon: Icons.phone_disabled,
-        backgroundColor: Colors.orange.shade700,
-      );
-      return;
-    }
-
-    final cleanPhone = phone.replaceAll(RegExp(r'[^\d+]'), '');
-    final Uri callUri = Uri.parse('tel:$cleanPhone');
-
-    try {
-      if (await canLaunchUrl(callUri)) {
-        await launchUrl(callUri);
-      } else {
-        await Clipboard.setData(ClipboardData(text: phone));
-        if (!mounted) return;
-        showTopNotification(
-          context,
-          message: 'Phone number $phone copied to clipboard.',
-          icon: Icons.copy,
-          backgroundColor: AppTheme.accentBlue,
-        );
-      }
-    } catch (_) {
-      await Clipboard.setData(ClipboardData(text: phone));
-      if (!mounted) return;
-      showTopNotification(
-        context,
-        message: 'Phone number $phone copied to clipboard.',
-        icon: Icons.copy,
-        backgroundColor: AppTheme.accentBlue,
-      );
-    }
+    await PhoneHelper.openDialer(context, phone: phone, contactName: name);
   }
 
   /// Live delivery progress stepper tailored to pickup vs return delivery.

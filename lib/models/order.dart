@@ -109,6 +109,7 @@ class OrderLoad {
 class LaundryOrder {
   final String id;
   final String? orderNumber; // Human-readable order number (ORD-YYMMDD-001)
+  final String? customerId; // Customer UUID from orders.customer_id
   final String customerName;
   final String? customerPhone;
   final String? deliveryAddress;
@@ -137,11 +138,13 @@ class LaundryOrder {
   final String? reviewedBy; // Which staff member reviewed
   final DateTime? expiresAt; // Auto-reject after 24 hours if not reviewed
   final String? underReviewBy; // Staff member currently reviewing (lock)
+  final DateTime? dismissedAt; // When staff dismissed this rejected request
   final double? totalAmount; // Total order price from DB
 
   LaundryOrder({
     required this.id,
     this.orderNumber,
+    this.customerId,
     required this.customerName,
     this.customerPhone,
     this.deliveryAddress,
@@ -168,6 +171,7 @@ class LaundryOrder {
     this.reviewedBy,
     this.expiresAt,
     this.underReviewBy,
+    this.dismissedAt,
     this.totalAmount,
   });
 
@@ -200,6 +204,8 @@ class LaundryOrder {
   bool get allLoadsReady => true; // Order-level status only, no per-load status
   
   bool get hasMultipleLoads => loads.length > 1;
+
+  bool get isDismissed => dismissedAt != null;
 
   /// App request that was accepted and arrived at shop, but laundry has not been weighed/tagged yet.
   /// Also includes staff-created rider pickup orders that arrived at shop and need check-in.
@@ -256,6 +262,7 @@ class LaundryOrder {
     return {
       'id': id,
       'order_number': orderNumber ?? id, // Use orderNumber if available, fallback to id
+      'customer_id': customerId,
       'customer_name': customerName,
       'customer_phone': customerPhone,
       'delivery_address': deliveryAddress,
@@ -284,6 +291,7 @@ class LaundryOrder {
       'reviewed_by': reviewedBy,
       'expires_at': expiresAt?.toIso8601String(),
       'under_review_by': underReviewBy,
+      'dismissed_at': dismissedAt?.toIso8601String(),
       'total_amount': totalAmount,
     };
   }
@@ -293,6 +301,7 @@ class LaundryOrder {
     return LaundryOrder(
       id: json['id'] as String,
       orderNumber: json['order_number'] as String?, // Get order number from database
+      customerId: json['customer_id'] as String?,
       customerName: json['customer_name'] as String? ?? 'Unknown',
       customerPhone: json['customer_phone'] as String?,
       deliveryAddress: (json['delivery_address'] ?? json['pickup_address']) as String?,
@@ -325,6 +334,7 @@ class LaundryOrder {
       reviewedBy: json['reviewed_by'] as String?,
       expiresAt: _parseLocalDateTime(json['expires_at']),
       underReviewBy: json['under_review_by'] as String?,
+      dismissedAt: _parseLocalDateTime(json['dismissed_at']),
       totalAmount: (json['total_amount'] as num?)?.toDouble(),
     );
   }

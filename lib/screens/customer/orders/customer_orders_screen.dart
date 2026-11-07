@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -10,6 +9,8 @@ import 'package:http/http.dart' as http;
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../widgets/top_notification.dart';
+import '../../../widgets/skeleton_loading.dart';
+import '../../../services/data_change_monitor.dart';
 import '../../../models/order.dart';
 import '../../../services/connectivity_service.dart';
 import '../../../services/service_request_service.dart';
@@ -21,16 +22,19 @@ import 'request_service_flow.dart';
 import 'customer_order_details_screen.dart';
 import '../chats/customer_chat_detail_screen.dart';
 import '../delivery/order_delivery_tracking_screen.dart';
+import '../../../config/location_constants.dart';
 
 class CustomerOrdersScreen extends StatefulWidget {
-  const CustomerOrdersScreen({super.key});
+  final bool isActive;
+
+  const CustomerOrdersScreen({super.key, this.isActive = true});
 
   @override
   State<CustomerOrdersScreen> createState() => _CustomerOrdersScreenState();
 }
 
 class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final ServiceRequestService _serviceRequestService = ServiceRequestService();
   final CustomerService _customerService = CustomerService();
@@ -73,8 +77,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   final Map<String, String?> _receiptRejectionReasons = {};
   final PaymentService _paymentService = PaymentService();
 
-  // Auto-refresh timer
-  Timer? _autoRefreshTimer;
+  final Set<int> _dirtyTabs = {};
 
   // Search state
   final TextEditingController _searchController = TextEditingController();
@@ -149,7 +152,8 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
     _tabController = TabController(length: 3, vsync: this, initialIndex: 1);
 
     // Attach scroll listeners for infinite pagination
@@ -160,17 +164,25 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
     // Tab-change listener: lazy-load tabs on first visit
     _tabController.addListener(_onTabChanged);
 
-    // Initial load: Active tab eagerly (default tab), Requests in background for badge count
-    _initActive();
-    _initRequests();
+    // Only load customer order data once the Orders screen is visible.
+    if (widget.isActive) {
+      _loadTabForIndex(_tabController.index);
+      _initRequests(); // keep the Requests badge current
+    }
+  }
 
-    _startAutoRefresh();
+  @override
+  void didUpdateWidget(covariant CustomerOrdersScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _loadTabForIndex(_tabController.index);
+      if (!_requestsInitialized) _initRequests();
+    }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _autoRefreshTimer?.cancel();
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     _searchController.dispose();
@@ -180,14 +192,16 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      _autoRefreshTimer?.cancel();
-      _autoRefreshTimer = null;
-    } else if (state == AppLifecycleState.resumed) {
-      _startAutoRefresh();
-    }
+  void _onOrdersChanged() {
+    _dirtyTabs.addAll(const [0, 1, 2]);
+    if (widget.isActive) _loadTabForIndex(_tabController.index);
+  }
+
+  void _afterTabLoad(int index) {
+    if (!mounted || !widget.isActive || !_dirtyTabs.contains(index)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.isActive) _loadTabForIndex(index);
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -202,20 +216,21 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   }
 
   void _onTabChanged() {
-    if (_tabController.indexIsChanging) return;
+    if (_tabController.indexIsChanging || !widget.isActive) return;
     _loadTabForIndex(_tabController.index);
   }
 
   void _loadTabForIndex(int index) {
+    if (!widget.isActive) return;
     switch (index) {
       case 0:
-        if (!_requestsInitialized) _initRequests();
+        if (!_requestsInitialized || _dirtyTabs.contains(0)) _initRequests();
         break;
       case 1:
-        if (!_activeInitialized) _initActive();
+        if (!_activeInitialized || _dirtyTabs.contains(1)) _initActive();
         break;
       case 2:
-        if (!_historyInitialized) _initHistory();
+        if (!_historyInitialized || _dirtyTabs.contains(2)) _initHistory();
         break;
     }
   }
@@ -224,35 +239,15 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   // Business Logic & Pagination Fetching
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Start auto-refresh timer (60 seconds for active tab)
-  void _startAutoRefresh() {
-    _autoRefreshTimer = Timer.periodic(
-      const Duration(seconds: 60),
-      (timer) {
-        if (!mounted) return;
-        switch (_tabController.index) {
-          case 0:
-            if (!_requestsLoading && !_requestsLoadingMore) _initRequests();
-            break;
-          case 1:
-            if (!_activeLoading && !_activeLoadingMore) _initActive();
-            break;
-          case 2:
-            if (!_historyLoading && !_historyLoadingMore) _initHistory();
-            break;
-        }
-      },
-    );
-  }
-
-  /// Refreshes all initialized tabs (called after action/sub-screen return)
+  /// Refresh only the visible tab after an action; other tabs refresh when opened.
   Future<void> _refreshAllTabs() async {
+    if (!widget.isActive) {
+      _dirtyTabs.addAll(const [0, 1, 2]);
+      return;
+    }
     await _customerService.syncWalkInOrders();
-    await Future.wait([
-      if (_requestsInitialized) _initRequests(),
-      if (_activeInitialized) _initActive(),
-      if (_historyInitialized) _initHistory(),
-    ]);
+    _dirtyTabs.addAll(const [0, 1, 2]);
+    _loadTabForIndex(_tabController.index);
   }
 
   /// Backward-compatible alias for existing call sites
@@ -263,6 +258,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   // ── Requests Tab (pending_approval) ──────────────────────────────────────
   Future<void> _initRequests() async {
     if (_requestsLoading) return;
+    _dirtyTabs.remove(0);
     setState(() {
       _requestsLoading = true;
       _requestsInitialized = true;
@@ -306,6 +302,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
         _errorMessage = mapErrorToMessage(e);
       });
     }
+    _afterTabLoad(0);
   }
 
   Future<void> _loadReceiptRejectionReasons(List<LaundryOrder> orders) async {
@@ -326,6 +323,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   // ── Active Tab (in progress orders) ──────────────────────────────────────
   Future<void> _initActive() async {
     if (_activeLoading) return;
+    _dirtyTabs.remove(1);
     setState(() {
       _activeLoading = true;
       _activeInitialized = true;
@@ -381,11 +379,13 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
         _errorMessage = mapErrorToMessage(e);
       });
     }
+    _afterTabLoad(1);
   }
 
   // ── History Tab (completed, rejected, cancelled) ─────────────────────────
   Future<void> _initHistory() async {
     if (_historyLoading) return;
+    _dirtyTabs.remove(2);
     setState(() {
       _historyLoading = true;
       _historyInitialized = true;
@@ -434,6 +434,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
         _errorMessage = mapErrorToMessage(e);
       });
     }
+    _afterTabLoad(2);
   }
 
   /// Load feedback status incrementally for newly fetched completed orders
@@ -730,6 +731,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                 ),
                 tooltip: 'Need help?',
                 onPressed: () {
+                  final activeOrder = (_activeOrders.isNotEmpty ? _activeOrders : _active).firstOrNull;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -737,8 +739,9 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                         recipientName: 'InfinityWash Support',
                         recipientRole: 'Customer Support Helpdesk',
                         recipientType: ChatRecipientType.support,
-                        orderId: (_activeOrders.isNotEmpty ? _activeOrders : _active).first.displayNumber,
-                        phoneNumber: '0912-345-6789',
+                        orderId: activeOrder?.id,
+                        orderNumber: activeOrder?.displayNumber,
+                        phoneNumber: LocationConstants.shopPhone,
                       ),
                     ),
                   );
@@ -760,11 +763,11 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
               controller: _tabController,
               labelPadding: const EdgeInsets.symmetric(horizontal: 4),
               indicator: BoxDecoration(
-                color: AppTheme.accentBlue,
+                color: AppTheme.primaryBlue,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.accentBlue.withValues(alpha: 0.3),
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -888,7 +891,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
             _initRequests();
           }
         },
-        backgroundColor: AppTheme.accentBlue,
+        backgroundColor: AppTheme.primaryBlue,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded),
         label: Text(
@@ -940,12 +943,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildRequestsTab() {
     if (_requestsLoading && _requests.isEmpty) {
-      return Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.accentBlue,
-          strokeWidth: 2.5,
-        ),
-      );
+      return const SkeletonCardList();
     }
 
     if (_errorMessage != null && _requests.isEmpty) {
@@ -999,12 +997,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildActiveTab() {
     if (_activeLoading && _active.isEmpty) {
-      return Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.accentBlue,
-          strokeWidth: 2.5,
-        ),
-      );
+      return const SkeletonCardList();
     }
 
     if (_errorMessage != null && _active.isEmpty) {
@@ -1056,12 +1049,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildHistoryTab() {
     if (_historyLoading && _history.isEmpty) {
-      return Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.accentBlue,
-          strokeWidth: 2.5,
-        ),
-      );
+      return const SkeletonCardList();
     }
 
     if (_errorMessage != null && _history.isEmpty) {
@@ -1649,7 +1637,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                                     onPressed: () =>
                                         _payWithGcash(order, displayPrice),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.accentBlue,
+                                      backgroundColor: AppTheme.primaryBlue,
                                       foregroundColor: Colors.white,
                                       minimumSize: Size.zero,
                                       tapTargetSize:
@@ -2205,7 +2193,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                         style: GoogleFonts.lexend(
                             fontWeight: FontWeight.w600)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.accentBlue,
+                      backgroundColor: AppTheme.primaryBlue,
                       foregroundColor: Colors.white,
                       minimumSize: Size.zero,
                       padding: const EdgeInsets.symmetric(

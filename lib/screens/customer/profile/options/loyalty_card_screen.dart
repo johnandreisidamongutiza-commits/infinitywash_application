@@ -5,6 +5,7 @@ import '../../../../utils/input_formatters.dart';
 import '../../../../utils/validators.dart';
 import '../../../../services/loyalty_service.dart';
 import '../../../../services/customer_service.dart';
+import '../../../../widgets/skeleton_loading.dart';
 
 class CustomerLoyaltyCardScreen extends StatefulWidget {
   const CustomerLoyaltyCardScreen({super.key});
@@ -86,38 +87,6 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
     }
   }
 
-  Future<void> _unlinkCard() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Unlink Loyalty Card?'),
-        content: const Text('Are you sure you want to unlink this loyalty card? You can re-link it later.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Unlink'),
-          ),
-        ],
-      ),
-    );
-    
-    if (confirmed == true) {
-      try {
-        await _loyaltyService.unlinkCard(_linkedCard!.uid);
-        _showMessage('Card unlinked successfully', isError: false);
-        await _loadLinkedCard();
-      } catch (e) {
-        _showMessage(mapErrorToMessage(e), isError: true);
-      }
-    }
-  }
-
   void _showMessage(String message, {required bool isError}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -138,7 +107,7 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoyaltyCardScreenSkeleton()
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -416,20 +385,6 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
                 ),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        
-        // Unlink Button
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton(
-            onPressed: _unlinkCard,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.red,
-              side: const BorderSide(color: Colors.red),
-            ),
-            child: const Text('Unlink Card'),
           ),
         ),
       ],

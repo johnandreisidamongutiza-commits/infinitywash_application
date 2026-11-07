@@ -151,6 +151,7 @@ class _StaffChatsScreenState extends State<StaffChatsScreen> {
             ),
           ),
           floatingActionButton: FloatingActionButton.extended(
+            heroTag: 'staff_chats_new_chat',
             onPressed: () => _showNewChatModal(context),
             backgroundColor: AppTheme.accentBlue,
             foregroundColor: Colors.white,
@@ -235,11 +236,11 @@ class _StaffChatsScreenState extends State<StaffChatsScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.accentBlue : Colors.white,
+            color: isSelected ? AppTheme.primaryBlue : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isSelected
-                  ? AppTheme.accentBlue
+                  ? AppTheme.primaryBlue
                   : AppTheme.borderGray.withValues(alpha: 0.4),
             ),
           ),
@@ -469,9 +470,9 @@ class _StaffChatsScreenState extends State<StaffChatsScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            conversation.lastMessage.isEmpty
+                            conversation.displayLastMessage.isEmpty
                                 ? 'No messages yet'
-                                : conversation.lastMessage,
+                                : conversation.displayLastMessage,
                             style: TextStyle(
                               fontSize: 13,
                               color: hasUnread

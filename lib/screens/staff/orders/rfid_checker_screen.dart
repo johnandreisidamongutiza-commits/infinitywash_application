@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../utils/input_formatters.dart';
 import '../../../services/loyalty_service.dart';
+import '../../../services/customer_service.dart';
 
 class RfidCheckerScreen extends StatefulWidget {
   final String? initialTag;
@@ -15,6 +18,8 @@ class RfidCheckerScreen extends StatefulWidget {
 class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
   final TextEditingController _manualTagController = TextEditingController();
   final LoyaltyService _loyaltyService = LoyaltyService();
+  final CustomerService _customerService = CustomerService();
+  RealtimeChannel? _scanChannel;
 
   String? _scannedUid;
   LoyaltyCardInfo? _cardInfo;
@@ -30,6 +35,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
   @override
   void initState() {
     super.initState();
+    _subscribeToLiveRfidScans();
     if (widget.initialTag != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _scanCard(widget.initialTag!);
@@ -37,8 +43,31 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
     }
   }
 
+  void _subscribeToLiveRfidScans() {
+    try {
+      _scanChannel = Supabase.instance.client
+          .channel('public:scanned_rfid_events')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'scanned_rfid_events',
+            callback: (payload) {
+              final newRecord = payload.newRecord;
+              final uid = newRecord['uid'] as String?;
+              if (uid != null && uid.trim().isNotEmpty && mounted) {
+                _scanCard(uid);
+              }
+            },
+          )
+          .subscribe();
+    } catch (e) {
+      debugPrint('Error subscribing to RFID live scans: $e');
+    }
+  }
+
   @override
   void dispose() {
+    _scanChannel?.unsubscribe();
     _manualTagController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -102,6 +131,284 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
       _searchResults = results;
       _isSearchingCustomers = false;
     });
+  }
+
+
+  // ─── Quick Registration Bottom Sheet ─────────────────────────────────────────
+
+  void _openQuickRegisterCustomerModal({String? initialName}) {
+    final firstNameController = TextEditingController(text: initialName ?? '');
+    final lastNameController = TextEditingController();
+    final phoneController = TextEditingController();
+    final addressController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isSubmitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            ),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header drag handle
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.person_add, color: AppTheme.accentBlue, size: 22),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Register New Customer',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
+                                Text(
+                                  'Create customer profile and link loyalty card',
+                                  style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, color: AppTheme.textLight),
+                            onPressed: () => Navigator.pop(sheetContext),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Card UID pill
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentBlue.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.2)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.credit_card, size: 16, color: AppTheme.accentBlue),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Assigning Card UID: ${_scannedUid ?? ""}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: AppTheme.accentBlue,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // First Name
+                      TextFormField(
+                        controller: firstNameController,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'First Name *',
+                          hintText: 'e.g. Maria',
+                          prefixIcon: Icon(Icons.person_outline, size: 20),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'First name is required';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Last Name
+                      TextFormField(
+                        controller: lastNameController,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Last Name',
+                          hintText: 'e.g. Santos',
+                          prefixIcon: Icon(Icons.badge_outlined, size: 20),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Phone
+                      TextFormField(
+                        controller: phoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Mobile Phone *',
+                          hintText: '09xxxxxxxxx',
+                          prefixIcon: Icon(Icons.phone_outlined, size: 20),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Phone number is required';
+                          }
+                          final digits = val.replaceAll(RegExp(r'[^0-9]'), '');
+                          if (digits.length < 10) {
+                            return 'Please enter a valid phone number';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Address / Landmark (optional)
+                      TextFormField(
+                        controller: addressController,
+                        decoration: const InputDecoration(
+                          labelText: 'Address / Barangay (Optional)',
+                          hintText: 'e.g. Brgy. San Jose',
+                          prefixIcon: Icon(Icons.location_on_outlined, size: 20),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Submit button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton(
+                          onPressed: isSubmitting
+                              ? null
+                              : () async {
+                                  if (!formKey.currentState!.validate()) return;
+                                  if (_scannedUid == null) return;
+
+                                  setSheetState(() => isSubmitting = true);
+
+                                  try {
+                                    final fName = firstNameController.text.trim();
+                                    final lName = lastNameController.text.trim();
+                                    final fullName = '$fName $lName'.trim();
+
+                                    // 1. Create walk-in customer in customers table
+                                    final newCustomerId = await _customerService.createCustomer(
+                                      firstName: fName,
+                                      lastName: lName.isNotEmpty ? lName : null,
+                                      phone: phoneController.text.trim(),
+                                      address: addressController.text.trim().isNotEmpty
+                                          ? addressController.text.trim()
+                                          : null,
+                                      customerType: 'walk_in',
+                                    );
+
+                                    // 2. Link card to newly created customer
+                                    await _loyaltyService.registerCard(
+                                      uid: _scannedUid!,
+                                      customerId: newCustomerId,
+                                    );
+
+                                    if (!mounted) return;
+                                    Navigator.pop(sheetContext);
+
+                                    // 3. Celebrate with green snackbar & auto-refresh
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Row(
+                                          children: [
+                                            const Icon(Icons.check_circle, color: Colors.white),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text('Loyalty Card linked to $fullName!'),
+                                            ),
+                                          ],
+                                        ),
+                                        backgroundColor: Colors.green,
+                                        duration: const Duration(seconds: 4),
+                                      ),
+                                    );
+
+                                    // 4. Instantly auto-scan to show active loyalty dashboard
+                                    _scanCard(_scannedUid!);
+                                  } catch (e) {
+                                    setSheetState(() => isSubmitting = false);
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Failed to register: ${mapErrorToMessage(e)}'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00897B),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: isSubmitting
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                )
+                              : const Text(
+                                  'Register & Activate Loyalty Card',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   void _registerCardToCustomer(Map<String, dynamic> customer) async {
@@ -183,8 +490,17 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Card registered to $name'),
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Loyalty Card linked to $name!'),
+              ),
+            ],
+          ),
           backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
         ),
       );
 
@@ -216,14 +532,6 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
           icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          if (_scannedUid != null)
-            IconButton(
-              icon: const Icon(Icons.refresh, color: AppTheme.textLight),
-              tooltip: 'Reset scanner',
-              onPressed: _resetScanner,
-            ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -357,65 +665,68 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
           Text(
             _isSearching
                 ? 'Looking up customer loyalty data...'
-                : 'Tap card to reader, or enter UID manually below',
+                : _cardInfo != null
+                    ? 'Card linked to ${_cardInfo!.ownerName}'
+                    : 'Tap card to reader, or enter UID manually below',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
           ),
-          const SizedBox(height: 16),
-
-          // Manual input row
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppTheme.borderGray),
-                  ),
-                  child: TextField(
-                    controller: _manualTagController,
-                    textCapitalization: TextCapitalization.characters,
-                    inputFormatters: InputFormatters.uppercaseCardUid,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter Card UID (e.g. A3F9C2)...',
-                      hintStyle:
-                          TextStyle(fontSize: 12, color: AppTheme.textLight),
-                      prefixIcon: Icon(Icons.qr_code_scanner,
-                          size: 18, color: AppTheme.textLight),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-                    ),
-                    onSubmitted: _scanCard,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => _scanCard(_manualTagController.text),
-                child: Container(
-                  height: 44,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accentBlue,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text(
-                    'Scan',
-                    style: TextStyle(
+          // Manual input row (only shown when waiting for a card)
+          if (_cardInfo == null) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 44,
+                    decoration: BoxDecoration(
                       color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.borderGray),
+                    ),
+                    child: TextField(
+                      controller: _manualTagController,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: InputFormatters.uppercaseCardUid,
+                      decoration: const InputDecoration(
+                        hintText: 'Enter Card UID (e.g. A3F9C2)...',
+                        hintStyle:
+                            TextStyle(fontSize: 12, color: AppTheme.textLight),
+                        prefixIcon: Icon(Icons.qr_code_scanner,
+                            size: 18, color: AppTheme.textLight),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding:
+                            EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                      ),
+                      onSubmitted: _scanCard,
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _scanCard(_manualTagController.text),
+                  child: Container(
+                    height: 44,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentBlue,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Text(
+                      'Scan',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -635,7 +946,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
               // Points balance big display
               Row(
                 children: [
-                  const Text('⭐', style: TextStyle(fontSize: 28)),
+                  Icon(Icons.stars_rounded, color: Colors.amber, size: 28),
                   const SizedBox(width: 8),
                   Text(
                     '${card.pointsBalance}',
@@ -863,7 +1174,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
           const SizedBox(height: 6),
           Text(
             fraction >= 1.0 || progress == 0 && card.pointsBalance > 0
-                ? '🎉 Ready to redeem a free load!'
+                ? 'Ready to redeem a free load!'
                 : '${10 - progress} more load${10 - progress > 1 ? 's' : ''} to earn a free load',
             style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
           ),
@@ -944,16 +1255,36 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                   const Text('Cancel', style: TextStyle(color: AppTheme.textLight)),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        '✅ Redemption noted: $loadsToRedeem free load(s) for ${card.ownerName}. Apply discount when processing order.'),
-                    backgroundColor: Colors.green,
-                    duration: const Duration(seconds: 5),
-                  ),
-                );
+                try {
+                  final discount = await _loyaltyService.redeemPoints(
+                    cardId: card.cardId,
+                    customerId: card.customerId,
+                    freeLoadsToRedeem: loadsToRedeem,
+                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            'Successfully redeemed $loadsToRedeem free load(s) for ${card.ownerName}! ₱${discount.toStringAsFixed(0)} saved.'),
+                        backgroundColor: Colors.green,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                    _scanCard(card.uid);
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Redemption failed: $e'),
+                        backgroundColor: AppTheme.errorRed,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.amber.shade700,
@@ -1111,6 +1442,41 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
           ),
           const SizedBox(height: 12),
 
+          // Action button to register brand new walk-in customer
+          SizedBox(
+            width: double.infinity,
+            height: 42,
+            child: ElevatedButton.icon(
+              onPressed: () => _openQuickRegisterCustomerModal(
+                initialName: _searchController.text.trim().isNotEmpty
+                    ? _searchController.text.trim()
+                    : null,
+              ),
+              icon: const Icon(Icons.person_add_alt_1, size: 18, color: Colors.white),
+              label: const Text(
+                '+ Register New Walk-in Customer',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00897B),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          const Row(
+            children: [
+              Expanded(child: Divider(color: AppTheme.borderGray)),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10),
+                child: Text('OR SEARCH EXISTING', style: TextStyle(fontSize: 10, color: AppTheme.textLight, fontWeight: FontWeight.bold)),
+              ),
+              Expanded(child: Divider(color: AppTheme.borderGray)),
+            ],
+          ),
+          const SizedBox(height: 12),
+
           // Search field
           Container(
             decoration: BoxDecoration(
@@ -1121,16 +1487,25 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
             child: TextField(
               controller: _searchController,
               inputFormatters: InputFormatters.text(maxLength: 50),
-              decoration: const InputDecoration(
-                hintText: 'e.g. Juan dela Cruz / 09xxxxxxxxx',
+              decoration: InputDecoration(
+                hintText: 'Search Name, Phone, or Code (CUST-xxx)...',
                 hintStyle:
-                    TextStyle(fontSize: 12, color: AppTheme.textLight),
+                    const TextStyle(fontSize: 12, color: AppTheme.textLight),
                 prefixIcon:
-                    Icon(Icons.search, size: 18, color: AppTheme.textLight),
+                    const Icon(Icons.search, size: 18, color: AppTheme.textLight),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 16),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchResults = []);
+                        },
+                      )
+                    : null,
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding:
-                    EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                    const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
               ),
               onChanged: _searchCustomers,
             ),
@@ -1145,13 +1520,38 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_searchResults.isEmpty &&
-              _searchController.text.length >= 2)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                'No customers found. Try a different search.',
-                style: TextStyle(fontSize: 12, color: AppTheme.textLight),
-                textAlign: TextAlign.center,
+              _searchController.text.trim().length >= 2)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'No existing customer found matching "${_searchController.text.trim()}".',
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textDark),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: () => _openQuickRegisterCustomerModal(
+                      initialName: _searchController.text.trim(),
+                    ),
+                    icon: const Icon(Icons.add, size: 16, color: Colors.white),
+                    label: Text(
+                      'Create "${_searchController.text.trim()}" Now',
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accentBlue,
+                      minimumSize: const Size(double.infinity, 36),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ],
               ),
             )
           else
@@ -1177,6 +1577,8 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
     final name = '$firstName $lastName'.trim();
     final phone = customer['phone'] as String?;
     final email = customer['email'] as String?;
+    final customerCode = customer['customer_code'] as String? ?? '';
+    final isWalkIn = (customer['customer_type'] as String? ?? '') == 'walk_in';
 
     return GestureDetector(
       onTap: () => _registerCardToCustomer(customer),
@@ -1205,21 +1607,60 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    name.isNotEmpty ? name : 'Unknown Name',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: AppTheme.textDark),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          name.isNotEmpty ? name : 'Unknown Name',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: AppTheme.textDark),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isWalkIn
+                              ? const Color(0xFF00897B).withValues(alpha: 0.12)
+                              : AppTheme.accentBlue.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          isWalkIn ? 'Walk-in' : 'Mobile App',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: isWalkIn ? const Color(0xFF00897B) : AppTheme.accentBlue,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  if (phone != null)
-                    Text(phone,
-                        style: const TextStyle(
-                            fontSize: 11, color: AppTheme.textLight)),
-                  if (email != null && phone == null)
-                    Text(email,
-                        style: const TextStyle(
-                            fontSize: 11, color: AppTheme.textLight)),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      if (customerCode.isNotEmpty) ...[
+                        Text(
+                          customerCode,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.accentBlue,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      if (phone != null)
+                        Text(phone,
+                            style: const TextStyle(
+                                fontSize: 11, color: AppTheme.textLight)),
+                      if (email != null && phone == null)
+                        Text(email,
+                            style: const TextStyle(
+                                fontSize: 11, color: AppTheme.textLight)),
+                    ],
+                  ),
                 ],
               ),
             ),

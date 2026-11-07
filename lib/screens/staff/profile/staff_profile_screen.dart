@@ -3,6 +3,7 @@ import '../../../theme/app_theme.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/push_notification_service.dart';
 import '../../../widgets/editable_profile_avatar.dart';
+import '../../../widgets/skeleton_loading.dart';
 import '../../saved_accounts_screen.dart';
 import 'options/account_details_screen.dart';
 import 'options/change_password_screen.dart';
@@ -78,7 +79,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
         centerTitle: true,
       ),
         body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const ProfileScreenSkeleton(optionCount: 3)
           : SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(

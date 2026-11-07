@@ -8,19 +8,14 @@ class Validators {
   static final RegExp _emailRe = RegExp(r'^[\w\.\-\+]+@([\w\-]+\.)+[a-zA-Z]{2,}$');
   static final RegExp _phoneRe = RegExp(r'^[0-9\+\-\s\(\)]{7,20}$');
 
-  /// Email: required + basic format.
-  static String? email(String? value) {
-    final v = value?.trim() ?? '';
-    if (v.isEmpty) return 'Please enter your email address.';
-    if (!_emailRe.hasMatch(v)) return 'Please enter a valid email address (e.g. name@example.com).';
-    return null;
-  }
+  /// Email: required + basic format (delegates to [emailField]).
+  static String? email(String? value) => emailField(value);
 
   /// Email when the field is optional.
   static String? optionalEmail(String? value) {
     final v = value?.trim() ?? '';
     if (v.isEmpty) return null;
-    return email(v);
+    return emailField(v);
   }
 
   /// Password for sign-in (non-empty).
@@ -54,16 +49,74 @@ class Validators {
     return null;
   }
 
-  /// Philippine mobile number (optional country code, 10-13 digits).
+  /// Philippine mobile number (accepts 09XXXXXXXXX, +639XXXXXXXXX, or 9XXXXXXXXX).
   static String? phone(String? value) {
     final v = value?.trim() ?? '';
-    if (v.isEmpty) return 'Please enter your phone number.';
-    final digits = v.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length < 10 || digits.length > 13) {
-      return 'Please enter a valid phone number (e.g. 0917 123 4567).';
+    if (v.isEmpty) return 'Please enter your mobile number.';
+
+    // Check for disallowed characters (only digits, spaces, +, -, parentheses allowed)
+    if (!_phoneRe.hasMatch(v)) {
+      return 'Mobile number contains invalid characters.';
     }
-    if (!_phoneRe.hasMatch(v)) return 'Please enter a valid phone number (e.g. 0917 123 4567).';
-    return null;
+
+    final digits = v.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return 'Please enter your mobile number.';
+
+    // Enforce Philippine mobile structure
+    if (digits.startsWith('09')) {
+      if (digits.length < 11) {
+        return 'Mobile number must have 11 digits (e.g. 0917 123 4567).';
+      }
+      if (digits.length > 11) {
+        return 'Mobile number cannot exceed 11 digits.';
+      }
+      return null;
+    } else if (digits.startsWith('639')) {
+      if (digits.length < 12) {
+        return 'Mobile number must have 12 digits (e.g. +63 917 123 4567).';
+      }
+      if (digits.length > 12) {
+        return 'Mobile number is too long.';
+      }
+      return null;
+    } else if (digits.startsWith('9')) {
+      if (digits.length < 10) {
+        return 'Mobile number must have 10 digits without leading 0.';
+      }
+      if (digits.length > 10) {
+        return 'Mobile number cannot exceed 10 digits.';
+      }
+      return null;
+    } else {
+      return 'Please enter a valid mobile number starting with 09 (e.g. 0917 123 4567).';
+    }
+  }
+
+  /// Normalizes any valid Philippine mobile number to the standard 11-digit format (09XXXXXXXXX).
+  ///
+  /// Examples:
+  /// - `+63 915 109 4449` -> `09151094449`
+  /// - `639151094449` -> `09151094449`
+  /// - `9151094449` -> `09151094449`
+  /// - `0915-109-4449` -> `09151094449`
+  static String normalizePhone(String? value) {
+    if (value == null) return '';
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.startsWith('639') && digits.length == 12) {
+      return '0${digits.substring(2)}';
+    } else if (digits.startsWith('9') && digits.length == 10) {
+      return '0$digits';
+    } else if (digits.startsWith('09') && digits.length == 11) {
+      return digits;
+    }
+    return digits;
+  }
+
+  /// Optional Philippine mobile number.
+  static String? optionalPhone(String? value) {
+    final v = value?.trim() ?? '';
+    if (v.isEmpty) return null;
+    return phone(v);
   }
 
   /// Numeric amount greater than zero (payments).
@@ -85,15 +138,33 @@ class Validators {
     return null;
   }
 
-  /// Name: letters, spaces, hyphens; 2+ chars.
-  static String? name(String? value, String fieldName) {
-    final v = value?.trim() ?? '';
-    if (v.isEmpty) return 'Please enter $fieldName.';
-    if (v.length < 2) return '$fieldName must be at least 2 characters.';
-    if (!v.contains(RegExp(r"^[a-zA-Z\u00C0-\u017F' \-]+$"))) {
-      return 'Please enter a valid $fieldName (letters only).';
-    }
-    return null;
+  /// Name: letters, spaces, hyphens; 2+ chars (delegates to [nameField]).
+  static String? name(String? value, String fieldName) => nameField(value, fieldName);
+
+  /// Cleans a name by stripping leading/trailing whitespace, collapsing consecutive
+  /// spaces into a single space, and removing stray edge hyphens or apostrophes.
+  ///
+  /// Examples:
+  /// - `'  John    Paul  '` -> `'John Paul'`
+  /// - `'-John-'` -> `'John'`
+  static String cleanName(String? value) {
+    if (value == null) return '';
+    var cleaned = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    cleaned = cleaned.replaceAll(RegExp(r"^[\s'\-]+|[\s'\-]+$"), '');
+    return cleaned;
+  }
+
+  /// Cleans vehicle details by trimming whitespace, collapsing multiple spaces,
+  /// and stripping stray leading/trailing punctuation.
+  ///
+  /// Examples:
+  /// - `'  Honda    Wave   110  '` -> `'Honda Wave 110'`
+  /// - `'-Yamaha Mio-'` -> `'Yamaha Mio'`
+  static String cleanVehicleDetails(String? value) {
+    if (value == null) return '';
+    var cleaned = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    cleaned = cleaned.replaceAll(RegExp(r"^[\s'\-/,.]+|[\s'\-/,.]+$"), '');
+    return cleaned;
   }
 
   /// Free-form address (2+ chars).
@@ -121,6 +192,8 @@ class Validators {
   // ── Length constants shared by formatters and field validators ────────────
   static const int nameMin = 2;
   static const int nameMax = 50;
+  static const int vehicleDetailsMin = 3;
+  static const int vehicleDetailsMax = 60;
   static const int emailMax = 254;
   static const int passwordMax = 72; // Supabase/bcrypt practical limit
   static const int addressMax = 120;
@@ -138,14 +211,37 @@ class Validators {
   // ── Field validators: required + format + MIN and MAX character limits ────
 
   /// Name field: required, min 2 chars (rejects 1-character names),
-  /// max 50, letters/spaces/hyphens/apostrophes only.
+  /// max 50, letters/spaces/hyphens/apostrophes only, must contain at least one letter.
   static String? nameField(String? value, String fieldName) {
-    final v = value?.trim() ?? '';
+    final v = cleanName(value);
     if (v.isEmpty) return 'Please enter $fieldName.';
     if (v.length < nameMin) return '$fieldName must be at least $nameMin characters.';
     if (v.length > nameMax) return '$fieldName must be at most $nameMax characters.';
-    if (!v.contains(RegExp(r"^[a-zA-Z\u00C0-\u017F' \-]+$"))) {
+    if (!RegExp(r"[a-zA-Z\u00C0-\u017F]").hasMatch(v)) {
+      return '$fieldName must contain letters.';
+    }
+    if (!RegExp(r"^[a-zA-Z\u00C0-\u017F' \-]+$").hasMatch(v)) {
       return 'Please enter a valid $fieldName (letters only).';
+    }
+    return null;
+  }
+
+  /// Vehicle details validator: required, 3–60 chars, letters/numbers/spaces/safe punctuation,
+  /// must contain letters.
+  static String? vehicleDetails(String? value) {
+    final v = cleanVehicleDetails(value);
+    if (v.isEmpty) return 'Please enter your vehicle details.';
+    if (v.length < vehicleDetailsMin) {
+      return 'Vehicle details must be at least $vehicleDetailsMin characters.';
+    }
+    if (v.length > vehicleDetailsMax) {
+      return 'Vehicle details cannot exceed $vehicleDetailsMax characters.';
+    }
+    if (!RegExp(r'[a-zA-Z\u00C0-\u017F]').hasMatch(v)) {
+      return 'Vehicle details must contain letters (e.g. make or model).';
+    }
+    if (!RegExp(r"^[a-zA-Z0-9\u00C0-\u017F\s'\-/,.\(\)]+$").hasMatch(v)) {
+      return 'Vehicle details contain invalid characters.';
     }
     return null;
   }
@@ -162,11 +258,53 @@ class Validators {
     return null;
   }
 
-  /// Email field: required, valid format, max 254 characters.
+  /// Email field: required, valid format, granular errors, max 254 characters.
   static String? emailField(String? value) {
     final v = value?.trim() ?? '';
     if (v.isEmpty) return 'Please enter your email address.';
     if (v.length > emailMax) return 'Email address is too long.';
+    if (v.contains(' ')) return 'Email address cannot contain spaces.';
+
+    final atIndex = v.indexOf('@');
+    if (atIndex == -1) {
+      return "Email address must contain an '@'.";
+    }
+    if (atIndex == 0) {
+      return "Please enter a username before '@'.";
+    }
+    if (v.indexOf('@', atIndex + 1) != -1) {
+      return "Email address can only contain one '@'.";
+    }
+
+    final localPart = v.substring(0, atIndex);
+    final domainPart = v.substring(atIndex + 1);
+
+    if (domainPart.isEmpty) {
+      return "Please include a domain after '@' (e.g. gmail.com).";
+    }
+
+    if (localPart.contains('..') || domainPart.contains('..')) {
+      return 'Email address cannot contain consecutive dots.';
+    }
+
+    if (localPart.startsWith('.') || localPart.endsWith('.')) {
+      return 'Username cannot start or end with a dot.';
+    }
+
+    if (!domainPart.contains('.')) {
+      return 'Domain must include an extension (e.g. .com, .ph).';
+    }
+
+    final domainParts = domainPart.split('.');
+    if (domainParts.any((part) => part.isEmpty)) {
+      return 'Please enter a valid domain (e.g. name@example.com).';
+    }
+
+    final tld = domainParts.last;
+    if (tld.length < 2 || !RegExp(r'^[a-zA-Z]+$').hasMatch(tld)) {
+      return 'Please enter a valid domain ending (e.g. .com, .ph).';
+    }
+
     if (!_emailRe.hasMatch(v)) {
       return 'Please enter a valid email address (e.g. name@example.com).';
     }

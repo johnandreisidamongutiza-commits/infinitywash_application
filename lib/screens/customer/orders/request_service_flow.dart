@@ -245,16 +245,16 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.camera_alt, color: AppTheme.accentBlue),
-                title: const Text('Take Photo'),
+                leading: const Icon(Icons.camera_alt_outlined, color: AppTheme.primaryBlue),
+                title: const Text('Take Photo', style: TextStyle(fontWeight: FontWeight.w600)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _pickImageFromCamera();
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.photo_library, color: AppTheme.accentBlue),
-                title: const Text('Choose from Gallery'),
+                leading: const Icon(Icons.photo_library_outlined, color: AppTheme.primaryBlue),
+                title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _pickImageFromGallery();
@@ -448,7 +448,76 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
           },
         ),
       ),
-      body: _buildStepContent(),
+      body: Column(
+        children: [
+          if (_currentStep < 5) _buildStepProgressBar(),
+          Expanded(child: _buildStepContent()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepProgressBar() {
+    final stepLabels = [
+      'Service Options',
+      'Laundry Photos',
+      'Add-on Services',
+      'Address & Review',
+    ];
+    final currentLabel = _currentStep >= 1 && _currentStep <= 4
+        ? stepLabels[_currentStep - 1]
+        : '';
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Step $_currentStep of 4',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.textLight,
+                ),
+              ),
+              Text(
+                currentLabel,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryBlue,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: List.generate(4, (index) {
+              final isDoneOrCurrent = index < _currentStep;
+              return Expanded(
+                child: Container(
+                  height: 4,
+                  margin: EdgeInsets.only(
+                    left: index == 0 ? 0 : 3,
+                    right: index == 3 ? 0 : 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDoneOrCurrent
+                        ? AppTheme.primaryBlue
+                        : AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
     );
   }
 
@@ -478,76 +547,78 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
           children: [
             Text(
               'Collection Method',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(fontSize: 22),
+              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
-              'A rider will be dispatched to your address for laundry collection.',
+              'Door-to-door laundry pickup from your location.',
               style: AppTheme.lightTheme.textTheme.bodyMedium,
             ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline, color: AppTheme.teamMemberIconOrange, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'MINIMUM 2 LOADS REQUIRED for rider pickup/delivery service.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange.shade800,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildSelectableCard(
-              'Rider Pick-up',
-              'Door-to-door laundry collection from your address',
-              Icons.delivery_dining,
-              true,
-              () {},
-            ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 14),
+            _buildConfirmedCollectionCard(),
+            const SizedBox(height: 28),
             Text(
               'Return Method',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(fontSize: 22),
+              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               'Choose how you would like to receive your cleaned laundry.',
               style: AppTheme.lightTheme.textTheme.bodyMedium,
             ),
-            const SizedBox(height: 16),
-            _buildSelectableCard(
-              'Rider Delivery',
-              'We will deliver it back to your address',
-              Icons.local_shipping_outlined,
-              _selectedReturn == ReturnMethod.delivery,
-              () => setState(() => _selectedReturn = ReturnMethod.delivery),
+            const SizedBox(height: 14),
+            _buildReturnMethodCard(
+              title: 'Rider Delivery',
+              subtitle: 'We will deliver your clean laundry back to your doorstep.',
+              badge: 'To Your Door',
+              icon: Icons.local_shipping_outlined,
+              isSelected: _selectedReturn == ReturnMethod.delivery,
+              onTap: () => setState(() => _selectedReturn = ReturnMethod.delivery),
             ),
-            const SizedBox(height: 16),
-            _buildSelectableCard(
-              'Shop Pickup',
-              'Pick it up at our shop when ready',
-              Icons.storefront_outlined,
-              _selectedReturn == ReturnMethod.shopPickup,
-              () => setState(() => _selectedReturn = ReturnMethod.shopPickup),
+            const SizedBox(height: 12),
+            _buildReturnMethodCard(
+              title: 'Shop Pickup',
+              subtitle: 'Pick up your fresh laundry directly at our shop counter.',
+              badge: 'Self Collect',
+              icon: Icons.storefront_outlined,
+              isSelected: _selectedReturn == ReturnMethod.shopPickup,
+              onTap: () => setState(() => _selectedReturn = ReturnMethod.shopPickup),
             ),
-            const SizedBox(height: 40),
-            ElevatedButton(
-              onPressed: () => setState(() => _currentStep = 2),
-              child: const Text('Continue'),
+            const SizedBox(height: 36),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: () => setState(() => _currentStep = 2),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Continue',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Icon(Icons.arrow_forward_rounded, size: 18),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 20),
           ],
@@ -557,161 +628,243 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   }
 
   Widget _buildPhotoUpload() {
+    final canContinue = _laundryPhotos.isNotEmpty;
+
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Show Us Your Laundry 📸',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(fontSize: 22),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Take 1-3 photos of your laundry pile so our staff can estimate the volume and confirm it meets the 2-load minimum.',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 20),
-            
-            // Tips Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.accentBlue.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.2)),
-              ),
+      child: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    'Show Us Your Laundry',
+                    style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Take 1-3 photos of your laundry pile so our staff can estimate the volume and confirm it meets the 2-load minimum.',
+                    style: AppTheme.lightTheme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Compact Tips Card
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.primaryBlue.withValues(alpha: 0.15)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.lightbulb_outline, color: AppTheme.primaryBlue, size: 18),
+                            SizedBox(width: 8),
+                            Text(
+                              'Tips for best results:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                color: AppTheme.primaryBlue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        _buildTip('Show all laundry in one pile with good lighting'),
+                        _buildTip('Include any bulky items (blankets, comforters) clearly'),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Photo Grid Header with Requirement Badge
                   Row(
                     children: [
-                      const Icon(Icons.lightbulb_outline, color: AppTheme.accentBlue, size: 20),
-                      const SizedBox(width: 8),
                       Text(
-                        'Tips for best results:',
-                        style: TextStyle(
+                        'Photos (${_laundryPhotos.length}/$_maxPhotos)',
+                        style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                          color: Colors.blue.shade900,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: canContinue
+                              ? AppTheme.primaryBlue.withValues(alpha: 0.1)
+                              : Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          canContinue ? 'Verified' : '1 Required',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: canContinue ? AppTheme.primaryBlue : Colors.red.shade700,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  _buildTip('Show all laundry in one pile'),
-                  _buildTip('Include any bulky items separately'),
-                  _buildTip('Make sure lighting is good'),
-                  _buildTip('Use a reference object for scale'),
+                  const SizedBox(height: 12),
+                  
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 1,
+                    ),
+                    itemCount: _laundryPhotos.length + (_laundryPhotos.length < _maxPhotos ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index < _laundryPhotos.length) {
+                        return _buildPhotoCard(index);
+                      } else {
+                        return _buildAddPhotoButton();
+                      }
+                    },
+                  ),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Description field
+                  Text(
+                    'Description (Optional)',
+                    style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _descriptionController,
+                    maxLines: 2,
+                    maxLength: 200,
+                    decoration: InputDecoration(
+                      hintText: 'e.g., Mostly regular clothes, 2 bed sheets, and 1 comforter',
+                      hintStyle: TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.textLight.withValues(alpha: 0.6),
+                      ),
+                      filled: true,
+                      fillColor: AppTheme.softGray,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.all(14),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 12),
+                  
+                  // Info note
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.primaryBlue.withValues(alpha: 0.15)),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline, color: AppTheme.primaryBlue, size: 18),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Staff will review your photos and confirm if it meets the 2-load minimum requirement.',
+                            style: TextStyle(fontSize: 12, color: AppTheme.textDark),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                 ],
               ),
             ),
-            
-            const SizedBox(height: 24),
-            
-            // Photo Grid
-            Text(
-              'Photos (${_laundryPhotos.length}/$_maxPhotos)',
-              style: AppTheme.lightTheme.textTheme.titleMedium,
+          ),
+          
+          // Sticky Bottom Button
+          Container(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -3),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1,
-              ),
-              itemCount: _laundryPhotos.length + (_laundryPhotos.length < _maxPhotos ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index < _laundryPhotos.length) {
-                  // Show existing photo
-                  return _buildPhotoCard(index);
-                } else {
-                  // Show add button
-                  return _buildAddPhotoButton();
-                }
-              },
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // Description field
-            Text(
-              'Description (Optional)',
-              style: AppTheme.lightTheme.textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _descriptionController,
-              maxLines: 3,
-              maxLength: 200,
-              decoration: InputDecoration(
-                hintText: 'e.g., Mostly regular clothes, 2 bed sheets, and 1 comforter',
-                hintStyle: TextStyle(color: AppTheme.textLight.withValues(alpha: 0.5)),
-                filled: true,
-                fillColor: AppTheme.softGray,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
+            child: SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: canContinue ? AppTheme.primaryBlue : AppTheme.softGray,
+                  foregroundColor: canContinue ? Colors.white : AppTheme.textLight,
+                  disabledBackgroundColor: AppTheme.softGray,
+                  disabledForegroundColor: AppTheme.textLight,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: canContinue
+                    ? () => setState(() => _currentStep = 3)
+                    : null,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      canContinue
+                          ? 'Continue to Add-ons'
+                          : 'Add at least 1 photo to continue',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: canContinue ? Colors.white : AppTheme.textLight,
+                      ),
+                    ),
+                    if (canContinue) ...[
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward_rounded, size: 18),
+                    ],
+                  ],
                 ),
               ),
             ),
-            
-            const SizedBox(height: 16),
-            
-            // Info note
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Staff will review your photos and confirm if it meets the 2-load minimum requirement.',
-                      style: TextStyle(fontSize: 12, color: Colors.blue.shade900),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 32),
-            
-            // Continue button
-            ElevatedButton(
-              onPressed: _laundryPhotos.isEmpty ? null : () => setState(() => _currentStep = 3),
-              child: const Text('Continue to Add-ons'),
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildTip(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('• ', style: TextStyle(fontSize: 14, color: AppTheme.accentBlue)),
+          const Text('• ', style: TextStyle(fontSize: 13, color: AppTheme.primaryBlue)),
           Expanded(
             child: Text(
               text,
-              style: TextStyle(fontSize: 12, color: Colors.blue.shade900),
+              style: const TextStyle(fontSize: 11, color: AppTheme.textDark),
             ),
           ),
         ],
@@ -760,16 +913,23 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
         decoration: BoxDecoration(
           color: AppTheme.softGray,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.borderGray, width: 2, style: BorderStyle.solid),
+          border: Border.all(
+            color: AppTheme.primaryBlue.withValues(alpha: 0.35),
+            width: 1.5,
+          ),
         ),
         child: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add_photo_alternate, color: AppTheme.accentBlue, size: 32),
-            SizedBox(height: 4),
+            Icon(Icons.add_a_photo_outlined, color: AppTheme.primaryBlue, size: 28),
+            SizedBox(height: 6),
             Text(
               'Add Photo',
-              style: TextStyle(fontSize: 11, color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 11,
+                color: AppTheme.primaryBlue,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
@@ -837,32 +997,231 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
     );
   }
 
-  Widget _buildSelectableCard(
-    String title,
-    String subtitle,
-    IconData icon,
-    bool isSelected,
-    VoidCallback onTap,
-  ) {
+  Widget _buildConfirmedCollectionCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.primaryBlue.withValues(alpha: 0.25),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryBlue.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.two_wheeler_rounded,
+                  color: AppTheme.primaryBlue,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'Rider Pick-up',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Included with Request',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.primaryBlue,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'A rider will be dispatched to your address for laundry collection.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppTheme.softGray,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: AppTheme.borderGray.withValues(alpha: 0.5),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 15,
+                  color: AppTheme.primaryBlue,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Minimum 2 loads required for rider collection.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReturnMethodCard({
+    required String title,
+    required String subtitle,
+    required String badge,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: isSelected ? AppStyles.selectedCardDecoration : AppStyles.cardDecoration,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.primaryBlue.withValues(alpha: 0.03)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? AppTheme.primaryBlue
+                : AppTheme.borderGray.withValues(alpha: 0.5),
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isSelected
+                  ? AppTheme.primaryBlue.withValues(alpha: 0.08)
+                  : Colors.black.withValues(alpha: 0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
         child: Row(
           children: [
-            Icon(icon, color: isSelected ? AppTheme.accentBlue : AppTheme.textLight, size: 32),
-            const SizedBox(width: 16),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isSelected ? AppTheme.primaryBlue : AppTheme.softGray,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? Colors.white : AppTheme.textLight,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                  Text(subtitle, style: const TextStyle(fontSize: 12)),
+                  Row(
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: isSelected
+                              ? AppTheme.primaryBlue
+                              : AppTheme.textDark,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppTheme.primaryBlue.withValues(alpha: 0.1)
+                              : AppTheme.softGray,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          badge,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: isSelected
+                                ? AppTheme.primaryBlue
+                                : AppTheme.textLight,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textLight,
+                    ),
+                  ),
                 ],
               ),
             ),
-            if (isSelected) const Icon(Icons.check_circle, color: AppTheme.accentBlue),
+            const SizedBox(width: 8),
+            Icon(
+              isSelected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_off,
+              color: isSelected ? AppTheme.primaryBlue : AppTheme.borderGray,
+              size: 22,
+            ),
           ],
         ),
       ),
@@ -914,9 +1273,9 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppTheme.lightBlue,
+                  color: AppTheme.primaryBlue.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
+                  border: Border.all(color: AppTheme.primaryBlue.withValues(alpha: 0.2)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -929,13 +1288,13 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                         Text('₱${_calculateAddonsTotal().toStringAsFixed(2)}',
                              style: const TextStyle(fontWeight: FontWeight.bold, 
                                                    fontSize: 18, 
-                                                   color: AppTheme.accentBlue)),
+                                                   color: AppTheme.primaryBlue)),
                       ],
                     ),
                     const SizedBox(height: 8),
                     const Row(
                       children: [
-                        Icon(Icons.info_outline, size: 16, color: AppTheme.accentBlue),
+                        Icon(Icons.info_outline, size: 16, color: AppTheme.primaryBlue),
                         SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -952,16 +1311,48 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             ],
             
             // Continue Button
-            ElevatedButton(
-              onPressed: () => setState(() => _currentStep = 4),
-              child: const Text('Continue to Details'),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: () => setState(() => _currentStep = 4),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Continue to Details',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(width: 8),
+                    Icon(Icons.arrow_forward_rounded, size: 18),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 12),
             
             // Skip Button
-            TextButton(
-              onPressed: () => setState(() => _currentStep = 4),
-              child: const Text('Skip Add-ons'),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.textLight,
+                ),
+                onPressed: () => setState(() => _currentStep = 4),
+                child: const Text(
+                  'Skip Add-ons',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ),
             ),
             const SizedBox(height: 20),
           ],
@@ -983,7 +1374,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: value ? AppTheme.accentBlue : AppTheme.borderGray,
+          color: value ? AppTheme.primaryBlue : AppTheme.borderGray,
           width: value ? 2 : 1,
         ),
       ),
@@ -996,12 +1387,12 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: value 
-                    ? AppTheme.accentBlue.withValues(alpha: 0.1) 
+                    ? AppTheme.primaryBlue.withValues(alpha: 0.1) 
                     : AppTheme.softGray,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(icon, 
-                         color: value ? AppTheme.accentBlue : AppTheme.textLight, 
+                         color: value ? AppTheme.primaryBlue : AppTheme.textLight, 
                          size: 20),
             ),
             const SizedBox(width: 12),
@@ -1025,12 +1416,12 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             '₱${price.toStringAsFixed(2)}',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: value ? AppTheme.accentBlue : AppTheme.textDark,
+              color: value ? AppTheme.primaryBlue : AppTheme.textDark,
               fontSize: 14,
             ),
           ),
         ),
-        activeColor: AppTheme.accentBlue,
+        activeColor: AppTheme.primaryBlue,
         controlAffinity: ListTileControlAffinity.trailing,
       ),
     );
@@ -1069,7 +1460,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.local_shipping_outlined, color: AppTheme.accentBlue, size: 20),
+                  const Icon(Icons.local_shipping_outlined, color: AppTheme.primaryBlue, size: 20),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -1097,7 +1488,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                         onPressed: () => setState(() => _currentStep = 2),
                         child: const Text(
                           'View Photos',
-                          style: TextStyle(color: AppTheme.accentBlue, fontSize: 12, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: AppTheme.primaryBlue, fontSize: 12, fontWeight: FontWeight.bold),
                         ),
                       ),
                       const Text('•', style: TextStyle(color: AppTheme.textLight)),
@@ -1105,7 +1496,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                         onPressed: () => setState(() => _currentStep = 1),
                         child: const Text(
                           'Change',
-                          style: TextStyle(color: AppTheme.accentBlue, fontSize: 12, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: AppTheme.primaryBlue, fontSize: 12, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ],
@@ -1154,13 +1545,13 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: const Text(
                     'Pay After Weighing',
                     style: TextStyle(
-                      color: AppTheme.accentBlue,
+                      color: AppTheme.primaryBlue,
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
@@ -1184,7 +1575,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: _selectedPaymentPreference == 'GCash' ? AppTheme.accentBlue : AppTheme.borderGray,
+                    color: _selectedPaymentPreference == 'GCash' ? AppTheme.primaryBlue : AppTheme.borderGray,
                     width: _selectedPaymentPreference == 'GCash' ? 2 : 1,
                   ),
                 ),
@@ -1193,10 +1584,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: _selectedPaymentPreference == 'GCash' ? AppTheme.accentBlue.withValues(alpha: 0.1) : AppTheme.softGray,
+                        color: _selectedPaymentPreference == 'GCash' ? AppTheme.primaryBlue.withValues(alpha: 0.1) : AppTheme.softGray,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.account_balance_wallet_outlined, color: AppTheme.accentBlue, size: 20),
+                      child: const Icon(Icons.account_balance_wallet_outlined, color: AppTheme.primaryBlue, size: 20),
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
@@ -1211,7 +1602,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     ),
                     Icon(
                       _selectedPaymentPreference == 'GCash' ? Icons.radio_button_checked : Icons.radio_button_off,
-                      color: _selectedPaymentPreference == 'GCash' ? AppTheme.accentBlue : AppTheme.textLight,
+                      color: _selectedPaymentPreference == 'GCash' ? AppTheme.primaryBlue : AppTheme.textLight,
                       size: 20,
                     ),
                   ],
@@ -1229,7 +1620,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.accentBlue : AppTheme.borderGray,
+                    color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.primaryBlue : AppTheme.borderGray,
                     width: _selectedPaymentPreference == 'Cash on Delivery' ? 2 : 1,
                   ),
                 ),
@@ -1238,7 +1629,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.accentBlue.withValues(alpha: 0.1) : AppTheme.softGray,
+                        color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.primaryBlue.withValues(alpha: 0.1) : AppTheme.softGray,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.payments_outlined, color: Colors.green, size: 20),
@@ -1256,7 +1647,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     ),
                     Icon(
                       _selectedPaymentPreference == 'Cash on Delivery' ? Icons.radio_button_checked : Icons.radio_button_off,
-                      color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.accentBlue : AppTheme.textLight,
+                      color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.primaryBlue : AppTheme.textLight,
                       size: 20,
                     ),
                   ],
@@ -1282,10 +1673,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                       Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentBlue.withValues(alpha: 0.12),
+                          color: AppTheme.primaryBlue.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.local_laundry_service_outlined, color: AppTheme.accentBlue, size: 18),
+                        child: const Icon(Icons.local_laundry_service_outlined, color: AppTheme.primaryBlue, size: 18),
                       ),
                       const SizedBox(width: 10),
                       const Expanded(
@@ -1297,7 +1688,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentBlue,
+                          color: AppTheme.primaryBlue,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Text(
@@ -1324,8 +1715,19 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             const SizedBox(height: 32),
 
             // Submit Button
-            ElevatedButton(
-              onPressed: _isLoadingAddress ? null : () async {
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: _isLoadingAddress ? null : () async {
                 if (_currentCustomer == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Unable to submit: Customer profile not loaded')),
@@ -1442,12 +1844,13 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-          ],
-        ),
+          ),
+          const SizedBox(height: 20),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildSavedLocationCard() {
     if (_isLoadingAddress) {
@@ -1511,7 +1914,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 decoration: BoxDecoration(
                   color: isCustomAddress
                       ? AppTheme.teamMemberIconOrange.withValues(alpha: 0.12)
-                      : AppTheme.accentBlue.withValues(alpha: 0.12),
+                      : AppTheme.primaryBlue.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -1520,13 +1923,13 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     Icon(
                       isCustomAddress ? Icons.edit_location_alt : Icons.home_outlined,
                       size: 14,
-                      color: isCustomAddress ? AppTheme.teamMemberIconOrange : AppTheme.accentBlue,
+                      color: isCustomAddress ? AppTheme.teamMemberIconOrange : AppTheme.primaryBlue,
                     ),
                     const SizedBox(width: 6),
                     Text(
                       isCustomAddress ? 'Custom Address (This Order)' : 'Saved Profile Address',
                       style: TextStyle(
-                        color: isCustomAddress ? AppTheme.teamMemberIconOrange : AppTheme.accentBlue,
+                        color: isCustomAddress ? AppTheme.teamMemberIconOrange : AppTheme.primaryBlue,
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
                       ),
@@ -1536,10 +1939,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               ),
               TextButton.icon(
                 onPressed: _showEditAddressModal,
-                icon: const Icon(Icons.edit_outlined, size: 16, color: AppTheme.accentBlue),
+                icon: const Icon(Icons.edit_outlined, size: 16, color: AppTheme.primaryBlue),
                 label: const Text(
                   'Change',
-                  style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold, fontSize: 13),
+                  style: TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1605,7 +2008,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 onTap: _resetToProfileAddress,
                 child: const Text(
                   'Reset to default profile address',
-                  style: TextStyle(fontSize: 11, color: AppTheme.accentBlue, decoration: TextDecoration.underline),
+                  style: TextStyle(fontSize: 11, color: AppTheme.primaryBlue, decoration: TextDecoration.underline),
                 ),
               ),
             ),
@@ -1741,12 +2144,12 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentBlue.withValues(alpha: 0.12),
+                          color: AppTheme.primaryBlue.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           _selectedPaymentPreference,
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.accentBlue),
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primaryBlue),
                         ),
                       ),
                     ],
@@ -1766,7 +2169,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   // Step 2: Pickup & Store Weighing
                   _buildTimelineItem(
                     icon: Icons.scale_outlined,
-                    iconColor: AppTheme.accentBlue,
+                    iconColor: AppTheme.primaryBlue,
                     title: '2. Pickup & Store Inspection',
                     subtitle: 'Laundry will be verified on our store scale (Full Service: ₱170.00 / load).',
                     isActive: true,

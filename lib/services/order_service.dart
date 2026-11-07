@@ -687,13 +687,14 @@ class OrderService {
     String? paymentStatus,
     String? subFilter,
     bool requireLoads = false,
+    bool? isDismissed,
     int limit = 50,
     int offset = 0,
     String? search,
   }) async {
     try {
       print('📊 fetchOrders called: statuses=$statuses, paymentStatus=$paymentStatus, '
-          'subFilter=$subFilter, requireLoads=$requireLoads, limit=$limit, offset=$offset');
+          'subFilter=$subFilter, requireLoads=$requireLoads, isDismissed=$isDismissed, limit=$limit, offset=$offset');
       
       // Build base query with customer information and RFID tags
       // Use explicit column selection to avoid id collision between orders and order_loads
@@ -736,9 +737,17 @@ class OrderService {
             reviewed_at,
             reviewed_by,
             expires_at,
+            dismissed_at,
             ${requireLoads ? 'order_loads!inner(*)' : 'order_loads(*)'},
             customers(first_name, last_name, customer_code, phone, address, landmark)
           ''');
+
+      // Filter by dismissed status if requested
+      if (isDismissed == true) {
+        query = query.not('dismissed_at', 'is', null);
+      } else if (isDismissed == false) {
+        query = query.isFilter('dismissed_at', null);
+      }
 
       // Apply status filter if provided
       if (statuses != null && statuses.isNotEmpty) {
@@ -823,6 +832,7 @@ class OrderService {
         final orderWithLoads = LaundryOrder(
           id: order.id,
           orderNumber: orderData['order_number'] as String?, // Add order number
+          customerId: order.customerId,
           customerName: customerName.isNotEmpty && customerName != 'Unknown' ? customerName : order.customerName, // Prefer customer name from joined data
           customerPhone: customerPhone?.isNotEmpty == true ? customerPhone : order.customerPhone, // Prefer customer phone from joined data
           deliveryAddress: order.deliveryAddress ?? (customerData?['address'] as String?),
@@ -848,6 +858,7 @@ class OrderService {
           reviewedBy: order.reviewedBy,
           expiresAt: order.expiresAt,
           underReviewBy: null,
+          dismissedAt: order.dismissedAt,
           totalAmount: order.totalAmount ?? (orderData['total_amount'] as num?)?.toDouble(),
         );
 
@@ -875,6 +886,7 @@ class OrderService {
   Future<int> fetchOrderCount({
     List<String>? statuses,
     String? search,
+    bool? isDismissed,
   }) async {
     try {
       var query = _client.from('orders').select('id, customers(first_name, last_name, phone)');
@@ -887,6 +899,12 @@ class OrderService {
           final nowIso = DateTime.now().toUtc().toIso8601String();
           query = query.or('expires_at.is.null,expires_at.gt.$nowIso');
         }
+      }
+
+      if (isDismissed == true) {
+        query = query.not('dismissed_at', 'is', null);
+      } else if (isDismissed == false) {
+        query = query.isFilter('dismissed_at', null);
       }
 
       if (search != null && search.trim().isNotEmpty) {
@@ -929,6 +947,111 @@ class OrderService {
       return updatedCount;
     } catch (e) {
       print('⚠️ Could not auto-reject expired requests: $e');
+      return 0;
+    }
+  }
+
+  /// Dismiss a single rejected request by marking dismissed_at
+  Future<void> dismissRejectedOrder(String orderId) async {
+    try {
+      final now = DateTime.now().toUtc().toIso8601String();
+      await _client
+          .from('orders')
+          .update({
+            'dismissed_at': now,
+            'updated_at': now,
+          })
+          .eq('id', orderId);
+      print('✅ Dismissed rejected order $orderId');
+    } catch (e) {
+      print('❌ Error dismissing rejected order: $e');
+      rethrow;
+    }
+  }
+
+  /// Dismiss all active rejected requests at once
+  Future<int> dismissAllRejectedOrders() async {
+    try {
+      final now = DateTime.now().toUtc().toIso8601String();
+      final res = await _client
+          .from('orders')
+          .update({
+            'dismissed_at': now,
+            'updated_at': now,
+          })
+          .eq('status', 'rejected')
+          .isFilter('dismissed_at', null)
+          .select('id');
+      final count = (res as List).length;
+      print('✅ Dismissed all $count rejected orders');
+      return count;
+    } catch (e) {
+      print('❌ Error dismissing all rejected orders: $e');
+      rethrow;
+    }
+  }
+
+  /// Reopen a rejected request back to pending_approval for reconsideration
+  Future<void> reopenRejectedOrder(String orderId) async {
+    try {
+      final now = DateTime.now().toUtc().toIso8601String();
+      await _client
+          .from('orders')
+          .update({
+            'status': 'pending_approval',
+            'rejection_reason': null,
+            'staff_notes': null,
+            'reviewed_at': null,
+            'reviewed_by': null,
+            'dismissed_at': null,
+            'under_review_by': null,
+            'under_review_at': null,
+            'expires_at': null, // Non-expiring once reopened for deliberate review
+            'updated_at': now,
+          })
+          .eq('id', orderId);
+      print('✅ Reopened rejected order $orderId to pending_approval');
+    } catch (e) {
+      print('❌ Error reopening rejected order: $e');
+      rethrow;
+    }
+  }
+
+  /// Automatically purge rejected orders older than retention threshold (default 30 days)
+  /// to keep the database lean and avoid storing stale unfulfilled requests forever.
+  Future<int> purgeOldRejectedOrders({int days = 30}) async {
+    try {
+      final cutoff = DateTime.now().toUtc().subtract(Duration(days: days)).toIso8601String();
+      final candidates = await _client
+          .from('orders')
+          .select('id')
+          .eq('status', 'rejected')
+          .lt('created_at', cutoff);
+
+      final orderIds = (candidates as List)
+          .map((r) => r['id']?.toString())
+          .whereType<String>()
+          .toList();
+
+      if (orderIds.isEmpty) return 0;
+
+      // Clean up child loads first to guarantee no foreign key constraint failures
+      await _client.from('order_loads').delete().inFilter('order_id', orderIds);
+
+      // Delete candidate orders
+      final res = await _client
+          .from('orders')
+          .delete()
+          .inFilter('id', orderIds)
+          .select('id');
+
+      final count = (res as List).length;
+      if (count > 0) {
+        print('🗑️ Purged $count rejected orders older than $days days');
+      }
+      return count;
+    } catch (e) {
+      print('⚠️ Could not purge old rejected orders: $e');
       return 0;
     }
   }

@@ -7,6 +7,7 @@ import '../models/dispatch_job.dart';
 import '../utils/app_error.dart';
 import '../config/cache_config.dart';
 import 'cache/job_cache_service.dart';
+import 'data_change_monitor.dart';
 import 'supabase_service.dart';
 import 'dispatch_job_adapter.dart';
 import 'photo_file_service.dart';
@@ -19,6 +20,20 @@ class JobClaimedException implements Exception {
 
   @override
   String toString() => message;
+}
+
+class RiderJobOverview {
+  const RiderJobOverview({
+    required this.activePickupJobs,
+    required this.activeDeliveryJobs,
+    required this.completedPickupJobs,
+    required this.completedDeliveryJobs,
+  });
+
+  final List<DispatchJob> activePickupJobs;
+  final List<DispatchJob> activeDeliveryJobs;
+  final List<DispatchJob> completedPickupJobs;
+  final List<DispatchJob> completedDeliveryJobs;
 }
 
 /// Pure decision points extracted from [RiderService.startJob] so the
@@ -104,6 +119,83 @@ class RiderService {
   final DispatchJobAdapter _adapter = DispatchJobAdapter();
 
   static const String _arrivalProofBucket = 'dispatch-proofs';
+  static RiderJobOverview? _jobOverviewCache;
+  static String? _jobOverviewUserId;
+  static String? _jobOverviewDateKey;
+  static int? _jobOverviewVersion;
+  static Future<RiderJobOverview>? _jobOverviewRequest;
+  static String? _jobOverviewRequestUserId;
+  static String? _jobOverviewRequestDateKey;
+  static int? _jobOverviewRequestVersion;
+
+  /// Shares the four job lists used by Rider Home, Route, and Chats.
+  /// Realtime changes advance the version and invalidate this snapshot.
+  Future<RiderJobOverview> fetchRiderJobOverview({bool force = false}) async {
+    DataChangeMonitor.instance.start();
+    final userId = _client.auth.currentUser?.id;
+    final version = DataChangeMonitor.instance.operationalDataVersion.value;
+    final now = DateTime.now();
+    final dateKey = '${now.year}-${now.month}-${now.day}';
+
+    if (!force &&
+        _jobOverviewCache != null &&
+        _jobOverviewUserId == userId &&
+        _jobOverviewDateKey == dateKey &&
+        _jobOverviewVersion == version) {
+      return _jobOverviewCache!;
+    }
+
+    final activeRequest = _jobOverviewRequest;
+    if (activeRequest != null &&
+        _jobOverviewRequestUserId == userId &&
+        _jobOverviewRequestDateKey == dateKey &&
+        _jobOverviewRequestVersion == version) {
+      return activeRequest;
+    }
+
+    final request = _fetchRiderJobOverview();
+    _jobOverviewRequest = request;
+    _jobOverviewRequestUserId = userId;
+    _jobOverviewRequestDateKey = dateKey;
+    _jobOverviewRequestVersion = version;
+    try {
+      final result = await request;
+      if (DataChangeMonitor.instance.operationalDataVersion.value == version) {
+        _jobOverviewCache = result;
+        _jobOverviewUserId = userId;
+        _jobOverviewDateKey = dateKey;
+        _jobOverviewVersion = version;
+      }
+      return result;
+    } finally {
+      if (identical(_jobOverviewRequest, request)) {
+        _jobOverviewRequest = null;
+        _jobOverviewRequestUserId = null;
+        _jobOverviewRequestDateKey = null;
+        _jobOverviewRequestVersion = null;
+      }
+    }
+  }
+
+  Future<RiderJobOverview> _fetchRiderJobOverview() async {
+    final results = await Future.wait([
+      fetchActivePickupJobs(),
+      fetchActiveDeliveryJobs(),
+      fetchCompletedPickupJobs(),
+      fetchCompletedDeliveryJobs(),
+    ]);
+    return RiderJobOverview(
+      activePickupJobs: results[0] as List<DispatchJob>,
+      activeDeliveryJobs: results[1] as List<DispatchJob>,
+      completedPickupJobs: results[2] as List<DispatchJob>,
+      completedDeliveryJobs: results[3] as List<DispatchJob>,
+    );
+  }
+
+  Future<List<LaundryOrder>> adaptDispatchJobsToOrders(
+    List<DispatchJob> jobs,
+  ) =>
+      _adapter.toLaundryOrders(jobs);
 
   /// Saves an arrival photo in private storage and links its object path to
   /// the existing dispatch_jobs.proof_url field.
@@ -346,6 +438,7 @@ class RiderService {
         final order = LaundryOrder(
           id: orderData['id'] as String,
           orderNumber: orderData['order_number'] as String?,
+          customerId: orderData['customer_id'] as String?,
           customerName: customerName,
           customerPhone: customerPhone,
           deliveryAddress: finalDeliveryAddress ?? finalPickupAddress, // Use either address
@@ -957,6 +1050,7 @@ class RiderService {
       final rawJobs = (response as List)
           .map((json) => DispatchJob.fromJson(Map<String, dynamic>.from(json as Map)))
           .toList();
+
       final jobs = await _enrichJobsWithCoordinates(rawJobs);
 
       print('✅ Fetched ${jobs.length} completed pickup jobs for rider $myEmployeeId (today)');
@@ -1034,6 +1128,7 @@ class RiderService {
     final jobs = await fetchCompletedDeliveryJobs(limit: limit);
     return await _adapter.toLaundryOrders(jobs);
   }
+
 
   /// Clear adapter cache (useful when refreshing data)
   void clearAdapterCache() {

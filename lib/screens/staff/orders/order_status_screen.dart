@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
+import '../../../utils/phone_helper.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
 import '../../../services/firebase_chat_service.dart';
@@ -316,7 +317,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 26),
             SizedBox(width: 8),
-            Text('Complete Pickup Manually?'),
+            Expanded(child: Text('Complete Pickup Manually?', style: TextStyle(fontSize: 18))),
           ],
         ),
         content: Column(
@@ -412,7 +413,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.purple, size: 26),
             SizedBox(width: 8),
-            Text('Complete Delivery Manually?'),
+            Expanded(child: Text('Complete Delivery Manually?', style: TextStyle(fontSize: 18))),
           ],
         ),
         content: Column(
@@ -824,18 +825,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
               if (phone != null && phone.isNotEmpty)
                 IconButton(
-                  icon: const Icon(Icons.copy, size: 18, color: AppTheme.accentBlue),
-                  tooltip: 'Copy Phone',
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: phone));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Phone number copied ✓'),
-                        duration: Duration(seconds: 1),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
+                  icon: const Icon(Icons.phone_outlined, size: 20, color: AppTheme.accentBlue),
+                  tooltip: 'Call Customer',
+                  onPressed: () => PhoneHelper.openDialer(
+                    context,
+                    phone: phone,
+                    contactName: _currentOrder.customerName,
+                  ),
                 ),
             ],
           ),

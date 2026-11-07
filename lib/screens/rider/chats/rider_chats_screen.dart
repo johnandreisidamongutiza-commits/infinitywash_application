@@ -6,12 +6,14 @@ import '../../../models/dispatch_job.dart';
 import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/rider_service.dart';
+import '../../../services/data_change_monitor.dart';
 import '../../../services/supabase_service.dart';
 import '../../../services/order_number_resolver.dart';
 import 'rider_chat_detail_screen.dart';
 
 /// Internal model representing an active rider chat entry.
-/// Can be either the persistent Shop Staff line or an active assigned job (Pickup / Delivery).
+/// Can be either the persistent Shop Staff line, an active assigned job (Pickup / Delivery),
+/// or a job completed earlier today.
 class _RiderChatItem {
   final bool isDispatch;
   final ChatConversation? conversation;
@@ -28,7 +30,7 @@ class _RiderChatItem {
             conversation?.getUnreadCount(currentRiderId, 'rider') ?? 0,
         sortTime = conversation?.lastTimestamp ?? DateTime.now();
 
-  _RiderChatItem.activeJob({
+  _RiderChatItem.job({
     required this.job,
     required this.conversation,
     required String currentRiderId,
@@ -38,12 +40,23 @@ class _RiderChatItem {
         sortTime =
             conversation?.lastTimestamp ?? job?.createdAt ?? DateTime.now();
 
+  _RiderChatItem.conversationOnly({
+    required this.conversation,
+    required String currentRiderId,
+  })  : isDispatch = false,
+        job = null,
+        unreadCount =
+            conversation?.getUnreadCount(currentRiderId, 'rider') ?? 0,
+        sortTime = conversation?.lastTimestamp ?? DateTime.now();
+
   String get displayName {
     if (isDispatch) return 'InfinityWash Staff';
     return job?.customerName ??
         conversation?.getOtherParticipantName('', 'rider') ??
         'Customer';
   }
+
+  String? get orderId => job?.orderId ?? conversation?.orderId;
 
   String? get displayPhone =>
       conversation?.getOtherParticipantPhone('', 'rider');
@@ -60,23 +73,35 @@ class _RiderChatItem {
   }
 
   String? get taskType {
-    if (job?.jobType == 'pickup') return 'PICKUP';
-    if (job?.jobType == 'delivery') return 'DELIVERY';
+    if (job?.jobType == 'pickup') {
+      if (job?.status == 'pickup_done') return 'PICKUP DONE';
+      return 'PICKUP';
+    }
+    if (job?.jobType == 'delivery') {
+      if (job?.status == 'delivery_done') return 'DELIVERY DONE';
+      return 'DELIVERY';
+    }
     return null;
   }
 
-  Color get taskColor => job?.jobType == 'pickup'
-      ? AppTheme.errorRed
-      : AppTheme.teamMemberIconOrange;
+  Color get taskColor {
+    final t = taskType;
+    if (t == 'PICKUP') return AppTheme.errorRed;
+    if (t == 'DELIVERY') return AppTheme.teamMemberIconOrange;
+    if (t == 'PICKUP DONE' || t == 'DELIVERY DONE') return Colors.green;
+    return AppTheme.accentBlue;
+  }
 
   String? get address => job?.address;
   String? get landmark => job?.landmark;
 
   String get lastMessageText {
-    if (conversation != null && conversation!.lastMessage.isNotEmpty) {
-      return conversation!.lastMessage;
+    if (conversation != null && conversation!.displayLastMessage.isNotEmpty) {
+      return conversation!.displayLastMessage;
     }
     if (isDispatch) return 'Tap to contact shop staff';
+    if (job?.status == 'pickup_done') return 'Pickup completed today';
+    if (job?.status == 'delivery_done') return 'Delivery completed today';
     return 'Tap to send a message...';
   }
 
@@ -84,7 +109,9 @@ class _RiderChatItem {
 }
 
 class RiderChatsScreen extends StatefulWidget {
-  const RiderChatsScreen({super.key});
+  final bool isActive;
+
+  const RiderChatsScreen({super.key, this.isActive = true});
 
   @override
   State<RiderChatsScreen> createState() => _RiderChatsScreenState();
@@ -105,17 +132,39 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
   // Filter tabs: 0: All (Active + Shop Staff), 1: Pickups, 2: Deliveries, 3: Shop Staff
   int _selectedFilterIndex = 0;
 
-  // Active jobs for today (strictly active pickup / delivery jobs assigned to this rider)
+  // Active jobs & completed jobs for today
   List<DispatchJob> _activeJobs = [];
   Map<String, DispatchJob> _activeJobsByOrderId = {};
+  Map<String, DispatchJob> _completedJobsByOrderId = {};
   bool _isLoadingJobs = false;
+  bool _jobsDirty = false;
+  bool _hasLoadedJobs = false;
 
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.operationalDataVersion
+        .addListener(_onDispatchJobsChanged);
     OrderNumberResolver.changeNotifier.addListener(_onOrderResolved);
-    _loadProfileAndEnsureDispatchChat();
-    _loadActiveJobs();
+    if (widget.isActive) {
+      _loadProfileAndEnsureDispatchChat();
+      _loadActiveJobs();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant RiderChatsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      if (!_isProfileLoaded) _loadProfileAndEnsureDispatchChat();
+      if (!_hasLoadedJobs || _jobsDirty) _loadActiveJobs();
+    }
+  }
+
+  void _onDispatchJobsChanged() {
+    _jobsDirty = true;
+    if (widget.isActive) _loadActiveJobs();
   }
 
   Future<void> _loadProfileAndEnsureDispatchChat() async {
@@ -153,23 +202,36 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
 
   Future<void> _loadActiveJobs() async {
     if (_isLoadingJobs) return;
+    _jobsDirty = false;
     setState(() => _isLoadingJobs = true);
     try {
-      final pickups = await _riderService.fetchActivePickupJobs();
-      final deliveries = await _riderService.fetchActiveDeliveryJobs();
-      final all = [...pickups, ...deliveries];
+      final overview = await _riderService.fetchRiderJobOverview();
+      final pickups = overview.activePickupJobs;
+      final deliveries = overview.activeDeliveryJobs;
+      final completedPickups = overview.completedPickupJobs;
+      final completedDeliveries = overview.completedDeliveryJobs;
+      final allActive = [...pickups, ...deliveries];
+      final allCompletedToday = [...completedPickups, ...completedDeliveries];
 
       if (mounted) {
         setState(() {
-          _activeJobs = all;
-          _activeJobsByOrderId = {for (final j in all) j.orderId: j};
+          _activeJobs = allActive;
+          _activeJobsByOrderId = {for (final j in allActive) j.orderId: j};
+          _completedJobsByOrderId = {for (final j in allCompletedToday) j.orderId: j};
           _isLoadingJobs = false;
+          _hasLoadedJobs = true;
         });
       }
     } catch (e) {
       debugPrint('Error loading active jobs in rider chats: $e');
-      if (mounted) setState(() => _isLoadingJobs = false);
+      if (mounted) {
+        setState(() {
+          _isLoadingJobs = false;
+          _hasLoadedJobs = false;
+        });
+      }
     }
+    if (_jobsDirty && widget.isActive) _loadActiveJobs();
   }
 
   void _onOrderResolved() {
@@ -179,26 +241,35 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
   @override
   void dispose() {
     OrderNumberResolver.changeNotifier.removeListener(_onOrderResolved);
+    DataChangeMonitor.instance.operationalDataVersion
+        .removeListener(_onDispatchJobsChanged);
     _searchController.dispose();
     super.dispose();
   }
 
-  void _openActiveJobChat(DispatchJob job, {ChatConversation? existingConversation}) async {
+  void _openActiveJobChat(
+    DispatchJob job, {
+    ChatConversation? existingConversation,
+  }) async {
     // Resolve customer phone / ID if missing
     String? phone = existingConversation?.getOtherParticipantPhone(_currentRiderId, 'rider');
     String? custId;
+    String? address = job.address;
+    String? landmark = job.landmark;
 
     if (phone == null || phone.isEmpty) {
       try {
         final orderRes = await SupabaseService.client
             .from('orders')
-            .select('customer_id, customers(phone)')
+            .select('customer_id, customers(phone, address, landmark)')
             .eq('id', job.orderId)
             .maybeSingle();
         if (orderRes != null) {
           custId = orderRes['customer_id']?.toString();
           final cust = orderRes['customers'] as Map<String, dynamic>?;
           phone = cust?['phone']?.toString();
+          address = address ?? cust?['address']?.toString();
+          landmark = landmark ?? cust?['landmark']?.toString();
         }
       } catch (_) {}
     }
@@ -215,8 +286,8 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
           orderId: job.orderId,
           phoneNumber: phone,
           jobType: job.jobType,
-          address: job.address,
-          landmark: job.landmark,
+          address: address,
+          landmark: landmark,
           isDispatchChat: false,
         ),
       ),
@@ -246,6 +317,21 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
       ).then((_) => _loadActiveJobs());
     } else if (item.job != null) {
       _openActiveJobChat(item.job!, existingConversation: item.conversation);
+    } else if (item.conversation != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RiderChatDetailScreen(
+            conversation: item.conversation,
+            customerName: item.displayName,
+            customerId: '',
+            orderId: item.orderId ?? '',
+            phoneNumber: item.displayPhone,
+            jobType: 'delivery',
+            isDispatchChat: false,
+          ),
+        ),
+      ).then((_) => _loadActiveJobs());
     }
   }
 
@@ -280,26 +366,57 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
             : null;
 
         // 2. Active Customer Conversations:
-        // STRICT FILTER: Only match conversations whose orderId is in _activeJobsByOrderId.
-        // Past / completed deliveries are completely excluded!
+        // Match conversations whose order is either an active job OR a completed job from today
         final activeConvByOrderId = <String, ChatConversation>{};
         for (final c in conversations) {
-          if (c.chatType == ChatType.customerRider &&
-              c.orderId != null &&
-              _activeJobsByOrderId.containsKey(c.orderId)) {
-            activeConvByOrderId[c.orderId!] = c;
+          if (c.chatType == ChatType.customerRider && c.orderId != null) {
+            final hasActiveJob = _activeJobsByOrderId.containsKey(c.orderId);
+            final hasCompletedJob = _completedJobsByOrderId.containsKey(c.orderId);
+            if (hasActiveJob || hasCompletedJob) {
+              activeConvByOrderId[c.orderId!] = c;
+            }
           }
         }
 
-        // 3. Create active items for all currently assigned jobs (with or without messages yet)
+        // 3. Create items for active jobs and today's completed jobs with conversations
         final List<_RiderChatItem> activeJobItems = [];
+        final Set<String> processedOrderIds = {};
+
+        // 3a. Active pending / in_progress dispatch jobs (always shown on route)
         for (final job in _activeJobs) {
           final conv = activeConvByOrderId[job.orderId];
-          activeJobItems.add(_RiderChatItem.activeJob(
+          activeJobItems.add(_RiderChatItem.job(
             job: job,
             conversation: conv,
             currentRiderId: _currentRiderId,
           ));
+          processedOrderIds.add(job.orderId);
+        }
+
+        // 3b. Today's completed jobs (shown if there is a conversation from today)
+        for (final entry in _completedJobsByOrderId.entries) {
+          final orderId = entry.key;
+          if (processedOrderIds.contains(orderId)) continue;
+          final conv = activeConvByOrderId[orderId];
+          if (conv != null) {
+            activeJobItems.add(_RiderChatItem.job(
+              job: entry.value,
+              conversation: conv,
+              currentRiderId: _currentRiderId,
+            ));
+            processedOrderIds.add(orderId);
+          }
+        }
+
+        // 3c. Any conversation whose order is still in activeConvByOrderId
+        for (final conv in activeConvByOrderId.values) {
+          if (conv.orderId != null && !processedOrderIds.contains(conv.orderId)) {
+            activeJobItems.add(_RiderChatItem.conversationOnly(
+              conversation: conv,
+              currentRiderId: _currentRiderId,
+            ));
+            processedOrderIds.add(conv.orderId!);
+          }
         }
 
         // Sort active jobs: unread messages first, then most recent activity
@@ -309,28 +426,25 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
           return b.sortTime.compareTo(a.sortTime);
         });
 
-        final pickupCount =
-            activeJobItems.where((i) => i.job?.jobType == 'pickup').length;
-        final deliveryCount =
-            activeJobItems.where((i) => i.job?.jobType == 'delivery').length;
+        bool isPickupItem(_RiderChatItem item) => item.job?.jobType == 'pickup';
+        bool isDeliveryItem(_RiderChatItem item) => item.job?.jobType == 'delivery';
+
+        final pickupCount = activeJobItems.where(isPickupItem).length;
+        final deliveryCount = activeJobItems.where(isDeliveryItem).length;
 
         // 4. Apply Tab Filter
         List<_RiderChatItem> displayItems;
         if (_selectedFilterIndex == 1) {
-          // Pickups only
-          displayItems = activeJobItems
-              .where((i) => i.job?.jobType == 'pickup')
-              .toList();
+          // Pickups
+          displayItems = activeJobItems.where(isPickupItem).toList();
         } else if (_selectedFilterIndex == 2) {
-          // Deliveries only
-          displayItems = activeJobItems
-              .where((i) => i.job?.jobType == 'delivery')
-              .toList();
+          // Deliveries
+          displayItems = activeJobItems.where(isDeliveryItem).toList();
         } else if (_selectedFilterIndex == 3) {
           // Shop Staff only
           displayItems = dispatchItem != null ? [dispatchItem] : [];
         } else {
-          // All: Pinned Shop Staff first, followed by active route jobs
+          // All: Pinned Shop Staff first, followed by active route jobs & completed jobs from today
           displayItems = [
             ?dispatchItem,
             ...activeJobItems,
@@ -445,22 +559,22 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
     required int dispatchUnread,
   }) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _buildFilterChip('All', 0, count: totalCount),
-            const SizedBox(width: 8),
-            _buildFilterChip('Pickups', 1, count: pickupCount),
-            const SizedBox(width: 8),
-            _buildFilterChip('Deliveries', 2, count: deliveryCount),
-            const SizedBox(width: 8),
-            _buildFilterChip('Shop Staff', 3,
-                count: dispatchUnread > 0 ? dispatchUnread : null,
-                isUnreadBadge: dispatchUnread > 0),
-          ],
-        ),
+      margin: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+      child: Row(
+        children: [
+          _buildFilterChip('All', 0, count: totalCount),
+          const SizedBox(width: 6),
+          _buildFilterChip('Pickups', 1, count: pickupCount),
+          const SizedBox(width: 6),
+          _buildFilterChip('Deliveries', 2, count: deliveryCount),
+          const SizedBox(width: 6),
+          _buildFilterChip(
+            'Shop Staff',
+            3,
+            count: dispatchUnread > 0 ? dispatchUnread : null,
+            isUnreadBadge: dispatchUnread > 0,
+          ),
+        ],
       ),
     );
   }
@@ -473,58 +587,65 @@ class _RiderChatsScreenState extends State<RiderChatsScreen> {
   }) {
     final isSelected = _selectedFilterIndex == index;
 
-    return GestureDetector(
-      onTap: () => setState(() => _selectedFilterIndex = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.accentBlue : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected
-                ? AppTheme.accentBlue
-                : AppTheme.borderGray.withValues(alpha: 0.6),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? Colors.white : AppTheme.textDark,
-              ),
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedFilterIndex = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primaryBlue : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.primaryBlue
+                  : AppTheme.borderGray.withValues(alpha: 0.4),
             ),
-            if (count != null && count > 0) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: isUnreadBadge
-                      ? AppTheme.errorRed
-                      : isSelected
-                          ? Colors.white.withValues(alpha: 0.25)
-                          : AppTheme.softGray,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$count',
+          ),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(width: 4),
+                Text(
+                  label,
                   style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: isUnreadBadge
-                        ? Colors.white
-                        : isSelected
-                            ? Colors.white
-                            : AppTheme.textDark,
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    color: isSelected ? Colors.white : AppTheme.textDark,
                   ),
                 ),
-              ),
-            ],
-          ],
+                if (count != null && count > 0) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: isUnreadBadge
+                          ? AppTheme.errorRed
+                          : isSelected
+                              ? Colors.white.withValues(alpha: 0.25)
+                              : AppTheme.softGray,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: isUnreadBadge
+                            ? Colors.white
+                            : isSelected
+                                ? Colors.white
+                                : AppTheme.textDark,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 4),
+              ],
+            ),
+          ),
         ),
       ),
     );

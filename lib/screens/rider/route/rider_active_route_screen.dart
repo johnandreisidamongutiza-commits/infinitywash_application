@@ -21,6 +21,7 @@ import '../../../state/rider_location_provider.dart';
 import '../../../utils/screen_wake_helper.dart';
 import '../../../widgets/in_app_camera_screen.dart';
 import '../../../services/photo_file_service.dart';
+import '../../../utils/phone_helper.dart';
 
 enum _ArrivalPhotoReviewAction { retake, usePhoto }
 
@@ -1441,29 +1442,18 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                   phone,
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
-                subtitle: const Text('Tap to copy phone number', style: TextStyle(fontSize: 12)),
+                subtitle: const Text('Tap to call (opens dialer & copies)', style: TextStyle(fontSize: 12)),
                 trailing: IconButton(
-                  icon: const Icon(Icons.copy_rounded, color: AppTheme.accentBlue),
+                  icon: const Icon(Icons.phone, color: AppTheme.accentBlue),
+                  tooltip: 'Call $name',
                   onPressed: () {
-                    Clipboard.setData(ClipboardData(text: phone));
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Copied $phone to clipboard'),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
+                    PhoneHelper.openDialer(context, phone: phone, contactName: name);
                   },
                 ),
                 onTap: () {
-                  Clipboard.setData(ClipboardData(text: phone));
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Copied $phone to clipboard'),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
+                  PhoneHelper.openDialer(context, phone: phone, contactName: name);
                 },
               ),
               const SizedBox(height: 12),

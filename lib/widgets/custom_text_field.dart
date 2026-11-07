@@ -36,6 +36,10 @@ class CustomTextField extends StatefulWidget {
   /// Whether the field participates in form validation/submit focus order.
   final bool enabled;
 
+  /// Whether to display the character counter. Defaults to false for password
+  /// fields, true for non-password fields with [maxLength].
+  final bool? showCounter;
+
   const CustomTextField({
     super.key,
     required this.label,
@@ -53,6 +57,7 @@ class CustomTextField extends StatefulWidget {
     this.textInputAction,
     this.onSubmitted,
     this.enabled = true,
+    this.showCounter,
   });
 
   @override
@@ -92,26 +97,28 @@ class _CustomTextFieldState extends State<CustomTextField> {
           textInputAction: widget.textInputAction,
           onFieldSubmitted: widget.onSubmitted,
           enabled: widget.enabled,
-          buildCounter: widget.maxLength == null
-              ? null
-              : (context,
-                  {required currentLength,
-                  required isFocused,
-                  required maxLength}) {
-                  // Quiet character counter; red when the cap is reached.
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 4, bottom: 4),
-                    child: Text(
-                      '$currentLength/$maxLength',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: currentLength >= (maxLength ?? 0)
-                            ? AppTheme.errorRed
-                            : AppTheme.textLight,
-                      ),
-                    ),
-                  );
-                },
+          buildCounter: (context,
+              {required currentLength,
+              required isFocused,
+              required maxLength}) {
+            final shouldShow = widget.showCounter ?? !widget.isPassword;
+            if (widget.maxLength == null || !shouldShow) {
+              return null;
+            }
+            // Quiet character counter; red when the cap is reached.
+            return Padding(
+              padding: const EdgeInsets.only(right: 4, bottom: 4),
+              child: Text(
+                '$currentLength/$maxLength',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: currentLength >= (maxLength ?? 0)
+                      ? AppTheme.errorRed
+                      : AppTheme.textLight,
+                ),
+              ),
+            );
+          },
           decoration: InputDecoration(
             hintText: widget.hint,
             hintStyle: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
@@ -130,6 +137,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
             filled: true,
             fillColor: Colors.white,
             contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            errorMaxLines: 3,
             errorStyle: const TextStyle(fontSize: 12),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),

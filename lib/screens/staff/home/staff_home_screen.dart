@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
@@ -11,13 +10,17 @@ import '../notifications/staff_notifications_screen.dart';
 import '../../../services/order_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../widgets/home_header.dart';
+import '../../../widgets/skeleton_loading.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/profile_local_db.dart';
 import '../../../services/supabase_service.dart';
+import '../../../services/data_change_monitor.dart';
 import '../profile/options/account_details_screen.dart';
 
 class StaffHomeScreen extends StatefulWidget {
-  const StaffHomeScreen({super.key});
+  final bool isActive;
+
+  const StaffHomeScreen({super.key, this.isActive = true});
 
   @override
   State<StaffHomeScreen> createState() => _StaffHomeScreenState();
@@ -32,17 +35,19 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   int _unreadNotificationCount = 0;
   String? _avatarUrl;
   String? _localAvatarPath;
-  bool _isLoading = true;
+  bool _isLoading = false;
+  bool _ordersDirty = false;
+  bool _hasLoadedOrders = false;
   String? _error;
-  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
     _loadUserProfile();
-    _loadOrders();
+    if (widget.isActive) _loadOrders();
     _loadUnreadCount();
-    _startAutoRefresh();
     // One-time backlog cleanup: purge laundry photos from completed/cancelled orders to reclaim storage
     _orderService.purgeCompletedOrdersPhotos();
   }
@@ -73,22 +78,22 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
 
   @override
   void dispose() {
-    _autoRefreshTimer?.cancel();
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
     super.dispose();
   }
 
-  /// Start auto-refresh timer (45 seconds for staff dashboard)
-  void _startAutoRefresh() {
-    _autoRefreshTimer = Timer.periodic(
-      const Duration(seconds: 45),
-      (timer) {
-        if (mounted && !_isLoading) {
-          _loadOrders();
-          _loadUnreadCount();
-        }
-      },
-    );
-    print('✅ Started staff auto-refresh timer (45s interval)');
+  @override
+  void didUpdateWidget(covariant StaffHomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive &&
+        (!_hasLoadedOrders || _ordersDirty)) {
+      _loadOrders(force: !_hasLoadedOrders);
+    }
+  }
+
+  void _onOrdersChanged() {
+    _ordersDirty = true;
+    if (widget.isActive) _loadOrders(force: false);
   }
 
   Future<void> _loadUnreadCount() async {
@@ -98,11 +103,18 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
     }
   }
 
-  Future<void> _loadOrders() async {
+  Future<void> _loadOrders({bool force = true}) async {
+    if (!force && !_ordersDirty && _hasLoadedOrders) return;
+    if (_isLoading) {
+      _ordersDirty = true;
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _error = null;
     });
+    _ordersDirty = false;
 
     try {
       final results = await Future.wait([
@@ -118,6 +130,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
         _queueCounts = results[0] as TodayQueueCounts;
         _processingOrdersList = results[1] as List<LaundryOrder>;
         _isLoading = false;
+        _hasLoadedOrders = true;
       });
 
       print('✅ Loaded accurate queue counts: '
@@ -130,10 +143,13 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
       setState(() {
         _error = mapErrorToMessage(e);
         _isLoading = false;
+        _hasLoadedOrders = false;
       });
 
       print('❌ Error loading staff home data: $e');
     }
+
+    if (_ordersDirty && widget.isActive) _loadOrders(force: false);
   }
 
   List<LaundryOrder> get _processingOrders => _processingOrdersList;
@@ -171,7 +187,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   Widget _buildHeader(BuildContext context) {
     return HomeHeader(
       title: 'Hi, Staff!',
-      subtitle: 'Let\'s keep things moving today. ✨',
+      subtitle: 'Let\'s keep things moving today.',
       avatarUrl: _avatarUrl,
       localAvatarPath: _localAvatarPath,
       unreadCount: _unreadNotificationCount,
@@ -211,21 +227,21 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppTheme.accentBlue.withValues(alpha: 0.1),
+          color: AppTheme.primaryBlue.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
+          border: Border.all(color: AppTheme.primaryBlue.withValues(alpha: 0.2)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.online_prediction, color: AppTheme.accentBlue),
+            const Icon(Icons.online_prediction, color: AppTheme.primaryBlue),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 'You have $pendingCount new service requests!',
-                style: const TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold),
+                style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.accentBlue),
+            const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.primaryBlue),
           ],
         ),
       ),
@@ -242,8 +258,33 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: AppStyles.cardDecoration,
-        child: const Center(
-          child: CircularProgressIndicator(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Today\'s Queue', style: AppTheme.lightTheme.textTheme.titleMedium),
+            const SizedBox(height: 20),
+            SkeletonShimmer(
+              child: Row(
+                children: List.generate(
+                  4,
+                  (index) => Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(right: index == 3 ? 0 : 8),
+                      child: Column(
+                        children: const [
+                          SkeletonBlock(width: 45, height: 45, borderRadius: 24),
+                          SizedBox(height: 8),
+                          SkeletonBlock(width: 30, height: 18),
+                          SizedBox(height: 7),
+                          SkeletonBlock(width: 52, height: 11),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -286,27 +327,6 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Today\'s Queue', style: AppTheme.lightTheme.textTheme.titleMedium),
-              InkWell(
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const OrdersScreen()),
-                  );
-                  if (mounted) _loadOrders();
-                },
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  child: Text(
-                    'View All',
-                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.accentBlue,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 20),
@@ -320,7 +340,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                   'Requests',
                   Icons.online_prediction,
                   AppTheme.lightBlue,
-                  AppTheme.accentBlue,
+                  AppTheme.primaryBlue,
                   onTap: () async {
                     await Navigator.push(
                       context,
@@ -454,7 +474,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                 context,
                 'New Walk-in\nOrder',
                 Icons.add_shopping_cart_outlined,
-                AppTheme.accentBlue,
+                AppTheme.primaryBlue,
                 AppTheme.lightBlue,
                 () async {
                   print('🔵 HOME: Opening create order flow...');
@@ -480,22 +500,6 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const RfidCheckerScreen()),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _buildQuickActionCard(
-                context,
-                'View All\nOrders',
-                Icons.assignment_outlined,
-                AppTheme.teamMemberIconOrange,
-                AppTheme.teamMemberOrange,
-                () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const OrdersScreen()),
                   );
                 },
               ),
@@ -562,15 +566,6 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            TextButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const OrdersScreen()),
-                );
-              },
-              child: const Text('See All', style: TextStyle(color: AppTheme.accentBlue)),
-            ),
           ],
         ),
         const SizedBox(height: 10),
@@ -584,7 +579,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                 Icon(Icons.local_laundry_service_outlined, size: 48, color: AppTheme.textLight.withValues(alpha: 0.3)),
                 const SizedBox(height: 12),
                 Text(
-                  'No laundry in the machines right now 🧺',
+                  'No laundry in the machines right now',
                   textAlign: TextAlign.center,
                   style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                     color: AppTheme.textLight.withValues(alpha: 0.6),
@@ -668,7 +663,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                             order.displayNumber,
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.accentBlue,
+                              color: AppTheme.primaryBlue,
                               fontSize: 13,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -723,13 +718,13 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.nfc_outlined, size: 14, color: AppTheme.accentBlue.withValues(alpha: 0.7)),
+                              Icon(Icons.nfc_outlined, size: 14, color: AppTheme.primaryBlue.withValues(alpha: 0.7)),
                               const SizedBox(width: 4),
                               Text(
                                 order.rfidTag!,
                                 style: const TextStyle(
                                   fontSize: 12,
-                                  color: AppTheme.accentBlue,
+                                  color: AppTheme.primaryBlue,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),

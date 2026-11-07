@@ -12,6 +12,7 @@ import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'utils/app_error.dart';
 import 'services/connectivity_service.dart';
+import 'services/lifecycle_service.dart';
 import 'services/auth_service.dart';
 import 'services/push_notification_service.dart';
 import 'widgets/offline_banner.dart';
@@ -98,6 +99,20 @@ void _showErrorDialogOnce(BuildContext context, String message) {
 }
 
 Future<void> _bootstrap() async {
+  // These startup tasks do not depend on one another. Run them together so
+  // the first Flutter frame is not held back by a serial initialization chain.
+  await Future.wait<void>([
+    _initializeLocalCaches(),
+    _initializeConnectivity(),
+    _initializeLifecycle(),
+    _initializeSupabase(),
+    _initializeFirebase(),
+  ]);
+
+  runApp(const InfinityWashApp());
+}
+
+Future<void> _initializeLocalCaches() async {
   // Initialize Hive for local caching
   try {
     await Hive.initFlutter();
@@ -119,7 +134,9 @@ Future<void> _bootstrap() async {
     // ignore: avoid_print
     print('❌ Cache services initialization error: $e');
   }
+}
 
+Future<void> _initializeConnectivity() async {
   // Initialize connectivity watcher (offline banner + fail-fast actions).
   try {
     await ConnectivityService.instance.initialize();
@@ -129,8 +146,22 @@ Future<void> _bootstrap() async {
     // ignore: avoid_print
     print('⚠️ Connectivity init error (app continues): $e');
   }
+}
 
-  // Initialize Supabase first (required for auth)
+Future<void> _initializeLifecycle() async {
+  // Initialize Android app lifecycle service (handles background/foreground transitions).
+  try {
+    LifecycleService.instance.initialize();
+    // ignore: avoid_print
+    print('✅ App lifecycle service initialized');
+  } catch (e) {
+    // ignore: avoid_print
+    print('⚠️ Lifecycle service init error: $e');
+  }
+}
+
+Future<void> _initializeSupabase() async {
+  // Initialize Supabase before the app starts routing auth state.
   try {
     await Supabase.initialize(
       url: SupabaseConfig.supabaseUrl,
@@ -143,7 +174,9 @@ Future<void> _bootstrap() async {
     // ignore: avoid_print
     print('❌ Supabase initialization error: $e');
   }
+}
 
+Future<void> _initializeFirebase() async {
   // Initialize Firebase (for notifications)
   // If this fails, the app will still work but notifications will be empty
   try {
@@ -163,8 +196,6 @@ Future<void> _bootstrap() async {
     // ignore: avoid_print
     print('⚠️ App will run but notifications will not work');
   }
-
-  runApp(const InfinityWashApp());
 }
 
 class InfinityWashApp extends StatelessWidget {
@@ -179,7 +210,7 @@ class InfinityWashApp extends StatelessWidget {
       // Used by push notifications to show banners / deep-link from taps,
       // and by the global offline banner.
       navigatorKey: infinityWashNavigatorKey,
-      // Start with splash screen for auto-login check
+      // Start with the lightweight auth routing gate.
       home: const SplashScreen(),
       builder: (context, child) {
         // Global offline banner above every screen.

@@ -38,7 +38,7 @@ class RoleCard extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: const BoxDecoration(
-                    color: AppTheme.accentBlue,
+                    color: AppTheme.primaryBlue,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(

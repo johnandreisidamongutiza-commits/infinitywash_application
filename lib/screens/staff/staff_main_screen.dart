@@ -16,10 +16,6 @@ class StaffMainScreen extends StatefulWidget {
 
 class _StaffMainScreenState extends State<StaffMainScreen> {
   int _currentIndex = 0;
-  int _previousIndex = 0;
-  
-  // Key to access OrdersScreen state
-  final GlobalKey<OrdersScreenState> _ordersScreenKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
@@ -40,10 +36,10 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          const StaffHomeScreen(),
-          OrdersScreen(key: _ordersScreenKey),
+          StaffHomeScreen(isActive: _currentIndex == 0),
+          OrdersScreen(isActive: _currentIndex == 1),
           const StaffChatsScreen(),
-          const PaymentScreen(),
+          PaymentScreen(isActive: _currentIndex == 3),
           const StaffProfileScreen(),
         ],
       ),
@@ -61,27 +57,12 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
           currentIndex: _currentIndex,
           onTap: (index) {
             setState(() {
-              _previousIndex = _currentIndex;
               _currentIndex = index;
             });
-            
-            // If navigating TO Orders screen (index 1) FROM another screen
-            if (index == 1 && _previousIndex != 1) {
-              print('🔵 STAFF MAIN: Switched to Orders tab (from tab $_previousIndex)');
-              print('🔵 STAFF MAIN: OrdersScreen key is mounted: ${_ordersScreenKey.currentState?.mounted}');
-              if (_ordersScreenKey.currentState != null) {
-                print('🔵 STAFF MAIN: OrdersScreen state exists, calling refreshCurrentTab()');
-                _ordersScreenKey.currentState!.refreshCurrentTab();
-              } else {
-                print('❌ STAFF MAIN: OrdersScreen state is NULL! Cannot refresh.');
-              }
-            } else {
-              print('🔵 STAFF MAIN: Switched to tab $index (from $_previousIndex), no action needed');
-            }
           },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
-          selectedItemColor: AppTheme.accentBlue,
+          selectedItemColor: AppTheme.primaryBlue,
           unselectedItemColor: AppTheme.textLight.withValues(alpha: 0.5),
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
           unselectedLabelStyle: const TextStyle(fontSize: 12),
@@ -108,7 +89,7 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentBlue,
+                          color: AppTheme.primaryBlue,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 1.5),
                         ),
@@ -140,7 +121,7 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentBlue,
+                          color: AppTheme.primaryBlue,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 1.5),
                         ),

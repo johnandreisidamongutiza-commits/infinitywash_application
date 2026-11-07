@@ -13,13 +13,17 @@ import '../notifications/customer_notifications_screen.dart';
 import '../orders/customer_order_details_screen.dart';
 import '../../../widgets/legal_consent_banner.dart';
 import '../../../widgets/home_header.dart';
+import '../../../widgets/skeleton_loading.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/profile_local_db.dart';
 import '../../../services/supabase_service.dart';
+import '../../../services/data_change_monitor.dart';
 import '../profile/options/account_details_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
-  const CustomerHomeScreen({super.key});
+  final bool isActive;
+
+  const CustomerHomeScreen({super.key, this.isActive = true});
 
   @override
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
@@ -36,15 +40,39 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   // Recent activity state
   bool _loadingRecentOrders = false;
+  bool _ordersDirty = false;
+  bool _hasLoadedOrders = false;
   List<LaundryOrder> _recentOrders = [];
   String? _selectedMonitorOrderId;
 
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
     _loadUserProfile();
     _loadUnreadCount();
-    _loadRecentOrders();
+    if (widget.isActive) _loadRecentOrders();
+  }
+
+  @override
+  void didUpdateWidget(covariant CustomerHomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive &&
+        (!_hasLoadedOrders || _ordersDirty)) {
+      _loadRecentOrders(force: !_hasLoadedOrders);
+    }
+  }
+
+  @override
+  void dispose() {
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
+    super.dispose();
+  }
+
+  void _onOrdersChanged() {
+    _ordersDirty = true;
+    if (widget.isActive) _loadRecentOrders(force: false);
   }
 
   Future<void> _loadUserProfile() async {
@@ -79,10 +107,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   /// Load recent customer orders (last 3 orders)
-  Future<void> _loadRecentOrders() async {
+  Future<void> _loadRecentOrders({bool force = true}) async {
+    if (!force && !_ordersDirty && _hasLoadedOrders) return;
+    if (_loadingRecentOrders) {
+      _ordersDirty = true;
+      return;
+    }
+
     setState(() {
       _loadingRecentOrders = true;
     });
+    _ordersDirty = false;
 
     try {
       // Get authenticated customer ID
@@ -90,10 +125,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           .getCurrentAuthenticatedCustomerId();
 
       // Fetch orders for this customer
+<<<<<<< HEAD
       final orders = await _serviceRequestService.getOrdersByCustomerId(
         customerId,
       );
 
+=======
+      final orders = await _serviceRequestService.getOrdersByCustomerId(customerId);
+      if (!mounted) return;
+>>>>>>> cb806b4b9bc572a18c892990e6a2b06cfb6af2d4
       setState(() {
         _recentOrders = orders; // Full list for active order detection; recent activity uses .take(3)
         if (!_monitorableOrders.any(
@@ -102,13 +142,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           _selectedMonitorOrderId = null;
         }
         _loadingRecentOrders = false;
+        _hasLoadedOrders = true;
       });
       debugPrint('✅ Loaded ${orders.length} recent orders for home screen');
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _loadingRecentOrders = false;
+        _hasLoadedOrders = false;
       });
       debugPrint('❌ Error loading recent orders: $e');
+    }
+
+    if (_ordersDirty && widget.isActive) {
+      _loadRecentOrders(force: false);
     }
   }
 
@@ -142,7 +189,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget _buildHeader() {
     return HomeHeader(
       title: 'Hello, Customer!',
-      subtitle: 'Your laundry is our priority. 🫧',
+      subtitle: 'Your laundry is our priority.',
       avatarUrl: _avatarUrl,
       localAvatarPath: _localAvatarPath,
       unreadCount: _unreadNotificationsCount,
@@ -306,12 +353,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         width: double.infinity,
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: AppTheme.accentBlue,
+          gradient: const LinearGradient(
+            colors: [AppTheme.primaryBlue, Color(0xFF1557A6)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: AppTheme.accentBlue.withValues(alpha: 0.3),
-              blurRadius: 15,
+              color: AppTheme.primaryBlue.withValues(alpha: 0.25),
+              blurRadius: 16,
               offset: const Offset(0, 8),
             ),
           ],
@@ -370,6 +421,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     value: order.id,
+<<<<<<< HEAD
                     dropdownColor: AppTheme.accentBlue,
                     icon: const Icon(
                       Icons.arrow_drop_down,
@@ -381,6 +433,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
+=======
+                    dropdownColor: AppTheme.primaryBlue,
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+>>>>>>> cb806b4b9bc572a18c892990e6a2b06cfb6af2d4
                     isDense: true,
                     items: monitorableOrders
                         .map(
@@ -545,7 +602,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 'New Request',
                 Icons.add_shopping_cart,
                 AppTheme.lightBlue,
-                AppTheme.accentBlue,
+                AppTheme.primaryBlue,
                 onTap: () async {
                   final result = await Navigator.push(
                     context,
@@ -644,10 +701,53 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
+  Widget _buildRecentOrdersSkeleton() {
+    return Column(
+      children: List.generate(
+        2,
+        (index) => Padding(
+          padding: EdgeInsets.only(bottom: index == 1 ? 0 : 12),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: AppStyles.cardDecoration,
+            child: SkeletonShimmer(
+              child: Row(
+                children: [
+                  const SkeletonBlock(width: 36, height: 36, borderRadius: 11),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SkeletonBlock(
+                          width: index == 0 ? 104 : 88,
+                          height: 14,
+                        ),
+                        const SizedBox(height: 8),
+                        SkeletonBlock(
+                          width: index == 0 ? 118 : 102,
+                          height: 10,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const SkeletonBlock(width: 52, height: 22, borderRadius: 12),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildRecentActivity(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+<<<<<<< HEAD
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -678,10 +778,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
           ],
         ),
+=======
+        Text('Recent Activity', style: AppTheme.lightTheme.textTheme.titleMedium),
+>>>>>>> cb806b4b9bc572a18c892990e6a2b06cfb6af2d4
         const SizedBox(height: 12),
 
         // Loading state
         if (_loadingRecentOrders)
+<<<<<<< HEAD
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(36),
@@ -700,6 +804,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ),
           )
+=======
+          _buildRecentOrdersSkeleton()
+        
+>>>>>>> cb806b4b9bc572a18c892990e6a2b06cfb6af2d4
         // No recent orders
         else if (_recentOrders.isEmpty)
           Material(
@@ -738,7 +846,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       child: const Icon(
                         Icons.local_laundry_service_outlined,
                         size: 36,
-                        color: AppTheme.accentBlue,
+                        color: AppTheme.primaryBlue,
                       ),
                     ),
                     const SizedBox(height: 12),

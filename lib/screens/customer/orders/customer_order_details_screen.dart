@@ -15,6 +15,7 @@ import '../../shared/gcash_qr_payment_screen.dart';
 import 'request_service_flow.dart';
 import '../chats/customer_chat_detail_screen.dart';
 import '../delivery/order_delivery_tracking_screen.dart';
+import '../../../config/location_constants.dart';
 
 class CustomerOrderDetailsScreen extends StatefulWidget {
   final LaundryOrder order;
@@ -415,7 +416,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Thank you for your feedback! 🎉'),
+            content: Text('Thank you for your feedback!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -926,12 +927,9 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Text(
-                '💬',
-                style: TextStyle(fontSize: 20),
-              ),
+              Icon(Icons.rate_review_outlined, color: AppTheme.accentBlue, size: 20),
               SizedBox(width: 8),
               Text(
                 'Rate Your Experience',
@@ -1060,36 +1058,14 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
-              );
-            },
-            icon: const Icon(Icons.replay, size: 18),
-            label: const Text(
-              'Reorder',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-            ),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              Navigator.push(
-                context,
                 MaterialPageRoute(
                   builder: (context) => CustomerChatDetailScreen(
                     recipientName: 'InfinityWash Support',
                     recipientRole: 'Customer Support',
                     recipientType: ChatRecipientType.support,
-                    orderId: order.displayNumber,
-                    phoneNumber: '0912-345-6789',
+                    orderId: order.id,
+                    orderNumber: order.displayNumber,
+                    phoneNumber: LocationConstants.shopPhone,
                   ),
                 ),
               );

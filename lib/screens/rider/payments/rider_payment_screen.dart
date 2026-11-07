@@ -4,7 +4,31 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/rider_service.dart';
+import '../../../services/data_change_monitor.dart';
+import '../../../widgets/skeleton_loading.dart';
 import 'rider_payment_process_screen.dart';
+
+class _RiderPaymentFilterSnapshot {
+  const _RiderPaymentFilterSnapshot({
+    required this.unpaidOrders,
+    required this.unpaidOffset,
+    required this.unpaidHasMore,
+    required this.unpaidInitialized,
+    required this.paidOrders,
+    required this.paidOffset,
+    required this.paidHasMore,
+    required this.paidInitialized,
+  });
+
+  final List<LaundryOrder> unpaidOrders;
+  final int unpaidOffset;
+  final bool unpaidHasMore;
+  final bool unpaidInitialized;
+  final List<LaundryOrder> paidOrders;
+  final int paidOffset;
+  final bool paidHasMore;
+  final bool paidInitialized;
+}
 
 /// Dedicated Payment tab screen for Riders to view and collect payments
 /// for pickup and delivery orders.
@@ -51,10 +75,15 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
   int _unpaidDeliveryCount = 0;
   int _paidPickupCount = 0;
   int _paidDeliveryCount = 0;
+  bool _dataDirty = false;
+  String? _pendingJobTypeFilter;
+  final Map<String, _RiderPaymentFilterSnapshot> _filterSnapshots = {};
 
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
     // Attach scroll listeners for infinite pagination
     _unpaidScroll.addListener(() => _onScroll(_unpaidScroll, _loadMoreUnpaid));
     _paidScroll.addListener(() => _onScroll(_paidScroll, _loadMorePaid));
@@ -72,14 +101,35 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
   @override
   void didUpdateWidget(covariant RiderPaymentScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Reload every time the tab becomes active so fresh data is always shown.
     if (widget.isActive && !oldWidget.isActive) {
-      _refreshAll();
+      if (!_unpaidInitialized) {
+        _dataDirty = false;
+        _initUnpaid();
+        _refreshCounts();
+      } else {
+        _refreshIfDirty();
+      }
     }
+  }
+
+  void _onOrdersChanged() {
+    _dataDirty = true;
+    _refreshIfDirty();
+  }
+
+  void _refreshIfDirty() {
+    if (!widget.isActive || !_dataDirty) return;
+    if (_unpaidLoading || _paidLoading || _unpaidLoadingMore || _paidLoadingMore) {
+      return;
+    }
+    _dataDirty = false;
+    _filterSnapshots.clear();
+    _refreshAll();
   }
 
   @override
   void dispose() {
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
     _unpaidScroll.dispose();
     _paidScroll.dispose();
     super.dispose();
@@ -105,6 +155,77 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
     setState(() => _showPaid = showPaid);
     // Lazy-load the Paid tab the first time it is opened.
     if (showPaid && !_paidInitialized) _initPaid();
+  }
+
+  void _setJobTypeFilter(String filter) {
+    if (_jobTypeFilter == filter) {
+      _pendingJobTypeFilter = null;
+      return;
+    }
+    if (_unpaidLoading || _paidLoading || _unpaidLoadingMore || _paidLoadingMore) {
+      _pendingJobTypeFilter = filter;
+      return;
+    }
+    _pendingJobTypeFilter = null;
+    _saveCurrentFilterSnapshot();
+    final snapshot = _filterSnapshots[filter];
+    setState(() {
+      _jobTypeFilter = filter;
+      if (snapshot == null) {
+        _resetUnpaidState();
+        _resetPaidState();
+      } else {
+        _restoreFilterSnapshot(snapshot);
+      }
+    });
+    if (_showPaid && !_paidInitialized) _initPaid();
+    if (!_showPaid && !_unpaidInitialized) _initUnpaid();
+  }
+
+  void _saveCurrentFilterSnapshot() {
+    _filterSnapshots[_jobTypeFilter] = _RiderPaymentFilterSnapshot(
+      unpaidOrders: List.of(_unpaidOrders),
+      unpaidOffset: _unpaidOffset,
+      unpaidHasMore: _unpaidHasMore,
+      unpaidInitialized: _unpaidInitialized,
+      paidOrders: List.of(_paidOrders),
+      paidOffset: _paidOffset,
+      paidHasMore: _paidHasMore,
+      paidInitialized: _paidInitialized,
+    );
+  }
+
+  void _restoreFilterSnapshot(_RiderPaymentFilterSnapshot snapshot) {
+    _unpaidOrders
+      ..clear()
+      ..addAll(snapshot.unpaidOrders);
+    _unpaidOffset = snapshot.unpaidOffset;
+    _unpaidHasMore = snapshot.unpaidHasMore;
+    _unpaidInitialized = snapshot.unpaidInitialized;
+    _unpaidLoading = false;
+    _unpaidLoadingMore = false;
+    _paidOrders
+      ..clear()
+      ..addAll(snapshot.paidOrders);
+    _paidOffset = snapshot.paidOffset;
+    _paidHasMore = snapshot.paidHasMore;
+    _paidInitialized = snapshot.paidInitialized;
+    _paidLoading = false;
+    _paidLoadingMore = false;
+  }
+
+  void _resetUnpaidState() {
+    _unpaidOrders.clear();
+    _unpaidOffset = 0;
+    _unpaidHasMore = true;
+    _unpaidInitialized = false;
+  }
+
+  void _resetPaidState() {
+    _paidOrders.clear();
+    _paidOffset = 0;
+    _paidHasMore = true;
+    _paidInitialized = false;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -145,6 +266,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
         _unpaidLoading = false;
         _unpaidLoadingMore = false;
       });
+      _saveCurrentFilterSnapshot();
     } catch (e) {
       debugPrint('❌ Error loading rider unpaid orders: $e');
       if (!mounted) return;
@@ -154,6 +276,8 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
       });
       _showError(e);
     }
+    _refreshIfDirty();
+    _applyPendingJobTypeFilter();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -194,6 +318,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
         _paidLoading = false;
         _paidLoadingMore = false;
       });
+      _saveCurrentFilterSnapshot();
     } catch (e) {
       debugPrint('❌ Error loading rider paid orders: $e');
       if (!mounted) return;
@@ -203,6 +328,20 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
       });
       _showError(e);
     }
+    _refreshIfDirty();
+    _applyPendingJobTypeFilter();
+  }
+
+  void _applyPendingJobTypeFilter() {
+    final filter = _pendingJobTypeFilter;
+    if (filter == null ||
+        _unpaidLoading ||
+        _paidLoading ||
+        _unpaidLoadingMore ||
+        _paidLoadingMore) {
+      return;
+    }
+    _setJobTypeFilter(filter);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -240,6 +379,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
   /// Pull-to-refresh / refresh button / tab re-activation: reloads both tabs
   /// and the badges.
   Future<void> _refreshAll() async {
+    _filterSnapshots.clear();
     await Future.wait([
       _initUnpaid(),
       if (_paidInitialized) _initPaid(),
@@ -359,6 +499,9 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                // Sub-filter chips (All / Pickups / Deliveries)
+                _buildSubFilterBar(),
+                const SizedBox(height: 12),
                 // Search Input
                 TextField(
                   onChanged: (val) => setState(() => _searchQuery = val),
@@ -382,9 +525,6 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                     ),
                   ),
                 ),
-                // Sub-filter chips below search bar
-                const SizedBox(height: 12),
-                _buildSubFilterBar(),
               ],
             ),
           ),
@@ -392,8 +532,10 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
           // Orders List
           Expanded(
             child: _activeLoading && _activeOrders.isEmpty
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppTheme.accentBlue),
+                ? const SkeletonCardList(
+                    itemCount: 4,
+                    padding: EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    spacing: 12,
                   )
                 : displayedOrders.isEmpty
                     ? RefreshIndicator(
@@ -537,52 +679,22 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
     final pickupCount = _showPaid ? _paidPickupCount : _unpaidPickupCount;
     final deliveryCount = _showPaid ? _paidDeliveryCount : _unpaidDeliveryCount;
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        children: [
-          _buildSubFilterChip(
-            label: 'All',
-            icon: Icons.all_inbox_rounded,
-            value: 'all',
-            count: allCount,
-            color: AppTheme.accentBlue,
-          ),
-          const SizedBox(width: 8),
-          _buildSubFilterChip(
-            label: 'Pickups',
-            icon: Icons.inventory_2_outlined,
-            value: 'pickup',
-            count: pickupCount,
-            color: AppTheme.accentBlue,
-          ),
-          const SizedBox(width: 8),
-          _buildSubFilterChip(
-            label: 'Deliveries',
-            icon: Icons.local_shipping_outlined,
-            value: 'delivery',
-            count: deliveryCount,
-            color: Colors.purple.shade700,
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        _buildSubFilterChip('All', 'all', allCount),
+        const SizedBox(width: 8),
+        _buildSubFilterChip('Pickups', 'pickup', pickupCount),
+        const SizedBox(width: 8),
+        _buildSubFilterChip('Deliveries', 'delivery', deliveryCount),
+      ],
     );
   }
 
-  Widget _buildSubFilterChip({
-    required String label,
-    required IconData icon,
-    required String value,
-    required int count,
-    required Color color,
-  }) {
+  Widget _buildSubFilterChip(String label, String value, int count) {
     final isSelected = _jobTypeFilter == value;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+    return Expanded(
+      child: GestureDetector(
         onTap: () {
           if (_jobTypeFilter == value) return;
           setState(() {
@@ -594,59 +706,45 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
             _initUnpaid();
           }
         },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected ? color : AppTheme.softGray,
-            borderRadius: BorderRadius.circular(20),
+            color: isSelected ? AppTheme.primaryBlue : Colors.white,
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected ? color : Colors.black.withValues(alpha: 0.06),
-              width: 1,
+              color: isSelected
+                  ? AppTheme.primaryBlue
+                  : AppTheme.borderGray.withValues(alpha: 0.4),
             ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.28),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 15,
-                color: isSelected ? Colors.white : color,
-              ),
-              const SizedBox(width: 6),
               Text(
                 label,
-                style: GoogleFonts.lexend(
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                   color: isSelected ? Colors.white : AppTheme.textDark,
                 ),
               ),
               if (count > 0) ...[
                 const SizedBox(width: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: isSelected
                         ? Colors.white.withValues(alpha: 0.25)
-                        : color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
+                        : AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     '$count',
-                    style: GoogleFonts.lexend(
-                      fontSize: 10,
+                    style: TextStyle(
+                      fontSize: 11,
                       fontWeight: FontWeight.bold,
-                      color: isSelected ? Colors.white : color,
+                      color: isSelected ? Colors.white : AppTheme.textDark,
                     ),
                   ),
                 ),
@@ -664,7 +762,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
     required bool isUnpaid,
     required VoidCallback onTap,
   }) {
-    final activeColor = isUnpaid ? AppTheme.accentBlue : Colors.green[700]!;
+    final activeColor = isUnpaid ? AppTheme.primaryBlue : Colors.green[700]!;
 
     return GestureDetector(
       onTap: onTap,
@@ -673,7 +771,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? activeColor.withValues(alpha: 0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? activeColor : Colors.grey.shade300,
             width: isSelected ? 1.5 : 1,
@@ -802,7 +900,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
               height: 48,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accentBlue,
+                  backgroundColor: AppTheme.primaryBlue,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 onPressed: () => Navigator.pop(context),
@@ -1052,7 +1150,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                     Flexible(
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.accentBlue,
+                          backgroundColor: AppTheme.primaryBlue,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           minimumSize: const Size(0, 36),

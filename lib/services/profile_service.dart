@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/app_error.dart';
+import '../utils/validators.dart';
 import 'profile_local_db.dart';
 import 'saved_accounts_db.dart';
 import 'supabase_service.dart';
@@ -66,6 +67,22 @@ class ProfileService {
       );
     }
 
+    final newEmail = email?.trim().toLowerCase();
+    final currentEmail = user.email?.trim().toLowerCase();
+
+    // If an email change was requested, validate uniqueness and update Supabase Auth first.
+    // Supabase Auth strictly enforces uniqueness across all users (customers, staff, riders).
+    if (newEmail != null &&
+        newEmail.isNotEmpty &&
+        newEmail != currentEmail &&
+        user.appMetadata['provider'] != 'google') {
+      try {
+        await _client.auth.updateUser(UserAttributes(email: newEmail));
+      } catch (e) {
+        throw mapError(e, stackTrace: StackTrace.current);
+      }
+    }
+
     // Pin values to persist: explicit coordinates, or NULL when removePin
     // is set (customer cleared their pin). Omitted entirely when neither is
     // provided so unrelated saves don't touch the pin.
@@ -75,11 +92,15 @@ class ProfileService {
       if (removePin) ...{'pin_latitude': null, 'pin_longitude': null},
     };
 
+    final cleanPhone = Validators.normalizePhone(phone);
+    final cleanFirst = Validators.cleanName(firstName);
+    final cleanLast = Validators.cleanName(lastName);
+
     // Base payload for core fields
     final basePayload = <String, dynamic>{
-      'first_name': firstName,
-      'last_name': lastName,
-      'phone': phone,
+      'first_name': cleanFirst.isNotEmpty ? cleanFirst : firstName,
+      'last_name': cleanLast.isNotEmpty ? cleanLast : lastName,
+      'phone': cleanPhone.isNotEmpty ? cleanPhone : phone,
       'email': email,
       'address': address,
       'landmark': landmark,
@@ -165,12 +186,16 @@ class ProfileService {
     String? vehicleDetails,
     String? deliveryZones,
   }) async {
+    final cleanPhone = Validators.normalizePhone(phone);
+    final cleanVehicle = vehicleDetails != null
+        ? Validators.cleanVehicleDetails(vehicleDetails)
+        : null;
     await _client
         .from('employees')
         .update({
           'name': name,
-          'phone': phone,
-          'vehicle_details': vehicleDetails,
+          'phone': cleanPhone.isNotEmpty ? cleanPhone : phone,
+          'vehicle_details': cleanVehicle ?? vehicleDetails,
           'delivery_zones': deliveryZones,
           'updated_at': DateTime.now().toIso8601String(),
         })

@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../../config/location_constants.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../theme/app_theme.dart';
 import '../../../models/chat_model.dart';
@@ -9,6 +11,8 @@ import '../../../services/supabase_service.dart';
 import '../../../services/order_number_resolver.dart';
 import '../../../widgets/top_notification.dart';
 import '../../../utils/chat_rate_limiter.dart';
+import '../../../utils/phone_helper.dart';
+import '../../../widgets/empty_chat_placeholder.dart';
 
 class RiderChatDetailScreen extends StatefulWidget {
   final ChatConversation? conversation;
@@ -16,6 +20,7 @@ class RiderChatDetailScreen extends StatefulWidget {
   final String customerName;
   final String customerId;
   final String? orderId;
+  final String? orderNumber;
   final String? phoneNumber;
   final String? jobType; // 'pickup' | 'delivery'
   final String? address;
@@ -29,6 +34,7 @@ class RiderChatDetailScreen extends StatefulWidget {
     required this.customerName,
     required this.customerId,
     this.orderId,
+    this.orderNumber,
     this.phoneNumber,
     this.jobType,
     this.address,
@@ -175,16 +181,20 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
         final orderId = widget.orderId ?? 'general';
         String custId = widget.customerId;
         String? custPhone = widget.phoneNumber;
+        String? resolvedOrderNum = widget.orderNumber;
 
-        if (custId.isEmpty && orderId != 'general') {
+        if (orderId != 'general' && (custId.isEmpty || resolvedOrderNum == null)) {
           try {
             final orderRes = await SupabaseService.client
                 .from('orders')
-                .select('customer_id, customers(phone)')
+                .select('customer_id, order_number, customers(phone)')
                 .eq('id', orderId)
                 .maybeSingle();
             if (orderRes != null) {
-              custId = orderRes['customer_id']?.toString() ?? '';
+              if (custId.isEmpty) {
+                custId = orderRes['customer_id']?.toString() ?? '';
+              }
+              resolvedOrderNum ??= orderRes['order_number']?.toString();
               final cust = orderRes['customers'] as Map<String, dynamic>?;
               custPhone ??= cust?['phone']?.toString();
             }
@@ -193,6 +203,7 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
 
         final conv = await _chatService.getOrCreateOrderChat(
           orderId: orderId,
+          orderNumber: resolvedOrderNum,
           customerId: custId,
           customerName: widget.customerName,
           riderId: _currentRiderId,
@@ -528,16 +539,12 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
             tooltip: _isDispatch ? 'Call Shop Staff' : 'Call Customer',
             onPressed: () {
               final phoneToCall = _isDispatch
-                  ? (widget.phoneNumber ?? '0912-345-6789')
-                  : (widget.phoneNumber ?? 'Customer Phone');
-              showTopNotification(
+                  ? (widget.phoneNumber ?? LocationConstants.shopPhone)
+                  : widget.phoneNumber;
+              PhoneHelper.openDialer(
                 context,
-                message: _isDispatch
-                    ? 'Calling Shop Staff ($phoneToCall)...'
-                    : 'Calling $title ($phoneToCall)...',
-                icon: Icons.phone,
-                backgroundColor:
-                    _isDispatch ? AppTheme.primaryBlue : AppTheme.accentBlue,
+                phone: phoneToCall,
+                contactName: _isDispatch ? 'Shop Staff' : title,
               );
             },
           ),
@@ -604,6 +611,23 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
                             }
                           }
                         });
+
+                        if (allMessages.isEmpty) {
+                          return EmptyChatPlaceholder(
+                            recipientName:
+                                _isDispatch ? 'InfinityWash Staff' : title,
+                            recipientRole:
+                                _isDispatch ? 'Shop Dispatch' : 'Customer',
+                            icon: _isDispatch
+                                ? Icons.storefront_outlined
+                                : Icons.person_outline,
+                            customMessage: _isDispatch
+                                ? 'Direct line to shop staff for order status, issues, and assistance.'
+                                : 'Send a quick message to coordinate pickup or delivery details.',
+                            tipText:
+                                'Select a quick reply below or type an update to start.',
+                          );
+                        }
 
                         final bool showHeader =
                             _hasMoreOlder || _isLoadingOlder;

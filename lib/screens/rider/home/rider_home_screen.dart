@@ -7,6 +7,7 @@ import '../../../services/rider_service.dart';
 import '../../../models/dispatch_job.dart';
 import '../../../config/location_constants.dart';
 import '../../../widgets/cached_tile_provider.dart';
+import '../../../widgets/skeleton_loading.dart';
 import '../route/rider_route_screen_new.dart';
 import '../jobs/rider_job_details_screen.dart';
 import '../notifications/rider_notifications_screen.dart';
@@ -14,12 +15,14 @@ import '../../../widgets/home_header.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/profile_local_db.dart';
 import '../../../services/supabase_service.dart';
+import '../../../services/data_change_monitor.dart';
 import '../profile/options/account_details_screen.dart';
 
 class RiderHomeScreen extends StatefulWidget {
   final ValueChanged<int>? onSelectTab;
+  final bool isActive;
 
-  const RiderHomeScreen({super.key, this.onSelectTab});
+  const RiderHomeScreen({super.key, this.onSelectTab, this.isActive = true});
 
   @override
   State<RiderHomeScreen> createState() => _RiderHomeScreenState();
@@ -32,7 +35,9 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   int _unreadCount = 0;
   String? _avatarUrl;
   String? _localAvatarPath;
-  bool _isLoading = true;
+  bool _isLoading = false;
+  bool _jobsDirty = false;
+  bool _hasLoadedJobs = false;
   List<DispatchJob> _pickupJobs = [];
   List<DispatchJob> _deliveryJobs = [];
   List<DispatchJob> _completedPickupJobs = [];
@@ -41,9 +46,33 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   @override
   void initState() {
     super.initState();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.operationalDataVersion
+        .addListener(_onJobsChanged);
     _loadUserProfile();
     _loadUnreadCount();
-    _loadOrders();
+    if (widget.isActive) _loadOrders();
+  }
+
+  @override
+  void didUpdateWidget(covariant RiderHomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive &&
+        (!_hasLoadedJobs || _jobsDirty)) {
+      _loadOrders(force: false);
+    }
+  }
+
+  @override
+  void dispose() {
+    DataChangeMonitor.instance.operationalDataVersion
+        .removeListener(_onJobsChanged);
+    super.dispose();
+  }
+
+  void _onJobsChanged() {
+    _jobsDirty = true;
+    if (widget.isActive) _loadOrders(force: false);
   }
 
   Future<void> _loadUserProfile() async {
@@ -77,25 +106,27 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     }
   }
 
-  Future<void> _loadOrders() async {
+  Future<void> _loadOrders({bool force = true}) async {
+    if (!force && !_jobsDirty && _hasLoadedJobs) return;
+    if (_isLoading) {
+      _jobsDirty = true;
+      return;
+    }
+
     setState(() => _isLoading = true);
+    _jobsDirty = false;
     
     try {
-      // Fetch only ACTIVE jobs (pending/in_progress) for today's route
-      final pickupJobs = await _riderService.fetchActivePickupJobs();
-      final deliveryJobs = await _riderService.fetchActiveDeliveryJobs();
-      
-      // Fetch COMPLETED jobs (today only) for statistics
-      final completedPickupJobs = await _riderService.fetchCompletedPickupJobs();
-      final completedDeliveryJobs = await _riderService.fetchCompletedDeliveryJobs();
+      final overview = await _riderService.fetchRiderJobOverview(force: force);
       
       if (mounted) {
         setState(() {
-          _pickupJobs = pickupJobs;
-          _deliveryJobs = deliveryJobs;
-          _completedPickupJobs = completedPickupJobs;
-          _completedDeliveryJobs = completedDeliveryJobs;
+          _pickupJobs = overview.activePickupJobs;
+          _deliveryJobs = overview.activeDeliveryJobs;
+          _completedPickupJobs = overview.completedPickupJobs;
+          _completedDeliveryJobs = overview.completedDeliveryJobs;
           _isLoading = false;
+          _hasLoadedJobs = true;
         });
         
         print('✅ Rider home loaded:');
@@ -107,9 +138,14 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     } catch (e) {
       print('❌ Error loading rider jobs: $e');
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _hasLoadedJobs = false;
+        });
       }
     }
+
+    if (_jobsDirty && widget.isActive) _loadOrders(force: false);
   }
 
   void _showNotifications() {
@@ -134,11 +170,11 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               children: [
                 _buildHeader(),
                 const SizedBox(height: 30),
-                _isLoading ? _buildLoadingState() : _buildDeliveriesSummary(),
+                _isLoading ? _buildDeliveriesSkeleton() : _buildDeliveriesSummary(),
                 const SizedBox(height: 30),
-                _isLoading ? _buildLoadingState() : _buildRouteSection(),
+                _isLoading ? _buildRouteSkeleton() : _buildRouteSection(),
                 const SizedBox(height: 30),
-                _buildStartButton(),
+                _isLoading ? _buildStartButtonSkeleton() : _buildStartButton(),
                 const SizedBox(height: 20),
               ],
             ),
@@ -148,12 +184,134 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     );
   }
 
-  Widget _buildLoadingState() {
+  Widget _buildDeliveriesSkeleton() {
     return Container(
-      padding: const EdgeInsets.all(40),
+      padding: const EdgeInsets.all(24),
       decoration: AppStyles.cardDecoration,
-      child: const Center(
-        child: CircularProgressIndicator(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.calendar_today_outlined, color: AppTheme.errorRed, size: 20),
+              const SizedBox(width: 12),
+              Text('Today\'s Deliveries', style: AppTheme.lightTheme.textTheme.titleMedium),
+            ],
+          ),
+          const SizedBox(height: 24),
+          SkeletonShimmer(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: const [
+                      SkeletonBlock(width: 42, height: 42, borderRadius: 12),
+                      SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SkeletonBlock(width: 24, height: 22),
+                          SizedBox(height: 8),
+                          SkeletonBlock(width: 56, height: 11),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Container(width: 1, height: 48, color: AppTheme.borderGray),
+                Expanded(
+                  child: Row(
+                    children: const [
+                      SizedBox(width: 16),
+                      SkeletonBlock(width: 42, height: 42, borderRadius: 12),
+                      SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SkeletonBlock(width: 24, height: 22),
+                          SizedBox(height: 8),
+                          SkeletonBlock(width: 52, height: 11),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRouteSkeleton() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: AppStyles.cardDecoration,
+      child: SkeletonShimmer(
+        child: Column(
+          children: [
+            Row(
+              children: const [
+                SkeletonBlock(width: 24, height: 24, borderRadius: 12),
+                SizedBox(width: 12),
+                Expanded(child: SkeletonBlock(height: 18)),
+                SizedBox(width: 16),
+                SkeletonBlock(width: 58, height: 26, borderRadius: 14),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const SkeletonBlock(
+              width: double.infinity,
+              height: 160,
+              borderRadius: 16,
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: const [
+                SkeletonBlock(width: 42, height: 42, borderRadius: 12),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SkeletonBlock(width: 136, height: 14),
+                      SizedBox(height: 8),
+                      SkeletonBlock(width: 92, height: 11),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Row(
+              children: [
+                SkeletonBlock(width: 42, height: 42, borderRadius: 12),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SkeletonBlock(width: 118, height: 14),
+                      SizedBox(height: 8),
+                      SkeletonBlock(width: 104, height: 11),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStartButtonSkeleton() {
+    return const SkeletonShimmer(
+      child: SkeletonBlock(
+        width: double.infinity,
+        height: 64,
+        borderRadius: 20,
       ),
     );
   }
@@ -187,7 +345,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             borderRadius: BorderRadius.circular(20),
             gradient: hasOrders
                 ? const LinearGradient(
-                    colors: [AppTheme.accentBlue, Color(0xFF1557A6)],
+                    colors: [AppTheme.primaryBlue, Color(0xFF1557A6)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   )
@@ -196,7 +354,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             boxShadow: hasOrders
                 ? [
                     BoxShadow(
-                      color: AppTheme.accentBlue.withValues(alpha: 0.35),
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.35),
                       blurRadius: 14,
                       offset: const Offset(0, 5),
                     ),
@@ -238,7 +396,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   Widget _buildHeader() {
     return HomeHeader(
       title: 'Hi, Rider!',
-      subtitle: 'Ready for today\'s deliveries? 🛵',
+      subtitle: 'Ready for today\'s deliveries?',
       avatarUrl: _avatarUrl,
       localAvatarPath: _localAvatarPath,
       unreadCount: _unreadCount,
@@ -423,8 +581,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                               point: LocationConstants.shopLocation,
                               radius: LocationConstants.deliveryRadiusMeters,
                               useRadiusInMeter: true,
-                              color: AppTheme.accentBlue.withValues(alpha: 0.08),
-                              borderColor: AppTheme.accentBlue.withValues(alpha: 0.25),
+                              color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                              borderColor: AppTheme.primaryBlue.withValues(alpha: 0.25),
                               borderStrokeWidth: 1.5,
                             ),
                           ],
@@ -846,10 +1004,10 @@ class RouteSectionHeader extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: AppTheme.accentBlue.withValues(alpha: 0.1),
+            color: AppTheme.primaryBlue.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: const Icon(Icons.route_outlined, color: AppTheme.accentBlue, size: 18),
+          child: const Icon(Icons.route_outlined, color: AppTheme.primaryBlue, size: 18),
         ),
         const SizedBox(width: 8),
         // Expanded (not an intrinsic Text): the chip and the button keep their
@@ -895,7 +1053,7 @@ class RouteSectionHeader extends StatelessWidget {
           child: const Text(
             'View Map',
             style: TextStyle(
-              color: AppTheme.accentBlue,
+              color: AppTheme.primaryBlue,
               fontWeight: FontWeight.w600,
               fontSize: 13,
             ),

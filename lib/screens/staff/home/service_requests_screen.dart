@@ -3,6 +3,9 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
+import '../../../services/supabase_service.dart';
+import '../../../widgets/skeleton_loading.dart';
+import '../../../services/data_change_monitor.dart';
 
 class ServiceRequestsScreen extends StatefulWidget {
   const ServiceRequestsScreen({super.key});
@@ -12,18 +15,38 @@ class ServiceRequestsScreen extends StatefulWidget {
 }
 
 class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
+  static List<LaundryOrder>? _cachedRequests;
+  static int? _cachedOrderVersion;
+  static String? _cachedUserId;
+
   final ServiceRequestService _serviceRequestService = ServiceRequestService();
   List<LaundryOrder> _requests = [];
   bool _isLoading = true;
+  bool _isFetching = false;
+  bool _reloadAfterFetch = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _loadPendingRequests();
+    DataChangeMonitor.instance.start();
+    DataChangeMonitor.instance.ordersVersion.addListener(_onOrdersChanged);
+    if (_cachedRequests != null &&
+        _cachedUserId == SupabaseService.client.auth.currentUser?.id &&
+        _cachedOrderVersion == DataChangeMonitor.instance.ordersVersion.value) {
+      _requests = List.of(_cachedRequests!);
+      _isLoading = false;
+    } else {
+      _loadPendingRequests();
+    }
   }
 
   Future<void> _loadPendingRequests() async {
+    if (_isFetching) {
+      _reloadAfterFetch = true;
+      return;
+    }
+    _isFetching = true;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -37,6 +60,9 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
           _requests = requests;
           _isLoading = false;
         });
+        _cachedRequests = List.of(requests);
+        _cachedUserId = SupabaseService.client.auth.currentUser?.id;
+        _cachedOrderVersion = DataChangeMonitor.instance.ordersVersion.value;
       }
       
       print('✅ Loaded ${requests.length} pending service requests');
@@ -49,7 +75,24 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
       }
       
       print('❌ Error loading pending requests: $e');
+    } finally {
+      _isFetching = false;
+      if (_reloadAfterFetch && mounted) {
+        _reloadAfterFetch = false;
+        _loadPendingRequests();
+      }
     }
+  }
+
+  void _onOrdersChanged() {
+    _cachedOrderVersion = null;
+    if (mounted) _loadPendingRequests();
+  }
+
+  @override
+  void dispose() {
+    DataChangeMonitor.instance.ordersVersion.removeListener(_onOrdersChanged);
+    super.dispose();
   }
 
   @override
@@ -62,8 +105,12 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
         elevation: 0,
         centerTitle: true,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+      body: _isLoading && _requests.isEmpty
+          ? const SkeletonCardList(
+              itemCount: 3,
+              padding: EdgeInsets.all(24),
+              spacing: 16,
+            )
           : _errorMessage != null
               ? _buildErrorState()
               : _requests.isEmpty

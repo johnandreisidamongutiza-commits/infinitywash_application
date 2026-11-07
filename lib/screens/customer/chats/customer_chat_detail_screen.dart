@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/top_notification.dart';
@@ -8,6 +9,8 @@ import '../../../models/chat_model.dart';
 import '../../../services/firebase_chat_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../utils/chat_rate_limiter.dart';
+import '../../../utils/phone_helper.dart';
+import '../../../widgets/empty_chat_placeholder.dart';
 
 enum ChatRecipientType { rider, support }
 
@@ -18,6 +21,7 @@ class CustomerChatDetailScreen extends StatefulWidget {
   final String recipientRole;
   final ChatRecipientType recipientType;
   final String? orderId;
+  final String? orderNumber;
   final String? phoneNumber;
   final String? riderId;
 
@@ -29,6 +33,7 @@ class CustomerChatDetailScreen extends StatefulWidget {
     this.recipientRole = 'Official Store Helpdesk',
     this.recipientType = ChatRecipientType.support,
     this.orderId,
+    this.orderNumber,
     this.phoneNumber,
     this.riderId,
   });
@@ -67,9 +72,14 @@ class _CustomerChatDetailScreenState extends State<CustomerChatDetailScreen> {
   bool _isSendingPremade = false;
 
   String? get _orderDisplay {
+    final disp = widget.orderNumber ?? widget.conversation?.displayOrderNumber;
+    if (disp != null && disp.isNotEmpty) {
+      return disp.startsWith('#') ? disp : '#$disp';
+    }
     final id = widget.orderId ?? widget.conversation?.orderId;
     if (id == null || id.isEmpty) return null;
-    return LaundryOrder.formatDisplayNumber(id: id);
+    final formatted = LaundryOrder.formatDisplayNumber(id: id);
+    return formatted.startsWith('#') ? formatted : '#$formatted';
   }
 
   @override
@@ -170,6 +180,7 @@ class _CustomerChatDetailScreenState extends State<CustomerChatDetailScreen> {
         final orderId = widget.orderId ?? 'general';
         final conv = await _chatService.getOrCreateOrderChat(
           orderId: orderId,
+          orderNumber: widget.orderNumber,
           customerId: _currentCustomerId,
           customerName: _currentCustomerName,
           riderId: riderId,
@@ -367,14 +378,12 @@ class _CustomerChatDetailScreenState extends State<CustomerChatDetailScreen> {
             IconButton(
               icon: const Icon(Icons.phone_outlined,
                   color: AppTheme.accentBlue),
-              onPressed: () {
-                showTopNotification(
-                  context,
-                  message: 'Calling $displayName ($displayPhone)...',
-                  icon: Icons.phone,
-                  backgroundColor: AppTheme.accentBlue,
-                );
-              },
+              tooltip: 'Call $displayName',
+              onPressed: () => PhoneHelper.openDialer(
+                context,
+                phone: displayPhone,
+                contactName: displayName,
+              ),
             ),
         ],
       ),
@@ -437,6 +446,21 @@ class _CustomerChatDetailScreenState extends State<CustomerChatDetailScreen> {
                             }
                           }
                         });
+
+                        if (allMessages.isEmpty) {
+                          return EmptyChatPlaceholder(
+                            recipientName: displayName,
+                            recipientRole: displayRole,
+                            icon: isRider
+                                ? Icons.delivery_dining
+                                : Icons.support_agent,
+                            customMessage: isRider
+                                ? 'Reach out to your delivery rider for updates on pickup or delivery.'
+                                : 'Welcome to InfinityWash Support! How can we assist you with your laundry today?',
+                            tipText:
+                                'Select a quick reply below or type a message to start.',
+                          );
+                        }
 
                         final bool showHeader =
                             _hasMoreOlder || _isLoadingOlder;

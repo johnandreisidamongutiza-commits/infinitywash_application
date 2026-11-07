@@ -22,10 +22,18 @@ class InputFormatters {
   }
 
   /// Phone characters: digits, spaces, +, -, parentheses. Max length caps
-  /// the whole formatted value (16 fits '+63 917 123 4567').
-  static List<TextInputFormatter> phone({int maxLength = 16}) {
+  /// the whole formatted value (20 fits '+63 (917) 123-4567').
+  static List<TextInputFormatter> phone({int maxLength = 20}) {
     return [
       FilteringTextInputFormatter.allow(RegExp(r'[0-9\+\-\s\(\)]')),
+      LengthLimitingTextInputFormatter(maxLength),
+    ];
+  }
+
+  /// Email format: disallows whitespace and enforces max length (254).
+  static List<TextInputFormatter> email({int maxLength = 254}) {
+    return [
+      FilteringTextInputFormatter.deny(RegExp(r'\s')),
       LengthLimitingTextInputFormatter(maxLength),
     ];
   }
@@ -40,6 +48,23 @@ class InputFormatters {
         FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
         UpperCaseTextFormatter(),
       ];
+
+  /// Name characters: letters (including accented like ñ, Ñ), spaces, hyphens,
+  /// apostrophes. Physically blocks numbers, emojis, and special symbols.
+  static List<TextInputFormatter> name({int maxLength = 50}) {
+    return [
+      FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z\u00C0-\u017F' \-]")),
+      LengthLimitingTextInputFormatter(maxLength),
+    ];
+  }
+
+  /// Vehicle details: alphanumeric, spaces, and standard punctuation (- / . , ( ) ').
+  static List<TextInputFormatter> vehicleDetails({int maxLength = 60}) {
+    return [
+      FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z0-9\u00C0-\u017F\s'\-/,.\(\)]")),
+      LengthLimitingTextInputFormatter(maxLength),
+    ];
+  }
 
   /// Free text without control characters, capped at [maxLength].
   /// For names, notes, landmark — prevents pasting endless text.

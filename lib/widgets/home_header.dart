@@ -54,7 +54,7 @@ class HomeHeader extends StatelessWidget {
     this.onAvatarTap,
     this.avatarUrl,
     this.localAvatarPath,
-    this.avatarAsset = 'assets/images/logo.jpg',
+    this.avatarAsset = 'assets/images/logo.png',
     this.avatarSize = 48.0,
     this.titleStyle,
     this.subtitleStyle,

@@ -18,8 +18,14 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> screens = [
-      const CustomerHomeScreen(key: ValueKey('customer_home')),
-      const CustomerOrdersScreen(key: ValueKey('customer_orders')),
+      CustomerHomeScreen(
+        key: const ValueKey('customer_home'),
+        isActive: _currentIndex == 0,
+      ),
+      CustomerOrdersScreen(
+        key: const ValueKey('customer_orders'),
+        isActive: _currentIndex == 1,
+      ),
       const CustomerChatsScreen(key: ValueKey('customer_chats')),
       const CustomerProfileScreen(key: ValueKey('customer_profile')),
     ];
@@ -46,7 +52,7 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
           onTap: (index) => setState(() => _currentIndex = index),
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
-          selectedItemColor: AppTheme.accentBlue,
+          selectedItemColor: AppTheme.primaryBlue,
           unselectedItemColor: AppTheme.textLight.withValues(alpha: 0.5),
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
           unselectedLabelStyle: const TextStyle(fontSize: 11),
@@ -73,7 +79,7 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: AppTheme.accentBlue,
+                        color: AppTheme.primaryBlue,
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 1.5),
                       ),
@@ -92,7 +98,7 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: AppTheme.accentBlue,
+                        color: AppTheme.primaryBlue,
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 1.5),
                       ),
