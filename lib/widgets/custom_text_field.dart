@@ -36,6 +36,10 @@ class CustomTextField extends StatefulWidget {
   /// Whether the field participates in form validation/submit focus order.
   final bool enabled;
 
+  /// Moves the field label from the input area to the outline when focused
+  /// or when the field contains text.
+  final bool floatingLabel;
+
   /// Whether to display the character counter. Defaults to false for password
   /// fields, true for non-password fields with [maxLength].
   final bool? showCounter;
@@ -57,6 +61,7 @@ class CustomTextField extends StatefulWidget {
     this.textInputAction,
     this.onSubmitted,
     this.enabled = true,
+    this.floatingLabel = false,
     this.showCounter,
   });
 
@@ -72,14 +77,16 @@ class _CustomTextFieldState extends State<CustomTextField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          widget.label,
-          style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
+        if (!widget.floatingLabel) ...[
+          Text(
+            widget.label,
+            style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 8),
+        ],
         TextFormField(
           controller: widget.controller,
           obscureText: widget.isPassword ? _obscureText : false,
@@ -120,7 +127,24 @@ class _CustomTextFieldState extends State<CustomTextField> {
             );
           },
           decoration: InputDecoration(
-            hintText: widget.hint,
+            labelText: widget.floatingLabel ? widget.label : null,
+            labelStyle: widget.floatingLabel
+                ? AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                    fontSize: 14,
+                    color: AppTheme.textLight,
+                  )
+                : null,
+            floatingLabelStyle: widget.floatingLabel
+                ? AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.accentBlue,
+                  )
+                : null,
+            floatingLabelBehavior: widget.floatingLabel
+                ? FloatingLabelBehavior.auto
+                : FloatingLabelBehavior.never,
+            hintText: widget.floatingLabel ? null : widget.hint,
             hintStyle: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               color: AppTheme.textLight.withValues(alpha: 0.5),
             ),
