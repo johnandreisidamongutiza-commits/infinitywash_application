@@ -305,8 +305,14 @@ class PushNotificationService {
 
   Future<void> _showForegroundBanner(RemoteMessage message) async {
     final push = PushMessage.fromRemoteMessage(message);
-    final title = push.title ?? 'InfinityWash';
-    final body = push.body ?? 'You have a new notification.';
+    // Fall back to data fields so data-only FCM messages still show a banner.
+    final title = push.title ??
+        message.data['title'] as String? ??
+        'InfinityWash';
+    final body = push.body ??
+        message.data['body'] as String? ??
+        message.data['message'] as String? ??
+        'You have a new notification.';
 
     await _showSystemNotification(
       id: message.messageId?.hashCode ??
