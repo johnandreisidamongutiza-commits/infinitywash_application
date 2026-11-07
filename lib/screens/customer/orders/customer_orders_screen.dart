@@ -1105,28 +1105,32 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
     final photoCount = order.laundryPhotoUrls?.length ?? 0;
     final isRiderPickup =
         order.collectionMethod == CollectionMethod.riderPickup;
+    final address = order.deliveryAddress?.trim();
+    final notes = order.customerDescription?.trim();
+    final hasAddress = address?.isNotEmpty ?? false;
+    final hasNotes = notes?.isNotEmpty ?? false;
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: AppTheme.borderGray,
+          color: AppTheme.statusRequestBorder,
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
+            color: AppTheme.primaryBlue.withValues(alpha: 0.035),
+            blurRadius: 16,
             offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           onTap: () async {
             final result = await Navigator.push(
               context,
@@ -1145,10 +1149,10 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Header row: order number + badges + time ──
+                    // ── Request identity and metadata ──
                     Row(
                       children: [
-                        Flexible(
+                        Expanded(
                           child: Text(
                             order.displayNumber,
                             style: GoogleFonts.lexend(
@@ -1161,59 +1165,64 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                           ),
                         ),
                         const SizedBox(width: 8),
-                        _buildChip(
-                          label: isRiderPickup
-                              ? 'RIDER PICKUP'
-                              : 'WALK-IN',
-                          color: isRiderPickup
-                              ? AppTheme.accentBlue
-                              : const Color(0xFF26A69A),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.schedule_rounded,
+                              size: 13,
+                              color: AppTheme.textLight,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _timeAgo(order.createdAt),
+                              style: GoogleFonts.lexend(
+                                fontSize: 11,
+                                color: AppTheme.textLight,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        _buildRequestChip(
+                          label: order.collectionText.toUpperCase(),
                           icon: isRiderPickup
                               ? Icons.delivery_dining
                               : Icons.storefront_outlined,
                         ),
-                        const SizedBox(width: 5),
-                        _buildChip(
-                          label: 'PENDING',
-                          color: Colors.orange,
-                          icon: Icons.schedule,
-                        ),
-                        const Spacer(),
-                        Text(
-                          _timeAgo(order.createdAt),
-                          style: GoogleFonts.lexend(
-                            fontSize: 11,
-                            color: AppTheme.textLight,
-                          ),
-                        ),
+                        _buildStatusBadge(OrderStatus.pending_approval),
                       ],
                     ),
+                    const SizedBox(height: 14),
 
-                    const SizedBox(height: 12),
-
-                    // ── Info banner ──
+                    // ── Review status ──
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                          horizontal: 12, vertical: 9),
                       decoration: BoxDecoration(
-                        color:
-                            AppTheme.teamMemberOrange.withValues(alpha: 0.5),
+                        color: AppTheme.statusRequestBg,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: AppTheme.teamMemberIconOrange
-                              .withValues(alpha: 0.2),
-                          width: 1,
+                          color: AppTheme.statusRequestBorder,
                         ),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.info_outline,
-                              size: 16,
-                              color: AppTheme.teamMemberIconOrange),
+                          const Icon(
+                            Icons.hourglass_top_rounded,
+                            size: 16,
+                            color: AppTheme.statusRequest,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Your request is being reviewed by our staff',
+                              'Our staff is reviewing your service request',
                               style: GoogleFonts.lexend(
                                 fontSize: 11,
                                 color: AppTheme.textDark,
@@ -1225,31 +1234,42 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                       ),
                     ),
 
-                    // ── Address ──
-                    if (order.deliveryAddress != null &&
-                        order.deliveryAddress!.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.location_on_outlined,
-                            size: 15,
-                            color: AppTheme.textLight.withValues(alpha: 0.7),
+                    if (hasAddress || hasNotes) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.softGray,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppTheme.borderGray.withValues(alpha: 0.7),
                           ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              order.deliveryAddress!,
-                              style: GoogleFonts.lexend(
-                                fontSize: 12,
-                                color: AppTheme.textLight,
+                        ),
+                        child: Column(
+                          children: [
+                            if (hasAddress)
+                              _buildRequestDetailRow(
+                                icon: Icons.location_on_outlined,
+                                label: 'Address',
+                                value: address ?? '',
                               ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                            if (hasAddress && hasNotes)
+                              Divider(
+                                height: 18,
+                                thickness: 1,
+                                color: AppTheme.borderGray.withValues(
+                                  alpha: 0.8,
+                                ),
+                              ),
+                            if (hasNotes)
+                              _buildRequestDetailRow(
+                                icon: Icons.notes_outlined,
+                                label: 'Request notes',
+                                value: notes ?? '',
+                              ),
+                          ],
+                        ),
                       ),
                     ],
 
@@ -1275,9 +1295,11 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
-                            color:
-                                AppTheme.accentBlue.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(8),
+                            color: AppTheme.statusRequestBg,
+                            borderRadius: BorderRadius.circular(9),
+                            border: Border.all(
+                              color: AppTheme.statusRequestBorder,
+                            ),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -1299,35 +1321,6 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                             ],
                           ),
                         ),
-                      ),
-                    ],
-
-                    // ── Customer notes preview ──
-                    if (order.customerDescription != null &&
-                        order.customerDescription!.trim().isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.notes_outlined,
-                            size: 15,
-                            color: AppTheme.textLight.withValues(alpha: 0.7),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              order.customerDescription!,
-                              style: GoogleFonts.lexend(
-                                fontSize: 12,
-                                color: AppTheme.textLight,
-                                fontStyle: FontStyle.italic,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
                       ),
                     ],
 
@@ -2231,6 +2224,83 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
           fontWeight: FontWeight.w700,
         ),
       ),
+    );
+  }
+
+  Widget _buildRequestChip({
+    required String label,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+      decoration: BoxDecoration(
+        color: AppTheme.statusActiveBg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.statusActiveBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: AppTheme.statusActive),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.lexend(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.statusActive,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRequestDetailRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, size: 16, color: AppTheme.statusActive),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.lexend(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textLight,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: GoogleFonts.lexend(
+                  fontSize: 12,
+                  color: AppTheme.textDark,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

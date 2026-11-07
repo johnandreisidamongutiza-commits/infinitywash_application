@@ -1387,24 +1387,24 @@ class OrdersScreenState extends State<OrdersScreen>
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: AppTheme.statusRequestBorder.withValues(alpha: 0.5),
+          color: AppTheme.statusRequestBorder,
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
+            color: AppTheme.primaryBlue.withValues(alpha: 0.035),
+            blurRadius: 16,
             offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           onTap: () async {
             final result = await Navigator.push(
               context,
@@ -1417,25 +1417,15 @@ class OrdersScreenState extends State<OrdersScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Top accent bar ──
-              Container(
-                height: 3.5,
-                decoration: const BoxDecoration(
-                  color: AppTheme.statusRequest,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(16),
-                  ),
-                ),
-              ),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Header row: order number + badges ──
+                    // ── Request identity and metadata ──
                     Row(
                       children: [
-                        Flexible(
+                        Expanded(
                           child: Text(
                             request.displayNumber,
                             style: GoogleFonts.lexend(
@@ -1448,35 +1438,44 @@ class OrdersScreenState extends State<OrdersScreen>
                           ),
                         ),
                         const SizedBox(width: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.schedule_rounded,
+                              size: 13,
+                              color: AppTheme.textLight,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _timeAgo(request.createdAt),
+                              style: GoogleFonts.lexend(
+                                fontSize: 11,
+                                color: AppTheme.textLight,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
                         _buildChip(
                           label: request.collectionText.toUpperCase(),
-                          color: isRiderPickup
-                              ? AppTheme.statusDelivery
-                              : AppTheme.primaryBlue,
-                          backgroundColor: isRiderPickup
-                              ? AppTheme.statusDeliveryBg
-                              : AppTheme.primaryBlue.withValues(alpha: 0.07),
-                          borderColor: isRiderPickup
-                              ? AppTheme.statusDeliveryBorder
-                              : AppTheme.primaryBlue.withValues(alpha: 0.15),
+                          color: AppTheme.statusActive,
+                          backgroundColor: AppTheme.statusActiveBg,
+                          borderColor: AppTheme.statusActiveBorder,
                           icon: isRiderPickup
                               ? Icons.delivery_dining
                               : Icons.storefront_outlined,
                         ),
-                        const SizedBox(width: 6),
                         _buildStatusBadge(OrderStatus.pending_approval),
-                        const Spacer(),
-                        Text(
-                          _timeAgo(request.createdAt),
-                          style: GoogleFonts.lexend(
-                            fontSize: 11,
-                            color: AppTheme.textLight,
-                          ),
-                        ),
                       ],
                     ),
-
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
 
                     // ── Customer info ──
                     Row(

@@ -487,12 +487,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                           CustomTextField(
-                            label: 'Email',
+                            label: 'Email address',
                             hint: 'Enter your email',
                             prefixIcon: Icons.email_outlined,
                             controller: _emailController,
                             validator: Validators.emailField,
                             keyboardType: TextInputType.emailAddress,
+                            floatingLabel: true,
                           ),
                           const SizedBox(height: 16),
                           CustomTextField(
@@ -502,6 +503,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             isPassword: true,
                             controller: _passwordController,
                             validator: Validators.passwordRequired,
+                            floatingLabel: true,
                           ),
                           const SizedBox(height: 12),
                           Row(
