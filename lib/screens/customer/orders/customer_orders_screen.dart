@@ -731,6 +731,7 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                 ),
                 tooltip: 'Need help?',
                 onPressed: () {
+                  final activeOrder = (_activeOrders.isNotEmpty ? _activeOrders : _active).firstOrNull;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -738,7 +739,8 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
                         recipientName: 'InfinityWash Support',
                         recipientRole: 'Customer Support Helpdesk',
                         recipientType: ChatRecipientType.support,
-                        orderId: (_activeOrders.isNotEmpty ? _activeOrders : _active).first.displayNumber,
+                        orderId: activeOrder?.id,
+                        orderNumber: activeOrder?.displayNumber,
                         phoneNumber: LocationConstants.shopPhone,
                       ),
                     ),

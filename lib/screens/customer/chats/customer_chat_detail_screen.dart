@@ -21,6 +21,7 @@ class CustomerChatDetailScreen extends StatefulWidget {
   final String recipientRole;
   final ChatRecipientType recipientType;
   final String? orderId;
+  final String? orderNumber;
   final String? phoneNumber;
   final String? riderId;
 
@@ -32,6 +33,7 @@ class CustomerChatDetailScreen extends StatefulWidget {
     this.recipientRole = 'Official Store Helpdesk',
     this.recipientType = ChatRecipientType.support,
     this.orderId,
+    this.orderNumber,
     this.phoneNumber,
     this.riderId,
   });
@@ -70,9 +72,14 @@ class _CustomerChatDetailScreenState extends State<CustomerChatDetailScreen> {
   bool _isSendingPremade = false;
 
   String? get _orderDisplay {
+    final disp = widget.orderNumber ?? widget.conversation?.displayOrderNumber;
+    if (disp != null && disp.isNotEmpty) {
+      return disp.startsWith('#') ? disp : '#$disp';
+    }
     final id = widget.orderId ?? widget.conversation?.orderId;
     if (id == null || id.isEmpty) return null;
-    return LaundryOrder.formatDisplayNumber(id: id);
+    final formatted = LaundryOrder.formatDisplayNumber(id: id);
+    return formatted.startsWith('#') ? formatted : '#$formatted';
   }
 
   @override
@@ -173,6 +180,7 @@ class _CustomerChatDetailScreenState extends State<CustomerChatDetailScreen> {
         final orderId = widget.orderId ?? 'general';
         final conv = await _chatService.getOrCreateOrderChat(
           orderId: orderId,
+          orderNumber: widget.orderNumber,
           customerId: _currentCustomerId,
           customerName: _currentCustomerName,
           riderId: riderId,

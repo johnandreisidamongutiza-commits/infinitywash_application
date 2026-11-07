@@ -152,6 +152,19 @@ class ChatConversation {
     return null;
   }
 
+  /// Formats the last message preview, converting any raw order UUIDs into readable order numbers.
+  String get displayLastMessage {
+    if (lastMessage.startsWith('Chat started for order #') ||
+        lastMessage.startsWith('Chat for order #')) {
+      final disp = displayOrderNumber;
+      if (disp != null && disp.isNotEmpty) {
+        final ticket = disp.startsWith('#') ? disp : '#$disp';
+        return 'Chat started for order $ticket';
+      }
+    }
+    return lastMessage;
+  }
+
   String getOtherParticipantName(String currentUserId, String currentRole) {
     if (chatType == ChatType.customerSupport && currentRole != 'staff') {
       return 'InfinityWash Support';

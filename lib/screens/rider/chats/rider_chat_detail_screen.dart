@@ -20,6 +20,7 @@ class RiderChatDetailScreen extends StatefulWidget {
   final String customerName;
   final String customerId;
   final String? orderId;
+  final String? orderNumber;
   final String? phoneNumber;
   final String? jobType; // 'pickup' | 'delivery'
   final String? address;
@@ -33,6 +34,7 @@ class RiderChatDetailScreen extends StatefulWidget {
     required this.customerName,
     required this.customerId,
     this.orderId,
+    this.orderNumber,
     this.phoneNumber,
     this.jobType,
     this.address,
@@ -179,16 +181,20 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
         final orderId = widget.orderId ?? 'general';
         String custId = widget.customerId;
         String? custPhone = widget.phoneNumber;
+        String? resolvedOrderNum = widget.orderNumber;
 
-        if (custId.isEmpty && orderId != 'general') {
+        if (orderId != 'general' && (custId.isEmpty || resolvedOrderNum == null)) {
           try {
             final orderRes = await SupabaseService.client
                 .from('orders')
-                .select('customer_id, customers(phone)')
+                .select('customer_id, order_number, customers(phone)')
                 .eq('id', orderId)
                 .maybeSingle();
             if (orderRes != null) {
-              custId = orderRes['customer_id']?.toString() ?? '';
+              if (custId.isEmpty) {
+                custId = orderRes['customer_id']?.toString() ?? '';
+              }
+              resolvedOrderNum ??= orderRes['order_number']?.toString();
               final cust = orderRes['customers'] as Map<String, dynamic>?;
               custPhone ??= cust?['phone']?.toString();
             }
@@ -197,6 +203,7 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
 
         final conv = await _chatService.getOrCreateOrderChat(
           orderId: orderId,
+          orderNumber: resolvedOrderNum,
           customerId: custId,
           customerName: widget.customerName,
           riderId: _currentRiderId,

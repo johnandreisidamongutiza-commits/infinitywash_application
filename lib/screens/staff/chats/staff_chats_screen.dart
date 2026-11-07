@@ -469,9 +469,9 @@ class _StaffChatsScreenState extends State<StaffChatsScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            conversation.lastMessage.isEmpty
+                            conversation.displayLastMessage.isEmpty
                                 ? 'No messages yet'
-                                : conversation.lastMessage,
+                                : conversation.displayLastMessage,
                             style: TextStyle(
                               fontSize: 13,
                               color: hasUnread

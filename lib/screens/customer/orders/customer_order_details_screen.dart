@@ -1058,35 +1058,13 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const RequestServiceFlow()),
-              );
-            },
-            icon: const Icon(Icons.replay, size: 18),
-            label: const Text(
-              'Reorder',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-            ),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              Navigator.push(
-                context,
                 MaterialPageRoute(
                   builder: (context) => CustomerChatDetailScreen(
                     recipientName: 'InfinityWash Support',
                     recipientRole: 'Customer Support',
                     recipientType: ChatRecipientType.support,
-                    orderId: order.displayNumber,
+                    orderId: order.id,
+                    orderNumber: order.displayNumber,
                     phoneNumber: LocationConstants.shopPhone,
                   ),
                 ),

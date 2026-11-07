@@ -95,8 +95,8 @@ class _RiderChatItem {
   String? get landmark => job?.landmark;
 
   String get lastMessageText {
-    if (conversation != null && conversation!.lastMessage.isNotEmpty) {
-      return conversation!.lastMessage;
+    if (conversation != null && conversation!.displayLastMessage.isNotEmpty) {
+      return conversation!.displayLastMessage;
     }
     if (isDispatch) return 'Tap to contact shop staff';
     if (job?.status == 'pickup_done') return 'Pickup completed today';

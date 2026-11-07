@@ -677,6 +677,7 @@ class _OrderDeliveryTrackingScreenState extends State<OrderDeliveryTrackingScree
                     recipientRole: delivery.isPickup ? 'Pickup Rider' : 'Delivery Rider',
                     recipientType: ChatRecipientType.rider,
                     orderId: delivery.order.id,
+                    orderNumber: delivery.order.displayNumber,
                     phoneNumber: phone,
                   ),
                 ),

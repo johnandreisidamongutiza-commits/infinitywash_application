@@ -4,6 +4,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/chat_model.dart';
+import '../models/order.dart';
 import 'photo_file_service.dart';
 import 'supabase_service.dart';
 import 'order_number_resolver.dart';
@@ -239,7 +240,13 @@ class FirebaseChatService {
         final resolvedNumber = orderNumber ??
             (orderId.isNotEmpty && !OrderNumberResolver.isUuid(orderId)
                 ? orderId
-                : null);
+                : OrderNumberResolver.resolveSync(orderId: orderId));
+
+        final displayTicket = resolvedNumber != null && resolvedNumber.isNotEmpty
+            ? (resolvedNumber.startsWith('#') ? resolvedNumber : '#$resolvedNumber')
+            : (OrderNumberResolver.isUuid(orderId)
+                ? '#${LaundryOrder.formatDisplayNumber(id: orderId)}'
+                : '#$orderId');
 
         final data = {
           'id': chatId,
@@ -263,7 +270,7 @@ class FirebaseChatService {
             customerId: customerPhone,
             riderId: riderPhone,
           },
-          'last_message': 'Chat started for order #$orderId',
+          'last_message': 'Chat started for order $displayTicket',
           'last_sender_id': customerId,
           'last_sender_name': customerName,
           'last_timestamp': now,
@@ -283,16 +290,26 @@ class FirebaseChatService {
       return ChatConversation.fromFirestore(snapshot);
     } catch (e) {
       debugPrint('⚠️ Notice: getOrCreateOrderChat ($chatId): $e');
+      final fallbackNumber = orderNumber ??
+          (orderId.isNotEmpty && !OrderNumberResolver.isUuid(orderId)
+              ? orderId
+              : OrderNumberResolver.resolveSync(orderId: orderId));
+      final fallbackTicket = fallbackNumber != null && fallbackNumber.isNotEmpty
+          ? (fallbackNumber.startsWith('#') ? fallbackNumber : '#$fallbackNumber')
+          : (OrderNumberResolver.isUuid(orderId)
+              ? '#${LaundryOrder.formatDisplayNumber(id: orderId)}'
+              : '#$orderId');
       return ChatConversation(
         id: chatId,
         chatType: ChatType.customerRider,
         orderId: orderId,
+        orderNumber: fallbackNumber,
         participants: pList.toList(),
         participantRoles: {customerId: 'customer', riderId: 'rider'},
         participantNames: {customerId: customerName, riderId: riderName},
         participantAvatars: {customerId: customerAvatar, riderId: riderAvatar},
         participantPhones: {customerId: customerPhone, riderId: riderPhone},
-        lastMessage: 'Chat for order #$orderId',
+        lastMessage: 'Chat started for order $fallbackTicket',
         lastSenderId: customerId,
         lastTimestamp: DateTime.now(),
         unreadCounts: {customerId: 0, riderId: 0},
