@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/profile_service.dart';
+import '../../../services/auth_service.dart';
 import '../../../services/push_notification_service.dart';
 import '../../../widgets/editable_profile_avatar.dart';
 import '../../../widgets/skeleton_loading.dart';
+import '../../login_screen.dart';
 import '../../saved_accounts_screen.dart';
 import 'options/account_details_screen.dart';
 import 'options/change_password_screen.dart';
@@ -121,15 +123,18 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
             ),
             const SizedBox(height: 40),
             ElevatedButton(
-              onPressed: () {
-                // The saved account relies on this refresh token. Calling
-                // Supabase signOut revokes it, so leave the local session
-                // restorable and return to the account chooser.
-                PushNotificationService.instance.unregisterCurrentUser();
+              onPressed: () async {
+                final authService = AuthService();
+                await authService.logout();
                 if (!context.mounted) return;
+                final accounts = await authService.getSavedAccounts();
+                if (!context.mounted) return;
+                final Widget destination = accounts.isNotEmpty
+                    ? const SavedAccountsScreen()
+                    : const LoginScreen();
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (context) => const SavedAccountsScreen()),
+                  MaterialPageRoute(builder: (context) => destination),
                   (route) => false,
                 );
               },

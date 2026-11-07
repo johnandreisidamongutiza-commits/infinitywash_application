@@ -402,6 +402,9 @@ class AuthService {
           session: response.session!,
           email: email,
         );
+      } else if (response.user != null) {
+        // When not saving the account, clear any previous auto-login marker
+        await _secureStorage.clearLastAutoLoginUser();
       }
 
       return response;
@@ -593,12 +596,39 @@ class AuthService {
   }
 
   // Sign out
-  Future<void> signOut() async {
+  Future<void> signOut({SignOutScope scope = SignOutScope.global}) async {
     try {
-      await _auth.signOut();
+      await _secureStorage.clearLastAutoLoginUser();
+      await _auth.signOut(scope: scope);
     } catch (e) {
       // Signing out locally should never hard-fail the UI; log and continue.
       print('⚠️ Sign out error (continuing): $e');
+    }
+  }
+
+  /// Logs out the user from their current active session.
+  ///
+  /// - Unregisters push notifications for the current user.
+  /// - Clears the last auto-login user marker so subsequent app launches
+  ///   will show the saved accounts screen (or login screen) instead of
+  ///   automatically bypassing it.
+  /// - If the current account is saved in [SavedAccountsDatabase], performs a
+  ///   local sign-out (`SignOutScope.local`) so its stored refresh token remains
+  ///   valid on the Supabase backend for future quick re-login.
+  /// - If the account is not saved, performs a full global sign-out (`SignOutScope.global`).
+  Future<void> logout() async {
+    try {
+      PushNotificationService.instance.unregisterCurrentUser();
+      final currentUserId = _auth.currentUser?.id;
+      final isSaved = currentUserId != null && await isAccountSaved(currentUserId);
+      await _secureStorage.clearLastAutoLoginUser();
+      if (isSaved) {
+        await _auth.signOut(scope: SignOutScope.local);
+      } else {
+        await _auth.signOut(scope: SignOutScope.global);
+      }
+    } catch (e) {
+      print('⚠️ Logout error (continuing): $e');
     }
   }
 

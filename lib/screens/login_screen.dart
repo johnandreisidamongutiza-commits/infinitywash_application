@@ -10,6 +10,7 @@ import '../utils/validators.dart';
 import '../services/connectivity_service.dart';
 import '../widgets/custom_text_field.dart';
 import '../services/auth_service.dart';
+import '../services/secure_storage_service.dart';
 import '../services/google_sign_in_service.dart';
 import '../services/supabase_service.dart';
 import 'staff/staff_main_screen.dart';
@@ -289,6 +290,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         }
         if (_saveAccount) {
           await _authService.rememberCurrentSession();
+        } else {
+          await SecureStorageService.instance.clearLastAutoLoginUser();
         }
         Navigator.pushAndRemoveUntil(
           context,
@@ -306,6 +309,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       }
       if (_saveAccount) {
         await _authService.rememberCurrentSession();
+      } else {
+        await SecureStorageService.instance.clearLastAutoLoginUser();
       }
       Navigator.pushAndRemoveUntil(
         context,

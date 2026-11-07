@@ -168,6 +168,12 @@ class _SavedAccountsScreenState extends State<SavedAccountsScreen> with SingleTi
     if (confirmed != true) return;
     await _authService.removeSavedAccount(account.id);
     await _loadAccounts();
+    if (_accounts.isEmpty && mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+    }
   }
 
   void _replaceWith(Widget screen) {
