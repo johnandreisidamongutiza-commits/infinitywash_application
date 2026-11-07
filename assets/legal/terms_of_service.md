@@ -88,6 +88,7 @@ These Terms are governed by the laws of the Republic of the Philippines. Please 
 
 Infinity Wash
 Email: infinitywash001@gmail.com
+Facebook: Infinity Wash Sta Cruz
 Mobile: +63 900 000 0000
 Business address: [insert registered business address]
 

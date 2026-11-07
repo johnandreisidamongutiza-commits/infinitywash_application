@@ -101,6 +101,7 @@ We update this policy when our processing or the law changes. The version and ef
 
 Infinity Wash — Data Protection Officer
 Email: infinitywash001@gmail.com
+Facebook: Infinity Wash Sta Cruz
 Mobile: +63 900 000 0000
 Business address: [insert registered business address]
 
