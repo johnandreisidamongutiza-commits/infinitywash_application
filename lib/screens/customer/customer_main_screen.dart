@@ -97,9 +97,9 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
   List<TutorialStep> get _tutorialSteps => [
         TutorialStep(
           targetKey: _newRequestKey,
-          title: '1. Start a New Order',
+          title: '1. How to Request an Order',
           description:
-              'Tap "New Request" to order laundry service. Choose your collection method, upload photos of your clothes, select detergent options, and confirm your address.',
+              'Tap "New Request" anytime you need laundry done. In 4 quick steps, you can pick pickup/drop-off, take clothes photos, choose detergent options, and confirm your address.\n\n💡 Note: This is an app tour — no actual order is being submitted!',
           borderRadius: BorderRadius.circular(20),
           padding: const EdgeInsets.all(4),
         ),
@@ -107,7 +107,7 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
           targetKey: _statusCardKey,
           title: '2. Live Order Tracking',
           description:
-              'Track your order status right here in real time — from staff review and pickup, to washing, drying, folding, and delivery.',
+              'Once you place a real order, this card tracks your laundry progress in real time — from staff review and pickup, to washing, drying, folding, and delivery.',
           borderRadius: BorderRadius.circular(24),
           padding: const EdgeInsets.all(4),
         ),
@@ -115,7 +115,7 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
           targetKey: _trackDeliveryKey,
           title: '3. Real-Time Delivery Tracking',
           description:
-              'Tap "Track Delivery" anytime to view your assigned rider\'s live GPS location and route on the interactive map.',
+              'When your clean laundry is on the way, tap "Track Delivery" to view your assigned rider\'s live GPS location on the interactive map.',
           borderRadius: BorderRadius.circular(20),
           padding: const EdgeInsets.all(4),
         ),
@@ -123,7 +123,7 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
           targetKey: _bottomBarKey,
           title: '4. Orders & Navigation',
           description:
-              'Navigate between tabs at the bottom to check your order history, review past invoices, chat with support, or manage your profile.',
+              'Use the tabs below to check your order history, review digital invoices, message customer support, or update your profile.',
           borderRadius: BorderRadius.circular(16),
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         ),
@@ -131,7 +131,7 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
           targetKey: _helpButtonKey,
           title: '5. Help Anytime',
           description:
-              'You\'re all set! If you ever want to review this ordering tutorial again, simply tap this help button in the header.',
+              'You\'re all set! No request has been submitted. When you\'re ready for fresh laundry, simply tap "New Request", or tap this help button anytime to replay this tour.',
           borderRadius: BorderRadius.circular(14),
           padding: const EdgeInsets.all(4),
         ),

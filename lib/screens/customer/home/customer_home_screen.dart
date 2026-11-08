@@ -755,35 +755,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Recent Activity',
-              style: AppTheme.lightTheme.textTheme.titleMedium,
-            ),
-            TextButton(
-              onPressed: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const CustomerOrdersScreen(),
-                  ),
-                );
-                // Refresh recent orders when returning from orders screen
-                if (result == true) {
-                  _loadRecentOrders();
-                }
-              },
-              child: const Text(
-                'View All',
-                style: TextStyle(
-                  color: AppTheme.accentBlue,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
+        Text(
+          'Recent Activity',
+          style: AppTheme.lightTheme.textTheme.titleMedium,
         ),
         const SizedBox(height: 12),
 

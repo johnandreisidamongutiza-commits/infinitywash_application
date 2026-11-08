@@ -65,7 +65,23 @@ class _CustomerTutorialOverlayState extends State<CustomerTutorialOverlay>
     );
 
     _fadeController.forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateTargetRect();
+    });
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
     _updateTargetRect();
+  }
+
+  @override
+  void didUpdateWidget(covariant CustomerTutorialOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.steps != widget.steps) {
+      _updateTargetRect();
+    }
   }
 
   @override
@@ -75,15 +91,16 @@ class _CustomerTutorialOverlayState extends State<CustomerTutorialOverlay>
   }
 
   Future<void> _updateTargetRect() async {
-    if (widget.steps.isEmpty) return;
+    if (!mounted || widget.steps.isEmpty) return;
     final step = widget.steps[_currentIndex];
 
     if (widget.onBeforeStep != null) {
       await widget.onBeforeStep!(step.targetKey);
+      // Allow scroll animation to finish and layout to settle
+      await Future.delayed(const Duration(milliseconds: 280));
+    } else {
+      await Future.delayed(const Duration(milliseconds: 50));
     }
-
-    // Wait a frame for any scroll or layout animations to stabilize
-    await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
 
     final renderBox =
@@ -96,16 +113,17 @@ class _CustomerTutorialOverlayState extends State<CustomerTutorialOverlay>
         renderBox.size.width,
         renderBox.size.height,
       );
-      // Inflate with custom padding
-      setState(() {
-        _targetRect = Rect.fromLTRB(
-          rawRect.left - step.padding.left,
-          rawRect.top - step.padding.top,
-          rawRect.right + step.padding.right,
-          rawRect.bottom + step.padding.bottom,
-        );
-      });
-    } else {
+      if (mounted) {
+        setState(() {
+          _targetRect = Rect.fromLTRB(
+            rawRect.left - step.padding.left,
+            rawRect.top - step.padding.top,
+            rawRect.right + step.padding.right,
+            rawRect.bottom + step.padding.bottom,
+          );
+        });
+      }
+    } else if (mounted) {
       setState(() {
         _targetRect = null;
       });
@@ -120,6 +138,15 @@ class _CustomerTutorialOverlayState extends State<CustomerTutorialOverlay>
       await _updateTargetRect();
     } else {
       widget.onFinish();
+    }
+  }
+
+  void _prevStep() async {
+    if (_currentIndex > 0) {
+      setState(() {
+        _currentIndex--;
+      });
+      await _updateTargetRect();
     }
   }
 
@@ -141,41 +168,65 @@ class _CustomerTutorialOverlayState extends State<CustomerTutorialOverlay>
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) _skip();
       },
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: Stack(
-          children: [
-            // 1. Dark scrim with cutout hole for target element
-            CustomPaint(
-              size: screenSize,
-              painter: _SpotlightPainter(
-                targetRect: _targetRect,
-                borderRadius: step.borderRadius,
-                overlayColor: Colors.black.withValues(alpha: 0.72),
-                highlightBorderColor: Colors.white.withValues(alpha: 0.45),
+      child: Material(
+        color: Colors.transparent,
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Stack(
+            children: [
+              // 1. Dark scrim with cutout hole for target element
+              CustomPaint(
+                size: screenSize,
+                painter: _SpotlightPainter(
+                  targetRect: _targetRect,
+                  borderRadius: step.borderRadius,
+                  overlayColor: Colors.black.withValues(alpha: 0.72),
+                  highlightBorderColor: Colors.white.withValues(alpha: 0.45),
+                ),
               ),
-            ),
 
-            // 2. Absorb pointers on the background to prevent accidental clicks
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  // Keep focus on the tutorial buttons
-                },
-                child: const SizedBox.expand(),
+              // 2. Gesture detector covering background: tapping advances to next step
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _nextStep,
+                  onHorizontalDragEnd: (details) {
+                    if (details.primaryVelocity != null) {
+                      if (details.primaryVelocity! < -150) {
+                        _nextStep();
+                      } else if (details.primaryVelocity! > 150) {
+                        _prevStep();
+                      }
+                    }
+                  },
+                  child: const SizedBox.expand(),
+                ),
               ),
-            ),
 
-            // 3. Tooltip Bubble with arrow
-            _buildTooltipBubble(
-              context: context,
-              step: step,
-              isLast: isLast,
-              screenSize: screenSize,
-              mediaQuery: mediaQuery,
-            ),
-          ],
+              // 2b. Tap listener directly on the highlighted target rect to advance
+              if (_targetRect != null)
+                Positioned(
+                  left: _targetRect!.left,
+                  top: _targetRect!.top,
+                  width: _targetRect!.width,
+                  height: _targetRect!.height,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _nextStep,
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+
+              // 3. Tooltip Bubble with arrow
+              _buildTooltipBubble(
+                context: context,
+                step: step,
+                isLast: isLast,
+                screenSize: screenSize,
+                mediaQuery: mediaQuery,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -188,7 +239,7 @@ class _CustomerTutorialOverlayState extends State<CustomerTutorialOverlay>
     required Size screenSize,
     required MediaQueryData mediaQuery,
   }) {
-    const double horizontalMargin = 20.0;
+    const double horizontalMargin = 16.0;
     final double maxBubbleWidth = screenSize.width - (horizontalMargin * 2);
 
     // Determine vertical placement: above or below target
@@ -197,25 +248,33 @@ class _CustomerTutorialOverlayState extends State<CustomerTutorialOverlay>
     double? bottom;
     double arrowX = screenSize.width / 2;
 
+    final safeTop = mediaQuery.padding.top + 16;
+    final safeBottom = mediaQuery.padding.bottom + 16;
+
     if (_targetRect != null) {
       arrowX = _targetRect!.center.dx.clamp(
         horizontalMargin + 32,
         screenSize.width - horizontalMargin - 32,
       );
 
-      // If target is in the bottom half of the screen, place bubble above it
-      if (_targetRect!.center.dy > screenSize.height * 0.52) {
+      final spaceBelow = screenSize.height - _targetRect!.bottom - safeBottom;
+      final spaceAbove = _targetRect!.top - safeTop;
+
+      // If more space above or target is low on screen, place bubble above it
+      if (spaceAbove >= spaceBelow || _targetRect!.center.dy > screenSize.height * 0.48) {
         isBelowTarget = false;
-        bottom = (screenSize.height - _targetRect!.top) + 14;
-        bottom = math.max(bottom, mediaQuery.padding.bottom + 16);
+        final rawBottom = (screenSize.height - _targetRect!.top) + 12;
+        final maxAllowedBottom = math.max(safeBottom, screenSize.height - safeTop - 240);
+        bottom = rawBottom.clamp(safeBottom, maxAllowedBottom);
       } else {
         isBelowTarget = true;
-        top = _targetRect!.bottom + 14;
-        top = math.max(top, mediaQuery.padding.top + 16);
+        final rawTop = _targetRect!.bottom + 12;
+        final maxAllowedTop = math.max(safeTop, screenSize.height - safeBottom - 240);
+        top = rawTop.clamp(safeTop, maxAllowedTop);
       }
     } else {
       // Fallback centered
-      top = screenSize.height * 0.4;
+      top = screenSize.height * 0.35;
     }
 
     return Positioned(
@@ -244,30 +303,69 @@ class _CustomerTutorialOverlayState extends State<CustomerTutorialOverlay>
             ),
 
           // Main Card Container
-          Container(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E1F2E),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1F2E),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Top row: Step badge "STEP 1 OF 5" and close button
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'STEP ${_currentIndex + 1} OF ${widget.steps.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: _skip,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 20,
+                          color: Colors.white.withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
                 // Step title
                 if (step.title.isNotEmpty) ...[
                   Text(
                     step.title,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 16,
+                      fontSize: 16.5,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 0.2,
                     ),
@@ -287,18 +385,50 @@ class _CustomerTutorialOverlayState extends State<CustomerTutorialOverlay>
                 ),
                 const SizedBox(height: 20),
 
-                // Controls Row: Indicator dots on left, Skip & Next/Finish on right
+                // Controls Row: Left action, Center dots, Right Next/Finish
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Step indicators (dash for current, dots for others)
+                    // Left action: Back button (if > 0) or Skip button
+                    _currentIndex > 0
+                        ? TextButton.icon(
+                            onPressed: _prevStep,
+                            icon: const Icon(Icons.arrow_back_rounded, size: 14),
+                            label: const Text(
+                              'Back',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.white.withValues(alpha: 0.8),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          )
+                        : TextButton(
+                            onPressed: _skip,
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.white.withValues(alpha: 0.65),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: const Text(
+                              'Skip',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+
+                    // Center: Indicator dots
                     Row(
                       children: List.generate(widget.steps.length, (index) {
                         final isActive = index == _currentIndex;
                         return AnimatedContainer(
                           duration: const Duration(milliseconds: 250),
-                          margin: const EdgeInsets.only(right: 6),
-                          width: isActive ? 20 : 6,
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: isActive ? 18 : 6,
                           height: 5,
                           decoration: BoxDecoration(
                             color: isActive
@@ -310,111 +440,50 @@ class _CustomerTutorialOverlayState extends State<CustomerTutorialOverlay>
                       }),
                     ),
 
-                    // Buttons: Skip & Next / Finish
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Skip Button
-                        TextButton(
-                          onPressed: _skip,
-                          style: TextButton.styleFrom(
-                            foregroundColor:
-                                Colors.white.withValues(alpha: 0.75),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          child: const Text(
-                            'Skip',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                    // Right action: Next or Finish
+                    ElevatedButton(
+                      onPressed: _nextStep,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF1E1F2E),
+                        elevation: 0,
+                        minimumSize: const Size(76, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
                         ),
-                        const SizedBox(width: 8),
-
-                        // Next or Finish Button
-                        isLast
-                            ? ElevatedButton(
-                                onPressed: _nextStep,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: const Color(0xFF1E1F2E),
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'Finish',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1E1F2E),
-                                      ),
-                                    ),
-                                    SizedBox(width: 4),
-                                    Icon(
-                                      Icons.check_rounded,
-                                      size: 16,
-                                      color: Color(0xFF1E1F2E),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : ElevatedButton(
-                                onPressed: _nextStep,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: const Color(0xFF1E1F2E),
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 8,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'Next',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1E1F2E),
-                                      ),
-                                    ),
-                                    SizedBox(width: 4),
-                                    Icon(
-                                      Icons.arrow_forward_rounded,
-                                      size: 16,
-                                      color: Color(0xFF1E1F2E),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                      ],
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            isLast ? 'Finish' : 'Next',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E1F2E),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            isLast ? Icons.check_rounded : Icons.arrow_forward_rounded,
+                            size: 15,
+                            color: const Color(0xFF1E1F2E),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ],
             ),
           ),
+        ),
 
           // Arrow pointing DOWN if bubble is above target
           if (_targetRect != null && !isBelowTarget)
