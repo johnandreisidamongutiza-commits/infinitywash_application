@@ -22,8 +22,21 @@ import '../profile/options/account_details_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   final bool isActive;
+  final GlobalKey? newRequestKey;
+  final GlobalKey? statusCardKey;
+  final GlobalKey? trackDeliveryKey;
+  final GlobalKey? helpButtonKey;
+  final VoidCallback? onStartTutorial;
 
-  const CustomerHomeScreen({super.key, this.isActive = true});
+  const CustomerHomeScreen({
+    super.key,
+    this.isActive = true,
+    this.newRequestKey,
+    this.statusCardKey,
+    this.trackDeliveryKey,
+    this.helpButtonKey,
+    this.onStartTutorial,
+  });
 
   @override
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
@@ -186,6 +199,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       avatarUrl: _avatarUrl,
       localAvatarPath: _localAvatarPath,
       unreadCount: _unreadNotificationsCount,
+      onHelpTap: widget.onStartTutorial,
+      helpKey: widget.helpButtonKey,
       onAvatarTap: () async {
         await Navigator.push(
           context,
@@ -323,6 +338,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final activeOrder = _activeOrder;
 
     return GestureDetector(
+      key: widget.statusCardKey,
       onTap: () async {
         if (activeOrder != null) {
           await Navigator.push(
@@ -591,6 +607,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 Icons.add_shopping_cart,
                 AppTheme.lightBlue,
                 AppTheme.primaryBlue,
+                actionKey: widget.newRequestKey,
                 onTap: () async {
                   final result = await Navigator.push(
                     context,
@@ -612,6 +629,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 Icons.delivery_dining,
                 AppTheme.teamMemberOrange,
                 AppTheme.teamMemberIconOrange,
+                actionKey: widget.trackDeliveryKey,
                 onTap: () {
                   final activeOrder = _recentOrders
                       .cast<LaundryOrder?>()
@@ -653,9 +671,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     IconData icon,
     Color bgColor,
     Color iconColor, {
+    Key? actionKey,
     required VoidCallback onTap,
   }) {
     return Material(
+      key: actionKey,
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
