@@ -31,6 +31,11 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
   bool _isSearchingCustomers = false;
+  bool _isSavingBlankCard = false;
+
+  // Realtime scan debounce
+  String? _lastRealtimeUid;
+  DateTime? _lastRealtimeScanAt;
 
   @override
   void initState() {
@@ -55,7 +60,17 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
               final newRecord = payload.newRecord;
               final uid = newRecord['uid'] as String?;
               if (uid != null && uid.trim().isNotEmpty && mounted) {
-                _scanCard(uid);
+                final cleanUid = uid.trim().toUpperCase();
+                final now = DateTime.now();
+                if (_lastRealtimeUid == cleanUid &&
+                    _lastRealtimeScanAt != null &&
+                    now.difference(_lastRealtimeScanAt!) <
+                        const Duration(milliseconds: 1500)) {
+                  return;
+                }
+                _lastRealtimeUid = cleanUid;
+                _lastRealtimeScanAt = now;
+                _scanCard(cleanUid);
               }
             },
           )
@@ -67,7 +82,9 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
 
   @override
   void dispose() {
-    _scanChannel?.unsubscribe();
+    if (_scanChannel != null) {
+      Supabase.instance.client.removeChannel(_scanChannel!);
+    }
     _manualTagController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -79,12 +96,18 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
     final cleanUid = uid.trim().toUpperCase();
     if (cleanUid.isEmpty) return;
 
+    final isSameUid = _scannedUid == cleanUid;
+
     setState(() {
       _isSearching = true;
       _scannedUid = cleanUid;
-      _cardInfo = null;
-      _error = null;
-      _showingRegisterFlow = false;
+      if (!isSameUid) {
+        _cardInfo = null;
+        _error = null;
+        _showingRegisterFlow = false;
+        _searchResults = [];
+        _searchController.clear();
+      }
     });
     _manualTagController.clear();
 
@@ -115,6 +138,41 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
       _manualTagController.clear();
       _searchController.clear();
     });
+  }
+
+  Future<void> _saveAsBlankCard() async {
+    if (_scannedUid == null) return;
+    setState(() => _isSavingBlankCard = true);
+    try {
+      await _loyaltyService.registerUnassignedCard(uid: _scannedUid!);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Card $_scannedUid added to shop inventory!'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      _scanCard(_scannedUid!);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save card: ${mapErrorToMessage(e)}'),
+          backgroundColor: AppTheme.errorRed,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSavingBlankCard = false);
+    }
   }
 
   // ─── Registration Flow ───────────────────────────────────────────────────────
@@ -347,7 +405,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                                       customerId: newCustomerId,
                                     );
 
-                                    if (!mounted) return;
+                                    if (!mounted || !sheetContext.mounted) return;
                                     Navigator.pop(sheetContext);
 
                                     // 3. Celebrate with green snackbar & auto-refresh
@@ -381,7 +439,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                                   }
                                 },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF00897B),
+                            backgroundColor: AppTheme.primaryBlue,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                           child: isSubmitting
@@ -580,7 +638,9 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
     final borderColor = _isSearching
         ? Colors.orange
         : isActive
-            ? (_cardInfo != null ? Colors.green : AppTheme.errorRed)
+            ? (_cardInfo != null
+                ? (_cardInfo!.hasOwner ? Colors.green : Colors.amber.shade700)
+                : AppTheme.errorRed)
             : AppTheme.accentBlue.withValues(alpha: 0.3);
 
     return Container(
@@ -741,8 +801,13 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
       ledText = 'READING CARD...';
     } else if (_scannedUid != null) {
       if (_cardInfo != null) {
-        ledColor = Colors.green;
-        ledText = 'CARD FOUND • LOYALTY DATA LOADED';
+        if (!_cardInfo!.hasOwner) {
+          ledColor = Colors.amber.shade700;
+          ledText = 'INVENTORY CARD • UNASSIGNED';
+        } else {
+          ledColor = Colors.green;
+          ledText = 'CARD FOUND • LOYALTY DATA LOADED';
+        }
       } else {
         ledColor = AppTheme.errorRed;
         ledText = 'CARD NOT REGISTERED';
@@ -854,6 +919,9 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
 
   Widget _buildCardFoundResult() {
     final card = _cardInfo!;
+    if (!card.hasOwner) {
+      return _buildUnassignedCardResult(card);
+    }
     final hasFreeLoas = card.freeLoadsAvailable > 0;
 
     return Column(
@@ -1302,6 +1370,117 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
     );
   }
 
+  // ─── Unassigned Inventory Card Result ────────────────────────────────────────
+
+  Widget _buildUnassignedCardResult(LoyaltyCardInfo card) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.amber.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.amber.withValues(alpha: 0.4),
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.amber,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Shop Inventory Card (Unassigned)',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'UID: ${card.uid}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textLight,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'This card exists in system inventory, but has not been assigned to a customer.',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Register / Assign button
+        if (!_showingRegisterFlow) ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => setState(() => _showingRegisterFlow = true),
+              icon: const Icon(Icons.person_add_outlined, color: Colors.white),
+              label: const Text(
+                'Register / Assign to Customer',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentBlue,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _resetScanner,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Scan Another Card'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 46),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                side: const BorderSide(color: AppTheme.borderGray),
+              ),
+            ),
+          ),
+        ] else
+          _buildRegisterFlow(),
+      ],
+    );
+  }
+
   // ─── Card Not Found / Register ────────────────────────────────────────────────
 
   Widget _buildCardNotFoundResult() {
@@ -1386,8 +1565,30 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
+              onPressed: _isSavingBlankCard ? null : _saveAsBlankCard,
+              icon: _isSavingBlankCard
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.inventory_2_outlined, size: 18),
+              label: const Text('Save as Blank Shop Card (Inventory)'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 46),
+                foregroundColor: AppTheme.accentBlue,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                side: const BorderSide(color: AppTheme.borderGray),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
               onPressed: _resetScanner,
-              icon: const Icon(Icons.nfc_outlined, size: 18),
+              icon: const Icon(Icons.refresh, size: 18),
               label: const Text('Scan Another Card'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 46),
@@ -1458,7 +1659,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00897B),
+                backgroundColor: AppTheme.accentBlue,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
             ),
@@ -1621,17 +1822,15 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: isWalkIn
-                              ? const Color(0xFF00897B).withValues(alpha: 0.12)
-                              : AppTheme.accentBlue.withValues(alpha: 0.12),
+                          color: AppTheme.accentBlue.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           isWalkIn ? 'Walk-in' : 'Mobile App',
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.bold,
-                            color: isWalkIn ? const Color(0xFF00897B) : AppTheme.accentBlue,
+                            color: AppTheme.accentBlue,
                           ),
                         ),
                       ),
@@ -1682,29 +1881,59 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.errorRed.withValues(alpha: 0.3)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.error_outline, color: AppTheme.errorRed),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Error Reading Card',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.errorRed)),
-                const SizedBox(height: 4),
-                Text(_error!,
-                    style: const TextStyle(
-                        fontSize: 12, color: AppTheme.textLight)),
-              ],
+          Row(
+            children: [
+              const Icon(Icons.error_outline, color: AppTheme.errorRed),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Error Reading Card',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.errorRed)),
+                    const SizedBox(height: 4),
+                    Text(_error!,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppTheme.textLight)),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh, color: AppTheme.accentBlue),
+                onPressed: () => _scanCard(_scannedUid!),
+              ),
+            ],
+          ),
+          if (_scannedUid != null) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _error = null;
+                    _cardInfo = null;
+                    _showingRegisterFlow = true;
+                  });
+                },
+                icon: const Icon(Icons.person_add_outlined, color: Colors.white, size: 18),
+                label: const Text(
+                  'Register as New Card Anyway',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentBlue,
+                  minimumSize: const Size(double.infinity, 44),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: AppTheme.accentBlue),
-            onPressed: () => _scanCard(_scannedUid!),
-          ),
+          ],
         ],
       ),
     );

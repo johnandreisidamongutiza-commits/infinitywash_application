@@ -45,5 +45,9 @@ void main() {
     expect(find.text('Tap loyalty card to reader'), findsOneWidget);
     expect(find.text('Check loyalty balance'), findsOneWidget);
     expect(find.text('Register new cards'), findsOneWidget);
+
+    // Unmount widget so dispose() is called and subscriptions/controllers are cleaned up
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 60));
   });
 }
