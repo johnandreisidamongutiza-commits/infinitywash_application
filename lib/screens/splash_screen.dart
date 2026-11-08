@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/update_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/role_entry_transition.dart';
+import '../widgets/update_dialog.dart';
 import 'customer/customer_main_screen.dart';
 import 'customer/google_profile_completion_screen.dart';
 import 'login_screen.dart';
@@ -25,7 +27,34 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _checkAutoLogin();
+    _initializeAppFlow();
+  }
+
+  Future<void> _initializeAppFlow() async {
+    // 1. Check for app updates silently
+    try {
+      final updateResult = await UpdateService.instance.checkForUpdate();
+      if (!mounted) return;
+
+      if (updateResult.hasUpdate) {
+        final proceed = await UpdateDialog.show(
+          context: context,
+          result: updateResult,
+        );
+
+        if (!proceed) {
+          // If the update was mandatory, block navigation until updated.
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [SplashScreen] Update check error: $e');
+    }
+
+    // 2. Proceed to auto-login & authentication flow
+    if (mounted) {
+      _checkAutoLogin();
+    }
   }
 
   Future<void> _checkAutoLogin() async {

@@ -1,0 +1,9 @@
+# Copy this file to "key.properties" in this same directory (android/key.properties).
+# NEVER commit key.properties or your .jks file to GitHub or git!
+# Both key.properties and *.jks are already included in android/.gitignore.
+
+storePassword=YOUR_STORE_PASSWORD_HERE
+keyPassword=YOUR_KEY_PASSWORD_HERE
+keyAlias=upload
+storeFile=upload-keystore.jks
+

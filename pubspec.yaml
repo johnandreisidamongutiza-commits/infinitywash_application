@@ -88,6 +88,11 @@ dependencies:
   connectivity_plus: ^7.3.2
   webview_flutter: ^4.13.1
   webview_flutter_android: ^4.10.5
+
+  # In-App App Updates (Direct APK download & install)
+  dio: ^5.8.0+1
+  open_filex: ^4.6.0
+  permission_handler: ^11.4.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
