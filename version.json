@@ -2,7 +2,7 @@
   "latestVersion": "1.0.1",
   "latestBuildNumber": 2,
   "minSupportedBuildNumber": 1,
-  "apkUrl": "https://github.com/johnandreisidamongutiza-commits/infinitywash_application/releases/download/v1.0.1/app-release.apk",
+  "apkUrl": "https://raw.githubusercontent.com/johnandreisidamongutiza-commits/infinitywash_application/master/app-release.apk",
   "releaseNotes": [
     "Fixed minor issues and improved stability",
     "Added in-app update support"
