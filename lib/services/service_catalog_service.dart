@@ -310,4 +310,26 @@ class ServiceCatalogService {
       rethrow;
     }
   }
+
+  /// Get category limits per load from database if available
+  Future<Map<String, double>> getCategoryLimits() async {
+    try {
+      final response = await _client
+          .from('laundry_types')
+          .select('laundry_type_name, limit_per_load')
+          .eq('status', 'active');
+      final Map<String, double> limits = {};
+      for (final row in response) {
+        final name = row['laundry_type_name'] as String?;
+        final limit = (row['limit_per_load'] as num?)?.toDouble();
+        if (name != null && limit != null) {
+          limits[name] = limit;
+        }
+      }
+      if (limits.isNotEmpty) return limits;
+    } catch (e) {
+      print('ℹ️ Using default category limits (laundry_types table query skipped: $e)');
+    }
+    return {};
+  }
 }

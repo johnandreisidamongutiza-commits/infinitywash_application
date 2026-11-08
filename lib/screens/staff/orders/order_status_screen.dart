@@ -13,6 +13,7 @@ import '../../../services/supabase_service.dart';
 import '../../../widgets/order_timeline_view.dart';
 import '../chats/staff_chat_detail_screen.dart';
 import 'check_in_request_screen.dart';
+import 'create_order_flow.dart';
 
 class OrderStatusScreen extends StatefulWidget {
   final LaundryOrder order;
@@ -532,6 +533,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               );
             },
           ),
+          if (_currentOrder.channel == OrderChannel.walkIn &&
+              _currentOrder.status != OrderStatus.cancelled &&
+              _currentOrder.status != OrderStatus.rejected)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, size: 20, color: AppTheme.accentBlue),
+              tooltip: 'Edit Order',
+              onPressed: () async {
+                final result = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CreateOrderFlow(orderToEdit: _currentOrder),
+                  ),
+                );
+                if (result == true && mounted) {
+                  await _refreshOrderData();
+                }
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.refresh, size: 22, color: AppTheme.textDark),
             tooltip: 'Refresh',
@@ -1091,9 +1110,49 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Laundry Specifications',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Laundry Specifications',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+              ),
+              if (_currentOrder.channel == OrderChannel.walkIn &&
+                  _currentStatus != OrderStatus.cancelled &&
+                  _currentStatus != OrderStatus.rejected)
+                InkWell(
+                  onTap: () async {
+                    final result = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => CreateOrderFlow(orderToEdit: _currentOrder),
+                      ),
+                    );
+                    if (result == true && mounted) {
+                      await _refreshOrderData();
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.edit_outlined, size: 14, color: AppTheme.accentBlue),
+                        SizedBox(width: 4),
+                        Text(
+                          'Edit',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.accentBlue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
           Row(

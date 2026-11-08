@@ -87,13 +87,15 @@ enum _SuggestionType {
 }
 
 class CreateOrderFlow extends StatefulWidget {
-  const CreateOrderFlow({super.key});
+  final LaundryOrder? orderToEdit;
+  const CreateOrderFlow({super.key, this.orderToEdit});
 
   @override
   State<CreateOrderFlow> createState() => _CreateOrderFlowState();
 }
 
 class _CreateOrderFlowState extends State<CreateOrderFlow> {
+  bool get _isEditing => widget.orderToEdit != null;
   // Services
   final CustomerService _customerService = CustomerService();
   final ServiceCatalogService _catalogService = ServiceCatalogService();
@@ -207,16 +209,85 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   void initState() {
     super.initState();
 
-    // Initialize with one load only if drop-off is selected (default)
-    // For rider pickup, loads will be empty until staff checks in the order
-    if (_selectedCollection == CollectionMethod.dropOff) {
-      _loads.add(LoadDraft(initialWeight: ''));
+    if (widget.orderToEdit != null) {
+      final o = widget.orderToEdit!;
+      _acceptedCustomerId = o.customerId;
+
+      // Customer name
+      final parts = o.customerName.trim().split(' ');
+      if (parts.isNotEmpty) {
+        _firstNameController.text = parts.first;
+        if (parts.length > 1) {
+          _lastNameController.text = parts.sublist(1).join(' ');
+        }
+      }
+      if (o.customerPhone != null && o.customerPhone!.isNotEmpty) {
+        _phoneController.text = o.customerPhone!;
+      }
+
+      // Logistics
+      _selectedCollection = o.collectionMethod;
+      _selectedReturn = o.returnMethod;
+      if (o.deliveryAddress != null && o.deliveryAddress!.isNotEmpty) {
+        _parseAndSetCustomerAddress(o.deliveryAddress!);
+      }
+      if (o.deliveryLandmark != null) {
+        _landmarkController.text = o.deliveryLandmark!;
+      }
+      if (o.instructions != null) {
+        _instructionsController.text = o.instructions!;
+      }
+      if (o.staffMessage != null) {
+        _notesController.text = o.staffMessage!;
+      }
+
+      // Loads
+      if (o.loads.isNotEmpty) {
+        for (final load in o.loads) {
+          _loads.add(LoadDraft(
+            category: load.category,
+            initialWeight: load.weight > 0 ? load.weight.toString() : '',
+          ));
+        }
+      } else if (_selectedCollection == CollectionMethod.dropOff) {
+        _loads.add(LoadDraft(initialWeight: ''));
+      }
+
+      // Addons
+      _loadOrderAddonsForEdit(o.id);
+    } else {
+      // Initialize with one load only if drop-off is selected (default)
+      // For rider pickup, loads will be empty until staff checks in the order
+      if (_selectedCollection == CollectionMethod.dropOff) {
+        _loads.add(LoadDraft(initialWeight: ''));
+      }
     }
     
     _firstNameController.addListener(_checkForCustomerSuggestion);
     _lastNameController.addListener(_checkForCustomerSuggestion);
     _phoneController.addListener(_checkForCustomerSuggestion);
     _subscribeToLiveRfidScans();
+  }
+
+  Future<void> _loadOrderAddonsForEdit(String orderId) async {
+    try {
+      final addons = await _orderService.getOrderAddons(orderId);
+      if (!mounted) return;
+      setState(() {
+        for (final addon in addons) {
+          final code = (addon['addon_code'] as String?)?.toLowerCase() ?? '';
+          final name = (addon['addon_name'] as String?)?.toLowerCase() ?? '';
+          if (code.contains('fabric') || name.contains('fabric') || name.contains('fab con')) {
+            _addExtraFabCon = true;
+          }
+          if (code.contains('detergent') || name.contains('detergent')) {
+            _addExtraDetergent = true;
+          }
+        }
+      });
+    } catch (e) {
+      print('Could not load addons for edit: $e');
+    }
   }
 
   void _subscribeToLiveRfidScans() {
@@ -1309,6 +1380,51 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         }
       }
 
+      if (_isEditing) {
+        final editOrder = widget.orderToEdit!;
+        print('🔄 Updating walk-in order in database: ${editOrder.id}');
+        await _orderService.updateWalkInOrder(
+          orderId: editOrder.id,
+          customerId: customerId,
+          customerName: _customerFullName,
+          customerPhone: _phoneController.text.trim().isNotEmpty
+              ? _customerService.normalizePhone(_phoneController.text.trim())
+              : null,
+          serviceId: serviceId,
+          serviceName: serviceName,
+          loads: orderLoads,
+          subtotal: subtotal,
+          totalAmount: totalAmount,
+          addons: addons,
+          customerNotes: customerNotes,
+          staffNotes: staffNotes.isNotEmpty ? staffNotes : null,
+          deliveryAddress: (_selectedCollection == CollectionMethod.riderPickup || _selectedReturn == ReturnMethod.delivery)
+              ? _fullDeliveryAddress
+              : null,
+          deliveryLandmark: (_selectedCollection == CollectionMethod.riderPickup || _selectedReturn == ReturnMethod.delivery)
+              ? _landmarkController.text.trim()
+              : null,
+          isPaid: isPaidImmediately,
+          paymentMethod: paymentMethod,
+          assignedStaffId: assignedStaffId,
+        );
+
+        setState(() {
+          _isSubmitting = false;
+        });
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Order ${editOrder.displayNumber} updated successfully ✓'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        Navigator.pop(context, true);
+        return;
+      }
+
       // Step 10: Create order in database
       print('🔄 Creating order in database...');
       final orderId = await _orderService.createOrder(
@@ -1379,29 +1495,16 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
       if (!mounted) return;
 
-      // Different success messages for rider pickup vs drop-off
-      final String successMessage;
-      if (_selectedCollection == CollectionMethod.riderPickup) {
-        successMessage = 'Order $orderNumber Created!\n'
-            'Rider pickup scheduled. Price will be calculated after laundry is received.';
-      } else if (isPaidImmediately) {
-        successMessage = gcashWithReceipt
-            ? 'Order $orderNumber Created! ₱${totalAmount.toStringAsFixed(2)} paid via GCash — receipt uploaded, pending verification.'
-            : 'Order $orderNumber Created! ₱${totalAmount.toStringAsFixed(2)} paid via $paymentMethod.';
-      } else {
-        successMessage = 'Order $orderNumber Created! Saved as UNPAID (to pay on claiming).';
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(successMessage),
-          backgroundColor: _selectedCollection == CollectionMethod.riderPickup 
-              ? Colors.blue 
-              : (isPaidImmediately ? Colors.green : AppTheme.accentBlue),
-          duration: const Duration(seconds: 3),
-        ),
+      // Show post-creation confirmation dialog with Edit option
+      _showOrderCreatedDialog(
+        orderNumber: orderNumber,
+        orderId: orderId,
+        totalAmount: totalAmount,
+        isPaid: isPaidImmediately,
+        paymentMethod: paymentMethod,
+        isRiderPickup: _selectedCollection == CollectionMethod.riderPickup,
+        gcashWithReceipt: gcashWithReceipt,
       );
-      Navigator.pop(context, true); // Return true to indicate successful order creation
     } catch (e) {
       setState(() {
         _isSubmitting = false;
@@ -1434,6 +1537,156 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         ),
       );
     }
+  }
+
+  void _showOrderCreatedDialog({
+    required String orderNumber,
+    required String orderId,
+    required double totalAmount,
+    required bool isPaid,
+    required String? paymentMethod,
+    required bool isRiderPickup,
+    required bool gcashWithReceipt,
+  }) {
+    // Build the info summary
+    final String paymentInfo;
+    if (isRiderPickup) {
+      paymentInfo = 'Rider pickup scheduled';
+    } else if (isPaid) {
+      paymentInfo = gcashWithReceipt
+          ? '₱${totalAmount.toStringAsFixed(2)} via GCash (pending verification)'
+          : '₱${totalAmount.toStringAsFixed(2)} via ${paymentMethod ?? 'Cash'}';
+    } else {
+      paymentInfo = '₱${totalAmount.toStringAsFixed(2)} — UNPAID';
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_circle, color: Colors.green, size: 40),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Order Created!',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            Text(orderNumber,
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.accentBlue)),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.person_outline, size: 16, color: AppTheme.textLight),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(_customerFullName,
+                        style: const TextStyle(fontSize: 13, color: AppTheme.textDark),
+                        overflow: TextOverflow.ellipsis)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.layers_outlined, size: 16, color: AppTheme.textLight),
+                      const SizedBox(width: 6),
+                      Text('${_loads.length} load(s) • ${_totalWeight.toStringAsFixed(1)}kg',
+                        style: const TextStyle(fontSize: 13, color: AppTheme.textDark)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(isPaid ? Icons.check_circle_outline : Icons.schedule,
+                        size: 16, color: isPaid ? Colors.green : AppTheme.textLight),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(paymentInfo,
+                        style: const TextStyle(fontSize: 13, color: AppTheme.textDark),
+                        overflow: TextOverflow.ellipsis)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Made a mistake? You can edit this order now.',
+              style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(ctx); // Close dialog
+                    // Fetch the full order to pass to edit screen
+                    final fullOrder = await _orderService.getOrderById(orderId);
+                    if (fullOrder != null && mounted) {
+                      final editResult = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CreateOrderFlow(orderToEdit: fullOrder),
+                        ),
+                      );
+                      if (mounted) Navigator.pop(context, true);
+                    } else {
+                      if (mounted) Navigator.pop(context, true);
+                    }
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Edit Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.accentBlue,
+                    side: const BorderSide(color: AppTheme.accentBlue),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx); // Close dialog
+                    Navigator.pop(context, true); // Return to orders
+                  },
+                  icon: const Icon(Icons.check, size: 18, color: Colors.white),
+                  label: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.accentBlue,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   void _showPaymentMethodModal() {
@@ -1620,7 +1873,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('New Walk-in Order'),
+        title: Text(_isEditing ? 'Edit Order ${widget.orderToEdit!.displayNumber}' : 'New Walk-in Order'),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -3464,8 +3717,99 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               ),
             ),
 
-            // Payment Buttons Row - Different for rider pickup
-            if (_selectedCollection == CollectionMethod.riderPickup)
+            // Payment Buttons Row - Different for edit mode, rider pickup, and drop-off
+            if (_isEditing) ...[
+              if (widget.orderToEdit!.paymentStatus == PaymentStatus.paid)
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _isSubmitting ? null : _showPaymentMethodModal,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.accentBlue,
+                          side: const BorderSide(color: AppTheme.accentBlue, width: 2),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text(
+                          'Payment Options',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _isSubmitting
+                            ? null
+                            : () => _submitOrder(
+                                  isPaidImmediately: true,
+                                  paymentMethod: widget.orderToEdit!.paymentMethod ?? 'Cash',
+                                ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 0,
+                        ),
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text(
+                                'Save Changes',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                              ),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _isSubmitting
+                            ? null
+                            : () => _submitOrder(isPaidImmediately: false, paymentMethod: null),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.accentBlue,
+                          side: const BorderSide(color: AppTheme.accentBlue, width: 2),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text(
+                          'Save as Unpaid',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _isSubmitting ? null : _showPaymentMethodModal,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Pay Now & Save',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+            ] else if (_selectedCollection == CollectionMethod.riderPickup)
               // Rider Pickup: Only one button to create order
               SizedBox(
                 width: double.infinity,

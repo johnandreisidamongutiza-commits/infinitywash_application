@@ -80,6 +80,11 @@ class DataChangeMonitor {
     _scheduleChangeFlush();
   }
 
+  /// Manually notify that an order has been created or updated
+  void notifyOrdersChanged() {
+    _notifyOrdersChanged();
+  }
+
   void _notifyDispatchJobsChanged() {
     _dispatchChangePending = true;
     _scheduleChangeFlush();

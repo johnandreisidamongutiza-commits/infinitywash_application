@@ -5,6 +5,7 @@ import '../utils/app_error.dart';
 import 'supabase_service.dart';
 import 'loyalty_service.dart';
 import 'service_catalog_service.dart';
+import 'data_change_monitor.dart';
 
 /// What [OrderService.completeOrder] should do given an order's current
 /// status. See [CompleteOrderGuards.decideAction].
@@ -1617,6 +1618,203 @@ class OrderService {
     } catch (e) {
       print('❌ Error getting order: $e');
       return null;
+    }
+  }
+
+  /// Get addons recorded for an order
+  Future<List<Map<String, dynamic>>> getOrderAddons(String orderId) async {
+    try {
+      final response = await _client
+          .from('order_addons')
+          .select()
+          .eq('order_id', orderId);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('❌ Error getting order addons: $e');
+      return [];
+    }
+  }
+
+  /// Update an existing walk-in order (loads, weights, customer info, addons, payment)
+  Future<void> updateWalkInOrder({
+    required String orderId,
+    String? customerId,
+    required String customerName,
+    String? customerPhone,
+    required String serviceId,
+    required String serviceName,
+    required List<OrderLoad> loads,
+    required double subtotal,
+    required double totalAmount,
+    List<Map<String, dynamic>> addons = const [],
+    String? customerNotes,
+    String? staffNotes,
+    String? deliveryAddress,
+    String? deliveryLandmark,
+    required bool isPaid,
+    String? paymentMethod,
+    String? assignedStaffId,
+  }) async {
+    try {
+      // Validations
+      if (orderId.trim().isEmpty) {
+        throw const AppError('Order ID cannot be empty.', type: AppErrorType.validation);
+      }
+      if (loads.isEmpty) {
+        throw const AppError('Add at least one load.', type: AppErrorType.validation);
+      }
+      if (loads.length > 25) {
+        throw const AppError('Only 25 split loads limit per order.', type: AppErrorType.validation);
+      }
+      for (int i = 0; i < loads.length; i++) {
+        if (loads[i].weight <= 0) {
+          throw AppError('Load #${i + 1} weight must be greater than 0.', type: AppErrorType.validation);
+        }
+      }
+      if (subtotal < 0 || totalAmount < 0) {
+        throw const AppError('Order amounts cannot be negative.', type: AppErrorType.validation);
+      }
+      if (isPaid && (paymentMethod == null || paymentMethod.trim().isEmpty)) {
+        throw const AppError('Please select a payment method for paid orders.', type: AppErrorType.validation);
+      }
+
+      final now = DateTime.now().toUtc().toIso8601String();
+      final totalWeight = loads.fold(0.0, (sum, load) => sum + load.weight);
+
+      // 1. Update order row
+      final orderUpdates = <String, dynamic>{
+        if (serviceId.isNotEmpty) 'service_id': serviceId,
+        'service_name': serviceName,
+        'weight_kg': totalWeight,
+        'loads_count': loads.length,
+        'subtotal': subtotal,
+        'total_amount': totalAmount,
+        'payment_status': isPaid ? 'paid' : 'pending',
+        'customer_notes': customerNotes,
+        'staff_notes': staffNotes,
+        'delivery_address': deliveryAddress,
+        'landmark': deliveryLandmark,
+        'updated_at': now,
+      };
+
+      await _client.from('orders').update(orderUpdates).eq('id', orderId);
+
+      // 2. Update customer record if provided
+      if (customerId != null && customerId.isNotEmpty) {
+        final nameParts = customerName.trim().split(' ');
+        final firstName = nameParts.first;
+        final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : null;
+
+        final customerUpdates = <String, dynamic>{
+          'first_name': firstName,
+          if (lastName != null) 'last_name': lastName,
+          if (customerPhone != null && customerPhone.isNotEmpty) 'phone': customerPhone,
+          'updated_at': now,
+        };
+
+        try {
+          await _client.from('customers').update(customerUpdates).eq('id', customerId);
+        } catch (custError) {
+          print('⚠️ Warning: Updating customer record failed: $custError');
+        }
+      }
+
+      // 3. Replace order loads
+      await _client.from('order_loads').delete().eq('order_id', orderId);
+      final loadsData = loads.asMap().entries.map((entry) {
+        final idx = entry.key;
+        final load = entry.value;
+        final json = load.toJson();
+        json['order_id'] = orderId;
+        json['load_number'] = idx + 1;
+        json['created_at'] = now;
+        json['updated_at'] = now;
+        return json;
+      }).toList();
+
+      await _client.from('order_loads').insert(loadsData);
+
+      // 4. Replace order addons
+      await _client.from('order_addons').delete().eq('order_id', orderId);
+      if (addons.isNotEmpty) {
+        final addonCodes = addons.map((a) => a['addon_code'] as String).toList();
+        final resolvedAddons = await _catalogService.resolveAddonsByCode(addonCodes);
+        final addonsData = <Map<String, dynamic>>[];
+
+        for (final addon in addons) {
+          final code = addon['addon_code'] as String;
+          final serviceAddon = resolvedAddons[code];
+          if (serviceAddon == null) continue;
+
+          final priceVal = serviceAddon['price'];
+          if (priceVal == null) continue;
+
+          final qty = (addon['quantity'] ?? 1) as num;
+          final unitPrice = (priceVal as num).toDouble();
+
+          addonsData.add({
+            'order_id': orderId,
+            'addon_id': serviceAddon['id'],
+            'addon_name': serviceAddon['addon_name'],
+            'quantity': qty,
+            'unit_price': unitPrice,
+            'line_total': qty.toDouble() * unitPrice,
+            'created_at': now,
+          });
+        }
+
+        if (addonsData.isNotEmpty) {
+          await _client.from('order_addons').insert(addonsData);
+        }
+      }
+
+      // 5. Update or insert payment
+      final existingPayment = await _client
+          .from('payments')
+          .select('id, status, amount')
+          .eq('order_id', orderId)
+          .maybeSingle();
+
+      if (isPaid && paymentMethod != null) {
+        if (existingPayment != null) {
+          await _client.from('payments').update({
+            'amount': totalAmount,
+            'payment_method': paymentMethod.toLowerCase(),
+            'status': 'paid',
+            'paid_at': now,
+          }).eq('id', existingPayment['id']);
+        } else {
+          final txNumber = await generateTransactionNumber();
+          final paymentData = <String, dynamic>{
+            'transaction_number': txNumber,
+            'order_id': orderId,
+            'amount': totalAmount,
+            'payment_method': paymentMethod.toLowerCase(),
+            'status': 'paid',
+            'paid_at': now,
+            'created_at': now,
+          };
+          if (assignedStaffId != null) {
+            paymentData['processed_by'] = assignedStaffId;
+          }
+          await _client.from('payments').insert(paymentData);
+        }
+      } else if (!isPaid && existingPayment != null) {
+        // Updated to unpaid
+        await _client.from('payments').update({
+          'status': 'pending',
+          'amount': totalAmount,
+        }).eq('id', existingPayment['id']);
+      }
+
+      print('✅ Walk-in order updated successfully: $orderId');
+
+      // 6. Notify DataChangeMonitor to trigger instant updates across all views
+      DataChangeMonitor.instance.notifyOrdersChanged();
+    } catch (e) {
+      print('❌ Error updating walk-in order: $e');
+      if (e is AppError) rethrow;
+      throw mapError(e, stackTrace: StackTrace.current);
     }
   }
 }
