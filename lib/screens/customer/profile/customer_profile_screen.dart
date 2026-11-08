@@ -13,7 +13,9 @@ import 'options/loyalty_card_screen.dart';
 import 'options/terms_and_privacy_screen.dart';
 
 class CustomerProfileScreen extends StatefulWidget {
-  const CustomerProfileScreen({super.key});
+  final VoidCallback? onStartTutorial;
+
+  const CustomerProfileScreen({super.key, this.onStartTutorial});
 
   @override
   State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
@@ -124,6 +126,13 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
               'Terms & Privacy',
               const CustomerTermsAndPrivacyScreen(),
             ),
+            if (widget.onStartTutorial != null)
+              _buildProfileOptionItem(
+                context,
+                icon: Icons.help_outline_rounded,
+                label: 'How to Order (App Tutorial)',
+                onTap: widget.onStartTutorial!,
+              ),
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () async {
@@ -163,7 +172,10 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   }
 
   Widget _buildProfileOption(BuildContext context, IconData icon, String label, Widget destination) {
-    return GestureDetector(
+    return _buildProfileOptionItem(
+      context,
+      icon: icon,
+      label: label,
       onTap: () async {
         final result = await Navigator.push(
           context,
@@ -173,6 +185,17 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
           _loadProfile();
         }
       },
+    );
+  }
+
+  Widget _buildProfileOptionItem(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -181,8 +204,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
           children: [
             Icon(icon, color: AppTheme.textDark),
             const SizedBox(width: 16),
-            // Expanded: a long label (or a large system font) wraps instead of
-            // overflowing the row.
             Expanded(
               child: Text(
                 label,

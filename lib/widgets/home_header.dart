@@ -44,6 +44,12 @@ class HomeHeader extends StatelessWidget {
   /// Optional custom subtitle style.
   final TextStyle? subtitleStyle;
 
+  /// Optional callback triggered when the help/tutorial icon is tapped.
+  final VoidCallback? onHelpTap;
+
+  /// Optional GlobalKey for the help/tutorial button.
+  final Key? helpKey;
+
   const HomeHeader({
     super.key,
     required this.title,
@@ -52,6 +58,8 @@ class HomeHeader extends StatelessWidget {
     required this.unreadCount,
     required this.onNotificationTap,
     this.onAvatarTap,
+    this.onHelpTap,
+    this.helpKey,
     this.avatarUrl,
     this.localAvatarPath,
     this.avatarAsset = 'assets/images/logo.png',
@@ -116,7 +124,13 @@ class HomeHeader extends StatelessWidget {
 
         const SizedBox(width: 12),
 
-        // ── 3. Notification Button (Right) ──
+        // ── 3. Optional Help / Tutorial Button ──
+        if (onHelpTap != null) ...[
+          _buildHelpButton(context),
+          const SizedBox(width: 8),
+        ],
+
+        // ── 4. Notification Button (Right) ──
         _buildNotificationButton(context),
       ],
     );
@@ -190,6 +204,34 @@ class HomeHeader extends StatelessWidget {
     }
 
     return avatarWidget;
+  }
+
+  Widget _buildHelpButton(BuildContext context) {
+    return Tooltip(
+      message: 'How to Order (Tutorial)',
+      child: InkWell(
+        key: helpKey,
+        onTap: onHelpTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: AppTheme.softGray,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: AppTheme.borderGray.withValues(alpha: 0.6),
+              width: 1.0,
+            ),
+          ),
+          child: const Icon(
+            Icons.help_outline_rounded,
+            color: AppTheme.textDark,
+            size: 22,
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildNotificationButton(BuildContext context) {

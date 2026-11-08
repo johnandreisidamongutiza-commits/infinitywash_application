@@ -21,6 +21,35 @@ class SecureStorageService {
   static const String _tokenExpiryPrefix = 'token_expiry_';
   static const String _lastAutoLoginKey = 'last_auto_login';
   static const String _permissionRationalePrefix = 'permission_rationale_';
+  static const String _customerTutorialPrefix = 'customer_order_tutorial_completed_';
+
+  /// Whether this customer has completed or skipped the ordering tutorial.
+  Future<bool> hasCompletedCustomerTutorial({String? userId}) async {
+    try {
+      final key = userId != null
+          ? '$_customerTutorialPrefix$userId'
+          : 'customer_order_tutorial_completed_global';
+      return await _storage.read(key: key) == 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Mark the customer ordering tutorial as completed.
+  Future<void> setCustomerTutorialCompleted({
+    String? userId,
+    bool completed = true,
+  }) async {
+    try {
+      final key = userId != null
+          ? '$_customerTutorialPrefix$userId'
+          : 'customer_order_tutorial_completed_global';
+      await _storage.write(
+        key: key,
+        value: completed ? 'true' : 'false',
+      );
+    } catch (_) {}
+  }
 
   /// Whether this account has already accepted a permission explanation.
   Future<bool> hasAcceptedPermissionRationale({
