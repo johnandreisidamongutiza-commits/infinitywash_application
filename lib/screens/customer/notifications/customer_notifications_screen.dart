@@ -103,6 +103,101 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
     }
   }
 
+  Future<bool> _confirmDeleteNotification(BuildContext context, NotificationModel notif) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.errorRed.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: AppTheme.errorRed,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Delete Notification',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Are you sure you want to delete this notification? This action cannot be undone.',
+            style: TextStyle(fontSize: 14, color: AppTheme.textLight, height: 1.4),
+          ),
+          actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: AppTheme.textLight, fontWeight: FontWeight.w600),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.errorRed,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text(
+                'Delete',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _deleteNotification(NotificationModel notif) async {
+    final wasUnread = !notif.isRead;
+    setState(() {
+      _notifications.removeWhere((n) => n.id == notif.id);
+    });
+
+    try {
+      await _notificationService.deleteNotification(notif.id);
+      if (wasUnread) {
+        widget.onNotificationsCleared?.call();
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Notification deleted'),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(mapErrorToMessage(e))),
+        );
+      }
+    }
+  }
+
   Future<void> _onNotificationTap(NotificationModel notif) async {
     if (!notif.isRead) {
       try {
@@ -193,7 +288,40 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
         separatorBuilder: (context, index) => const SizedBox(height: 14),
         itemBuilder: (context, index) {
           final notif = _notifications[index];
-          return _buildNotificationCard(notif);
+          return Dismissible(
+            key: ValueKey('notification_${notif.id}'),
+            direction: DismissDirection.endToStart,
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              decoration: BoxDecoration(
+                color: AppTheme.errorRed,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Icon(Icons.delete_outline_rounded, color: Colors.white, size: 24),
+                  SizedBox(width: 8),
+                  Text(
+                    'Delete',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            confirmDismiss: (direction) async {
+              return await _confirmDeleteNotification(context, notif);
+            },
+            onDismissed: (direction) {
+              _deleteNotification(notif);
+            },
+            child: _buildNotificationCard(notif),
+          );
         },
       ),
     );

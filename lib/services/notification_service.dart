@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/notification_model.dart';
 import 'supabase_service.dart';
 import 'profile_service.dart';
+import 'secure_storage_service.dart';
 
 class NotificationService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -10,6 +12,50 @@ class NotificationService {
   // Collection name in Firestore
   static const String _notificationsCollection = 'announcements'; // Changed to match your Firebase collection
   static const String _notificationReadsTable = 'announcement_reads';
+  static const String _deletedNotificationsPrefix = 'deleted_notifications_';
+
+  // Get set of deleted notification IDs for the user
+  Future<Set<String>> getDeletedNotificationIds([String? userId]) async {
+    final uid = userId ?? _getCurrentUserId();
+    if (uid == null) return <String>{};
+
+    try {
+      final data = await SecureStorageService.instance.storage.read(
+        key: '$_deletedNotificationsPrefix$uid',
+      );
+      if (data == null || data.isEmpty) return <String>{};
+      final decoded = jsonDecode(data);
+      if (decoded is List) {
+        return decoded.map((e) => e.toString()).toSet();
+      }
+      return <String>{};
+    } catch (e) {
+      print('Error reading deleted notifications: $e');
+      return <String>{};
+    }
+  }
+
+  // Delete notification for current user
+  Future<void> deleteNotification(String notificationId) async {
+    final userId = _getCurrentUserId();
+    if (userId == null) return;
+
+    try {
+      // Mark as read in DB so it doesn't count towards badge/unread count
+      try {
+        await markAsRead(notificationId);
+      } catch (_) {}
+
+      final deleted = await getDeletedNotificationIds(userId);
+      deleted.add(notificationId);
+      await SecureStorageService.instance.storage.write(
+        key: '$_deletedNotificationsPrefix$userId',
+        value: jsonEncode(deleted.toList()),
+      );
+    } catch (e) {
+      print('Error deleting notification: $e');
+    }
+  }
 
   // Get current user's role (null on failure — callers return empty lists)
   Future<String?> _getCurrentUserRole() async {
@@ -52,10 +98,12 @@ class NotificationService {
       // Sort by created_at in-memory
       notifications.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
+      final deletedIds = await getDeletedNotificationIds(userId);
       final filtered = notifications
           .where((notif) => 
               notif.audienceRoles.contains(userRole) && 
-              !notif.isExpired)
+              !notif.isExpired &&
+              !deletedIds.contains(notif.id))
           .take(50)
           .toList();
 
@@ -105,12 +153,14 @@ class NotificationService {
       // Sort by created_at in-memory
       allNotifications.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
+      final deletedIds = await getDeletedNotificationIds(userId);
       final filteredNotifications = allNotifications
           .where((notif) {
             final matchesRole = notif.audienceRoles.contains(userRole);
             final notExpired = !notif.isExpired;
-            print('   ${notif.title}: role=$matchesRole, expired=${!notExpired}');
-            return matchesRole && notExpired;
+            final notDeleted = !deletedIds.contains(notif.id);
+            print('   ${notif.title}: role=$matchesRole, expired=${!notExpired}, deleted=${!notDeleted}');
+            return matchesRole && notExpired && notDeleted;
           })
           .take(50)
           .toList();

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 
@@ -110,7 +111,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
       if (!mounted) return;
       setState(() {
         _state = _UpdateUiState.error;
-        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        _errorMessage = _friendlyDownloadError(e);
       });
     }
   }
@@ -162,6 +163,30 @@ class _UpdateDialogState extends State<UpdateDialog> {
     }
 
     return false;
+  }
+
+  String _friendlyDownloadError(Object e) {
+    if (e is DioException) {
+      switch (e.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.sendTimeout:
+          return 'Download timed out. Please check your connection and try again.';
+        case DioExceptionType.connectionError:
+          return 'No internet connection. Please connect and try again.';
+        case DioExceptionType.badResponse:
+          final code = e.response?.statusCode;
+          if (code == 404) {
+            return 'Update file not found on the server. Please try again later or contact support.';
+          }
+          return 'Server error ($code). Please try again later.';
+        case DioExceptionType.cancel:
+          return 'Download was cancelled.';
+        default:
+          return 'Download failed. Please check your connection and try again.';
+      }
+    }
+    return 'Download failed. Please check your connection and try again.';
   }
 
   Future<void> _launchInstaller(String filePath) async {

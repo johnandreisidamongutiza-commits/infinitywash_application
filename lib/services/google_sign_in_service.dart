@@ -14,10 +14,19 @@ class GoogleSignInService {
   static const String _webClientId =
       '1048960336599-78af8f5j2qpmsfmol1d465k3t6if34kg.apps.googleusercontent.com';
 
-  static Future<void> _initialize() {
-    return _initialization ??= _google.initialize(
-      serverClientId: _webClientId,
-    );
+  static Future<void> _initialize() async {
+    if (_initialization != null) {
+      try {
+        await _initialization;
+        return;
+      } catch (_) {
+        // Reset so the next call retries initialization instead of re-throwing
+        // the cached failure.
+        _initialization = null;
+      }
+    }
+    _initialization = _google.initialize(serverClientId: _webClientId);
+    await _initialization;
   }
 
   /// Opens Google's native account flow and exchanges its ID token with Supabase.
@@ -31,6 +40,12 @@ class GoogleSignInService {
     }
 
     await _initialize();
+
+    // Sign out first so the account picker is always shown to the user.
+    try {
+      await _google.signOut();
+    } catch (_) {}
+
     final account = await _google.authenticate();
     final idToken = account.authentication.idToken;
     if (idToken == null || idToken.isEmpty) {

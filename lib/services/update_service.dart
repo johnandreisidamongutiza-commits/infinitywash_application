@@ -60,6 +60,17 @@ class UpdateService {
       debugPrint('⚠️ [UpdateService] Could not read local package info: $e');
     }
 
+    // Skip update checks during debug/development runs to avoid noise
+    if (kDebugMode) {
+      debugPrint('ℹ️ [UpdateService] Debug mode — skipping update check.');
+      return UpdateCheckResult(
+        hasUpdate: false,
+        isMandatory: false,
+        currentBuildNumber: currentBuild,
+        currentVersionName: currentVersion,
+      );
+    }
+
     final url = customUrl ?? UpdateConfig.versionJsonUrl;
 
     // Prevent network call if the URL is still the default placeholder
