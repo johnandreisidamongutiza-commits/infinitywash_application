@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download Infinity Wash for Android</title>
+  <link rel="icon" type="image/png" href="logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #0D3B66;
+      --accent: #0284C7;
+      --accent-hover: #0369A1;
+      --light-blue: #E0F2FE;
+      --bg: #F8FAFC;
+      --card-bg: #FFFFFF;
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --border: #E2E8F0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    /* Main Card */
+    .card {
+      background: var(--card-bg);
+      border-radius: 28px;
+      padding: 36px 24px 28px;
+      box-shadow: 0 10px 30px -5px rgba(13, 59, 102, 0.08), 0 0 1px 1px rgba(0, 0, 0, 0.04);
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+
+    .app-icon-wrapper {
+      position: relative;
+      display: inline-block;
+      margin-bottom: 20px;
+    }
+
+    .app-icon {
+      width: 104px;
+      height: 104px;
+      border-radius: 24px;
+      object-fit: cover;
+      box-shadow: 0 8px 20px -4px rgba(2, 132, 199, 0.25);
+      border: 2px solid #FFFFFF;
+    }
+
+    .badge-check {
+      position: absolute;
+      bottom: -4px;
+      right: -4px;
+      background: #10B981;
+      color: white;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      border: 3px solid white;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--primary);
+      margin-bottom: 6px;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 18px;
+      line-height: 1.4;
+    }
+
+    /* Meta Badges */
+    .meta-row {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 26px;
+    }
+
+    .meta-chip {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .meta-chip.highlight {
+      background: var(--light-blue);
+      color: var(--accent);
+      border-color: rgba(2, 132, 199, 0.2);
+    }
+
+    /* Download CTA */
+    .btn-download {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: linear-gradient(135deg, var(--accent) 0%, #0369A1 100%);
+      color: #FFFFFF;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: 700;
+      padding: 18px 24px;
+      border-radius: 18px;
+      box-shadow: 0 8px 20px -2px rgba(2, 132, 199, 0.38);
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .btn-download:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px -2px rgba(2, 132, 199, 0.45);
+    }
+
+    .btn-download:active {
+      transform: translateY(0);
+    }
+
+    .btn-download svg {
+      width: 24px;
+      height: 24px;
+      fill: currentColor;
+    }
+
+    .cta-note {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 28px 0 24px;
+    }
+
+    /* Installation Steps */
+    .guide-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .steps-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      text-align: left;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+
+    .step-num {
+      background: var(--accent);
+      color: white;
+      font-weight: 800;
+      font-size: 12px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .step-text h4 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 2px;
+    }
+
+    .step-text p {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.35;
+    }
+
+    /* Footer */
+    footer {
+      margin-top: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="card">
+      
+      <!-- App Icon -->
+      <div class="app-icon-wrapper">
+        <img src="logo.png" alt="Infinity Wash Logo" class="app-icon">
+        <div class="badge-check" title="Verified Safe APK">✓</div>
+      </div>
+
+      <!-- App Name & Subtitle -->
+      <h1>Infinity Wash</h1>
+      <p class="subtitle">Smart Laundry Service & Real-Time Delivery Tracking</p>
+
+      <!-- App Meta Chips -->
+      <div class="meta-row">
+        <div class="meta-chip highlight">Android Only</div>
+        <div class="meta-chip">v1.0.0</div>
+        <div class="meta-chip">56.1 MB</div>
+        <div class="meta-chip">Free</div>
+      </div>
+
+      <!-- Direct Download CTA Button -->
+      <a href="https://github.com/johnandreisidamongutiza-commits/infinitywash_application/releases/download/v1.0.0/app-release.apk" class="btn-download" id="downloadBtn">
+        <svg viewBox="0 0 24 24">
+          <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
+        </svg>
+        <span>Download APK</span>
+      </a>
+
+      <p class="cta-note">
+        <svg style="width: 14px; height: 14px; fill: #10B981;" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        Direct official download • No registration required
+      </p>
+
+      <div class="divider"></div>
+
+      <!-- Easy 3-Step Guide -->
+      <div class="guide-title">
+        <svg style="width: 16px; height: 16px; fill: var(--primary);" viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+        How to Install on Android
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-text">
+            <h4>Tap "Download APK"</h4>
+            <p>If your browser warns "File might be harmful", tap <strong>Download anyway</strong>.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-text">
+            <h4>Open the Downloaded File</h4>
+            <p>Swipe down your notifications and tap <strong>app-release.apk</strong>.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-text">
+            <h4>Allow & Install</h4>
+            <p>If prompted, toggle <strong>"Allow from this source"</strong> and tap <strong>Install</strong>.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <footer>
+      <p>Infinity Wash Application • Built with Flutter</p>
+    </footer>
+  </div>
+
+</body>
+</html>
+
