@@ -167,7 +167,6 @@ Future<void> _initializeSupabase() async {
       url: SupabaseConfig.supabaseUrl,
       anonKey: SupabaseConfig.supabaseAnonKey,
     );
-    AuthService.initializeSessionPersistence();
     // ignore: avoid_print
     print('✅ Supabase initialized successfully');
   } catch (e) {

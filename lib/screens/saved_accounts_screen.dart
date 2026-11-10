@@ -103,7 +103,7 @@ class _SavedAccountsScreenState extends State<SavedAccountsScreen> with SingleTi
         await _loadAccounts();
         if (mounted) {
           _message(
-            'That saved session expired. Add the account again to sign in.',
+            'Could not sign in. Please add the account again.',
           );
         }
         return;

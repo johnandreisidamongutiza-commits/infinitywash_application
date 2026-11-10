@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/app_error.dart';
@@ -12,9 +10,6 @@ import '../models/saved_account.dart';
 import 'legal_service.dart';
 
 class AuthService {
-  static StreamSubscription<AuthState>? _sessionPersistenceSubscription;
-  static Future<void> _sessionPersistenceQueue = Future<void>.value();
-
   final _auth = SupabaseService.client.auth;
   final _secureStorage = SecureStorageService.instance;
   final _savedAccountsDb = SavedAccountsDatabase.instance;
@@ -107,14 +102,15 @@ class AuthService {
     await _saveCustomerProfile(user, user.email ?? '', metadata);
   }
 
-  /// Saves the account session using the app's existing remember-me storage.
+  /// Saves the account using the app's existing remember-me storage.
+  /// For Google sign-in users, only account metadata is saved (no credentials),
+  /// so auto-login is not available — the user will see their account card
+  /// and need to tap "Continue with Google" again.
   Future<void> rememberCurrentSession() async {
     final user = _auth.currentUser;
-    final session = _auth.currentSession;
-    if (user == null || session == null) return;
+    if (user == null) return;
     await _saveRememberMeData(
       user: user,
-      session: session,
       email: user.email ?? '',
     );
   }
@@ -396,12 +392,12 @@ class AuthService {
         PushNotificationService.instance.initializeForCurrentUser();
       }
 
-      // If remember me is enabled and login successful, save the account and tokens
+      // If remember me is enabled and login successful, save the account and credentials
       if (rememberMe && response.user != null && response.session != null) {
         await _saveRememberMeData(
           user: response.user!,
-          session: response.session!,
           email: email,
+          password: password,
         );
       } else if (response.user != null) {
         // When not saving the account, clear any previous auto-login marker
@@ -613,21 +609,13 @@ class AuthService {
   /// - Clears the last auto-login user marker so subsequent app launches
   ///   will show the saved accounts screen (or login screen) instead of
   ///   automatically bypassing it.
-  /// - If the current account is saved in [SavedAccountsDatabase], performs a
-  ///   local sign-out (`SignOutScope.local`) so its stored refresh token remains
-  ///   valid on the Supabase backend for future quick re-login.
-  /// - If the account is not saved, performs a full global sign-out (`SignOutScope.global`).
+  /// - Signs out from Supabase globally. Saved credentials remain in secure
+  ///   storage so the account card can re-authenticate on next tap.
   Future<void> logout() async {
     try {
       PushNotificationService.instance.unregisterCurrentUser();
-      final currentUserId = _auth.currentUser?.id;
-      final isSaved = currentUserId != null && await isAccountSaved(currentUserId);
       await _secureStorage.clearLastAutoLoginUser();
-      if (isSaved) {
-        await _auth.signOut(scope: SignOutScope.local);
-      } else {
-        await _auth.signOut(scope: SignOutScope.global);
-      }
+      await _auth.signOut(scope: SignOutScope.global);
     } catch (e) {
       print('⚠️ Logout error (continuing): $e');
     }
@@ -717,51 +705,19 @@ class AuthService {
   Stream<AuthState> get authStateChanges => _auth.onAuthStateChange;
 
   /// Keep the app's secure per-account token cache in step with Supabase token
-  /// rotation. Supabase refresh tokens are single-use, so a stale cached token
-  /// cannot restore a session after the SDK has rotated it.
+  /// rotation. With credential-based auto-login this is no longer needed,
+  /// but kept as a no-op stub so callers do not break.
   static void initializeSessionPersistence() {
-    if (_sessionPersistenceSubscription != null) return;
-    final authService = AuthService();
-    _sessionPersistenceSubscription = authService._auth.onAuthStateChange.listen(
-      (state) {
-        final session = state.session;
-        if (state.event == AuthChangeEvent.tokenRefreshed && session != null) {
-          unawaited(authService._persistRotatedSession(session));
-        }
-      },
-      onError: (Object error) => print('Session cache update failed: $error'),
-    );
-  }
-
-  Future<void> _persistRotatedSession(Session session) async {
-    final pendingWrite = _sessionPersistenceQueue.then((_) async {
-      try {
-        if (await _savedAccountsDb.getAccountById(session.user.id) == null) {
-          return;
-        }
-        await _secureStorage.saveAuthTokens(
-          userId: session.user.id,
-          accessToken: session.accessToken,
-          refreshToken: session.refreshToken,
-          expiresAt: session.expiresAt == null
-              ? null
-              : DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000),
-        );
-      } catch (error) {
-        print('Could not update saved session tokens: $error');
-      }
-    });
-    _sessionPersistenceQueue = pendingWrite;
-    await pendingWrite;
+    // No-op: credential-based auto-login does not need session tracking.
   }
 
   // ==================== Remember Me Functionality ====================
 
-  // Save remember me data (account info + tokens)
+  // Save remember me data (account info + credentials)
   Future<void> _saveRememberMeData({
     required User user,
-    required Session session,
     required String email,
+    String? password,
   }) async {
     try {
       print('🔐 REMEMBER ME: Starting save process...');
@@ -796,16 +752,17 @@ class AuthService {
       await _savedAccountsDb.saveAccount(savedAccount);
       print('✅ REMEMBER ME: Account saved to SQLite database');
 
-      // Save tokens to secure storage
-      await _secureStorage.saveAuthTokens(
-        userId: user.id,
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
-        expiresAt: session.expiresAt != null
-            ? DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000)
-            : null,
-      );
-      print('✅ REMEMBER ME: Tokens saved to secure storage');
+      // Save credentials to secure storage (email/password login only)
+      if (password != null) {
+        await _secureStorage.saveCredentials(
+          userId: user.id,
+          email: email,
+          password: password,
+        );
+        print('✅ REMEMBER ME: Credentials saved to secure storage');
+      } else {
+        print('ℹ️ REMEMBER ME: No password (OAuth user) — account saved without credentials');
+      }
 
       // Save as last auto-login user
       await _secureStorage.saveLastAutoLoginUser(user.id);
@@ -818,7 +775,7 @@ class AuthService {
     }
   }
 
-  // Try to auto-login with saved session
+  // Try to auto-login with saved credentials
   Future<AuthResponse?> tryAutoLogin({String? userId}) async {
     try {
       print('🔄 AUTO-LOGIN: Starting auto-login process...');
@@ -833,97 +790,55 @@ class AuthService {
         return null;
       }
 
-      // Supabase may already have restored a valid session from its own local
-      // storage. Prefer it over the app's token snapshot, which can lag if the
-      // SDK refreshed the session just before the app was closed.
-      final currentSession = _auth.currentSession;
+      // Check if we have saved credentials for this user
+      final credentials = await _secureStorage.getCredentials(targetUserId);
 
-      if (currentSession != null &&
-          currentSession.user.id == targetUserId &&
-          currentSession.expiresAt != null &&
-          currentSession.expiresAt! >
-              DateTime.now().millisecondsSinceEpoch ~/ 1000) {
-        print('✅ AUTO-LOGIN: Session already active');
-
-        // Validate account status before allowing access
-        try {
-          await _validateAccountStatus(targetUserId);
-        } catch (e) {
-          print('❌ AUTO-LOGIN: Account validation failed - $e');
-          // Account is deactivated, remove saved data
-          await _removeRememberMeData(targetUserId);
-          return null;
-        }
-
-        // Session is already active and account is valid
-        await _persistRotatedSession(currentSession);
-        await _secureStorage.saveLastAutoLoginUser(targetUserId);
-        await _savedAccountsDb.updateLastLogin(targetUserId);
-        // Register push for auto-logged-in users too (fire-and-forget).
-        PushNotificationService.instance.initializeForCurrentUser();
-        return AuthResponse(user: currentSession.user, session: currentSession);
-      }
-
-      // Prefer a still-valid access token, but a refresh token can restore an
-      // expired access token. Do not discard a saved account just because its
-      // short-lived access token expired while the app was closed.
-      final accessToken = await _secureStorage.getAccessToken(targetUserId);
-      final cachedRefreshToken = await _secureStorage.getRefreshToken(targetUserId);
-      final refreshToken = currentSession?.user.id == targetUserId
-          ? currentSession!.refreshToken
-          : cachedRefreshToken;
-
-      print('🔄 Access token present: ${accessToken != null}');
-      print('🔄 Refresh token present: ${refreshToken != null}');
-
-      if (accessToken == null && refreshToken == null) {
-        print('❌ AUTO-LOGIN: No saved session tokens found');
+      if (credentials == null) {
+        print('❌ AUTO-LOGIN: No saved credentials found');
+        // Clean up orphaned account entry
         await _removeRememberMeData(targetUserId);
         return null;
       }
 
-      // If we have a refresh token, try to refresh the session
-      if (refreshToken != null) {
-        print('🔄 AUTO-LOGIN: Attempting to refresh session...');
-        try {
-          final response = await _auth.refreshSession(refreshToken);
-          if (response.session != null) {
-            print('✅ AUTO-LOGIN: Session refreshed successfully');
+      print('🔄 AUTO-LOGIN: Saved credentials found, signing in...');
 
-            // Save the rotated refresh token immediately: Supabase refresh
-            // tokens are single-use, even if a later role check fails.
-            await _persistRotatedSession(response.session!);
+      try {
+        final response = await _auth.signInWithPassword(
+          email: credentials.email,
+          password: credentials.password,
+        );
 
-            // Validate account status before allowing access
-            try {
-              await _validateAccountStatus(targetUserId);
-            } catch (e) {
-              print('❌ AUTO-LOGIN: Account validation failed - $e');
-              // Account is deactivated, remove saved data
-              await _removeRememberMeData(targetUserId);
-              return null;
-            }
-
-            await _secureStorage.saveLastAutoLoginUser(targetUserId);
-            await _savedAccountsDb.updateLastLogin(targetUserId);
-            // Register push for auto-logged-in users too (fire-and-forget).
-            PushNotificationService.instance.initializeForCurrentUser();
-            return response;
-          }
-        } catch (e) {
-          print('❌ AUTO-LOGIN: Refresh failed - $e');
-          // Network failures are temporary; keep the account card so the user
-          // can retry. Remove only a rejected/invalid auth session.
-          if (e is AuthException && e is! AuthRetryableFetchException) {
-            await _removeRememberMeData(targetUserId);
-          }
+        if (response.user == null) {
+          print('❌ AUTO-LOGIN: Sign-in returned no user');
+          await _removeRememberMeData(targetUserId);
           return null;
         }
-      }
 
-      print('❌ AUTO-LOGIN: Could not restore session');
-      await _removeRememberMeData(targetUserId);
-      return null;
+        print('✅ AUTO-LOGIN: Signed in successfully');
+
+        // Validate account status before allowing access
+        try {
+          await _validateAccountStatus(response.user!.id);
+        } catch (e) {
+          print('❌ AUTO-LOGIN: Account validation failed - $e');
+          await _removeRememberMeData(targetUserId);
+          return null;
+        }
+
+        await _secureStorage.saveLastAutoLoginUser(targetUserId);
+        await _savedAccountsDb.updateLastLogin(targetUserId);
+        // Register push for auto-logged-in users too (fire-and-forget).
+        PushNotificationService.instance.initializeForCurrentUser();
+        return response;
+      } on AuthException catch (e) {
+        print('❌ AUTO-LOGIN: Auth error - ${e.message}');
+        // Invalid credentials (password changed, account deleted, etc.)
+        // Remove saved data so the user is prompted to sign in again.
+        if (e is! AuthRetryableFetchException) {
+          await _removeRememberMeData(targetUserId);
+        }
+        return null;
+      }
     } catch (e) {
       print('❌ AUTO-LOGIN ERROR: $e');
       return null;
@@ -942,6 +857,7 @@ class AuthService {
   // Remove remember me data for a user
   Future<void> _removeRememberMeData(String userId) async {
     try {
+      await _secureStorage.deleteCredentials(userId);
       await _secureStorage.deleteUserTokens(userId);
       await _savedAccountsDb.deleteAccount(userId);
       if (await _secureStorage.getLastAutoLoginUser() == userId) {
@@ -967,6 +883,7 @@ class AuthService {
   Future<void> clearAllSavedAccounts() async {
     try {
       await _savedAccountsDb.clearAllAccounts();
+      await _secureStorage.clearAllCredentials();
       await _secureStorage.clearAllTokens();
       await _secureStorage.clearLastAutoLoginUser();
     } catch (e) {
@@ -974,8 +891,8 @@ class AuthService {
     }
   }
 
-  // Check if a user has a saved session
+  // Check if a user has saved credentials
   Future<bool> hasSavedSession(String userId) async {
-    return await _secureStorage.hasValidSession(userId);
+    return await _secureStorage.hasSavedCredentials(userId);
   }
 }

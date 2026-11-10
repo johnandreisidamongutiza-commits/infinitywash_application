@@ -108,8 +108,9 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
         debugPrint('Push unregister error: $e');
       }
 
-      // Invalidate stored auto-login session so user is forced to log in with new password
+      // Invalidate stored auto-login credentials so user is forced to log in with new password
       try {
+        await SecureStorageService.instance.deleteCredentials(userId);
         await SecureStorageService.instance.deleteUserTokens(userId);
         await SecureStorageService.instance.clearLastAutoLoginUser();
       } catch (e) {

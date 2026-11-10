@@ -19,6 +19,8 @@ class SecureStorageService {
   static const String _accessTokenPrefix = 'access_token_';
   static const String _refreshTokenPrefix = 'refresh_token_';
   static const String _tokenExpiryPrefix = 'token_expiry_';
+  static const String _credentialEmailPrefix = 'cred_email_';
+  static const String _credentialPasswordPrefix = 'cred_password_';
   static const String _lastAutoLoginKey = 'last_auto_login';
   static const String _permissionRationalePrefix = 'permission_rationale_';
   static const String _customerTutorialPrefix = 'customer_order_tutorial_completed_';
@@ -239,6 +241,76 @@ class SecureStorageService {
       
       return await isTokenValid(userId);
     } catch (e) {
+      return false;
+    }
+  }
+
+  // ==================== Credential Storage ====================
+
+  /// Save login credentials (email + password) for a user.
+  /// These are stored encrypted by flutter_secure_storage.
+  Future<void> saveCredentials({
+    required String userId,
+    required String email,
+    required String password,
+  }) async {
+    try {
+      await _storage.write(
+        key: '$_credentialEmailPrefix$userId',
+        value: email,
+      );
+      await _storage.write(
+        key: '$_credentialPasswordPrefix$userId',
+        value: password,
+      );
+    } catch (e) {
+      throw Exception('Failed to save credentials: $e');
+    }
+  }
+
+  /// Get saved credentials for a user. Returns null if not found.
+  Future<({String email, String password})?> getCredentials(String userId) async {
+    try {
+      final email = await _storage.read(key: '$_credentialEmailPrefix$userId');
+      final password = await _storage.read(key: '$_credentialPasswordPrefix$userId');
+      if (email == null || password == null) return null;
+      return (email: email, password: password);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Delete saved credentials for a specific user.
+  Future<void> deleteCredentials(String userId) async {
+    try {
+      await _storage.delete(key: '$_credentialEmailPrefix$userId');
+      await _storage.delete(key: '$_credentialPasswordPrefix$userId');
+    } catch (e) {
+      throw Exception('Failed to delete credentials: $e');
+    }
+  }
+
+  /// Clear all saved credentials.
+  Future<void> clearAllCredentials() async {
+    try {
+      final allKeys = await _storage.readAll();
+      for (final key in allKeys.keys) {
+        if (key.startsWith(_credentialEmailPrefix) ||
+            key.startsWith(_credentialPasswordPrefix)) {
+          await _storage.delete(key: key);
+        }
+      }
+    } catch (e) {
+      throw Exception('Failed to clear all credentials: $e');
+    }
+  }
+
+  /// Whether a user has saved credentials on this device.
+  Future<bool> hasSavedCredentials(String userId) async {
+    try {
+      final creds = await getCredentials(userId);
+      return creds != null;
+    } catch (_) {
       return false;
     }
   }
