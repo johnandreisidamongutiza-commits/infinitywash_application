@@ -78,9 +78,10 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
     _remainingJobs = List.from(widget.jobs);
     _totalStops = widget.jobs.length;
 
-    // Fast-seed: if rider location was already known on the previous screen, use immediately
-    if (widget.initialRiderLocation != null) {
-      _currentLocation = widget.initialRiderLocation;
+    // Fast-seed: if rider location was already known on the previous screen or cached in provider, use immediately
+    final seedLocation = widget.initialRiderLocation ?? _gpsProvider.currentLocation;
+    if (seedLocation != null) {
+      _currentLocation = seedLocation;
       _calculateRoute().then((_) {
         if (mounted) {
           _updateHeading(

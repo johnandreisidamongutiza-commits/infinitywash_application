@@ -1529,8 +1529,9 @@ class OrderService {
   }) async {
     try {
       print('🔧 Staff completing delivery for order: $orderId');
+      final now = DateTime.now().toUtc().toIso8601String();
       
-      // Find the active delivery dispatch job for this order
+      // Find the active delivery dispatch job for this order (if any)
       final dispatchJobResponse = await _client
           .from('dispatch_jobs')
           .select('id, status')
@@ -1539,30 +1540,26 @@ class OrderService {
           .neq('status', 'delivery_done') // Find incomplete delivery jobs
           .maybeSingle();
 
-      if (dispatchJobResponse == null) {
-        throw const AppError(
-          'No active delivery job was found for this order. Refresh the list and try again.',
-          type: AppErrorType.notFound,
-        );
+      if (dispatchJobResponse != null) {
+        final jobId = dispatchJobResponse['id'] as String;
+        // Update dispatch job to delivery_done
+        await _client.from('dispatch_jobs').update({
+          'status': 'delivery_done',
+          'completed_at': now,
+          'updated_at': now,
+        }).eq('id', jobId);
+
+        print('✅ Updated dispatch job $jobId to delivery_done');
+      } else {
+        print('ℹ️ No active dispatch job found for order $orderId, proceeding with order completion');
       }
-
-      final jobId = dispatchJobResponse['id'] as String;
-      final now = DateTime.now().toUtc().toIso8601String();
-
-      // Update dispatch job to delivery_done
-      await _client.from('dispatch_jobs').update({
-        'status': 'delivery_done',
-        'completed_at': now,
-        'updated_at': now,
-      }).eq('id', jobId);
-
-      print('✅ Updated dispatch job $jobId to delivery_done');
 
       // Update order status to completed and add staff note
       final updates = {
         'status': 'completed',
         'completed_at': now,
         'updated_at': now,
+        'laundry_photo_urls': [], // Purge customer laundry photos to reclaim storage
       };
 
       // Append staff note about manual completion
@@ -1573,6 +1570,9 @@ class OrderService {
       }
 
       await _client.from('orders').update(updates).eq('id', orderId);
+
+      // Award loyalty points if linked to a loyalty card
+      await _awardLoyaltyPointsForOrder(orderId);
 
       print('✅ Order status updated to completed by staff $staffId');
     } catch (e) {

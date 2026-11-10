@@ -1657,11 +1657,18 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                     }
                   },
                   icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('Edit Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  label: Text(
+                    'Edit Order',
+                    style: GoogleFonts.lexend(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.accentBlue,
-                    side: const BorderSide(color: AppTheme.accentBlue),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    side: const BorderSide(color: AppTheme.accentBlue, width: 1.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    minimumSize: const Size.fromHeight(48),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
@@ -1674,10 +1681,20 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                     Navigator.pop(context, true); // Return to orders
                   },
                   icon: const Icon(Icons.check, size: 18, color: Colors.white),
-                  label: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                  label: Text(
+                    'Done',
+                    style: GoogleFonts.lexend(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: Colors.white,
+                    ),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.accentBlue,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    minimumSize: const Size.fromHeight(48),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
@@ -1832,9 +1849,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                     }
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
+                    backgroundColor: AppTheme.accentBlue,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    minimumSize: const Size.fromHeight(50),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
@@ -1847,9 +1865,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                       strokeWidth: 2,
                     ),
                   )
-                      : const Text(
+                      : Text(
                     'Confirm Payment',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -3727,13 +3745,14 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                         onPressed: _isSubmitting ? null : _showPaymentMethodModal,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.accentBlue,
-                          side: const BorderSide(color: AppTheme.accentBlue, width: 2),
+                          side: const BorderSide(color: AppTheme.accentBlue, width: 1.5),
+                          minimumSize: const Size.fromHeight(50),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Payment Options',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),
@@ -3747,8 +3766,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                                   paymentMethod: widget.orderToEdit!.paymentMethod ?? 'Cash',
                                 ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
+                          backgroundColor: AppTheme.accentBlue,
                           foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(50),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           elevation: 0,
@@ -3762,9 +3782,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text(
+                            : Text(
                                 'Save Changes',
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.bold),
                               ),
                       ),
                     ),
@@ -3780,13 +3800,14 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                             : () => _submitOrder(isPaidImmediately: false, paymentMethod: null),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.accentBlue,
-                          side: const BorderSide(color: AppTheme.accentBlue, width: 2),
+                          side: const BorderSide(color: AppTheme.accentBlue, width: 1.5),
+                          minimumSize: const Size.fromHeight(50),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Save as Unpaid',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                          style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),
@@ -3795,15 +3816,16 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                       child: ElevatedButton(
                         onPressed: _isSubmitting ? null : _showPaymentMethodModal,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
+                          backgroundColor: AppTheme.accentBlue,
                           foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(50),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           elevation: 0,
                         ),
-                        child: const Text(
+                        child: Text(
                           'Pay Now & Save',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                          style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),
@@ -3816,8 +3838,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 child: ElevatedButton(
                   onPressed: _isSubmitting ? null : () => _submitOrder(isPaidImmediately: false, paymentMethod: null),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
+                    backgroundColor: AppTheme.accentBlue,
                     foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(50),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
@@ -3831,9 +3854,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                             strokeWidth: 2,
                           ),
                         )
-                      : const Text(
+                      : Text(
                           'Create Rider Pickup Order',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                          style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.bold),
                         ),
                 ),
               )
@@ -3847,7 +3870,8 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                       onPressed: _isSubmitting ? null : () => _submitOrder(isPaidImmediately: false, paymentMethod: null),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.accentBlue,
-                        side: const BorderSide(color: AppTheme.accentBlue, width: 2),
+                        side: const BorderSide(color: AppTheme.accentBlue, width: 1.5),
+                        minimumSize: const Size.fromHeight(50),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
@@ -3860,9 +3884,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                           strokeWidth: 2,
                         ),
                       )
-                          : const Text(
+                          : Text(
                         'Pay Later',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
@@ -3872,15 +3896,16 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                     child: ElevatedButton(
                       onPressed: _isSubmitting ? null : _showPaymentMethodModal,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
+                        backgroundColor: AppTheme.accentBlue,
                         foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(50),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         elevation: 0,
                       ),
-                      child: const Text(
+                      child: Text(
                         'Pay Now',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -48,6 +49,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
   final MapController _mapController = MapController();
   final RiderService _riderService = RiderService();
   final GpsProvider _gpsProvider = GpsProvider();
+  StreamSubscription? _locationSubscription;
 
   LatLng? _riderLocation;
   LatLng? _resolvedJobLocation;
@@ -66,6 +68,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    _riderLocation = _gpsProvider.currentLocation;
     _initializeLocation();
     _verifyJobAvailable();
 
@@ -151,7 +154,8 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     try {
       _gpsProvider.attachDialogContext(context);
       await _gpsProvider.initialize();
-      _gpsProvider.locationStream.listen((location) {
+      await _gpsProvider.startTracking(intervalMillis: 2000, distanceFilterMeters: 6.0);
+      _locationSubscription = _gpsProvider.locationStream.listen((location) {
         if (mounted && location.latitude != null && location.longitude != null) {
           final newLoc = LatLng(location.latitude!, location.longitude!);
           if (_riderLocation == null ||
@@ -179,7 +183,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
           MaterialPageRoute(
             builder: (context) => RiderActiveRouteScreen(
               jobs: [widget.job],
-              initialRiderLocation: _gpsProvider.currentLocation,
+              initialRiderLocation: _riderLocation ?? _gpsProvider.currentLocation,
             ),
           ),
         );
@@ -1251,7 +1255,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                       MaterialPageRoute(
                         builder: (context) => RiderActiveRouteScreen(
                           jobs: [widget.job],
-                          initialRiderLocation: _gpsProvider.currentLocation,
+                          initialRiderLocation: _riderLocation ?? _gpsProvider.currentLocation,
                         ),
                       ),
                     );
@@ -1516,7 +1520,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
 
   @override
   void dispose() {
-    _gpsProvider.stopTracking();
+    _locationSubscription?.cancel();
     super.dispose();
   }
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../utils/phone_helper.dart';
@@ -72,6 +73,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   bool get _needsDelivery => _currentOrder.returnMethod == ReturnMethod.delivery;
 
   bool get _canMarkReady => _currentStatus == OrderStatus.processing && _needsDelivery;
+  bool get _isReadyForDelivery => _currentStatus == OrderStatus.ready && _needsDelivery;
 
   bool get _canComplete {
     if (_needsDelivery) return false;
@@ -145,43 +147,81 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Complete Order?'),
+        title: Text(
+          'Complete Order?',
+          style: GoogleFonts.lexend(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Are you sure you want to mark this order as completed and released?'),
-            const SizedBox(height: 16),
+            Text(
+              'Are you sure you want to mark this order as completed and released?',
+              style: GoogleFonts.lexend(fontSize: 13, color: AppTheme.textLight),
+            ),
+            const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppTheme.softGray,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Order: ${_currentOrder.displayNumber}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(
+                    'Order: ${_currentOrder.displayNumber}',
+                    style: GoogleFonts.lexend(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                  ),
                   const SizedBox(height: 4),
-                  Text('Customer: ${_currentOrder.customerName}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                  Text(
+                    'Customer: ${_currentOrder.customerName}',
+                    style: GoogleFonts.lexend(fontWeight: FontWeight.w500, fontSize: 13, color: AppTheme.textLight),
+                  ),
                 ],
               ),
             ),
           ],
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('Complete & Release'),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF475569),
+                    backgroundColor: const Color(0xFFF8FAFC),
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF475569)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    'Complete & Release',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -193,43 +233,87 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Ready for Delivery?'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.local_shipping_outlined, color: AppTheme.accentBlue, size: 22),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Ready for Delivery?',
+                style: GoogleFonts.lexend(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+              ),
+            ),
+          ],
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Mark this order as packed and ready for rider dispatch?'),
-            const SizedBox(height: 16),
+            Text(
+              'Mark this order as packed and ready for rider dispatch?',
+              style: GoogleFonts.lexend(fontSize: 13, color: AppTheme.textLight),
+            ),
+            const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppTheme.softGray,
-                borderRadius: BorderRadius.circular(10),
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Order: ${_currentOrder.displayNumber}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text('Customer: ${_currentOrder.customerName}'),
+                  Row(
+                    children: [
+                      const Icon(Icons.receipt_outlined, size: 16, color: AppTheme.textLight),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Order: ${_currentOrder.displayNumber}',
+                        style: GoogleFonts.lexend(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.person_outline, size: 16, color: AppTheme.textLight),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Customer: ${_currentOrder.customerName}',
+                          style: GoogleFonts.lexend(fontSize: 13, color: AppTheme.textDark),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: AppTheme.accentBlue.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+                color: AppTheme.lightBlue.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.25)),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.info_outline, size: 18, color: AppTheme.accentBlue),
-                  SizedBox(width: 8),
+                  const Icon(Icons.info_outline, size: 18, color: AppTheme.accentBlue),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Riders will be notified to pick up this package for delivery.',
-                      style: TextStyle(fontSize: 12, color: AppTheme.accentBlue),
+                      style: GoogleFonts.lexend(fontSize: 12, color: AppTheme.textDark, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
@@ -237,19 +321,44 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             ),
           ],
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.accentBlue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('Mark Ready'),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF475569),
+                    backgroundColor: const Color(0xFFF8FAFC),
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF475569)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    'Mark Ready',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -267,7 +376,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Order ${_currentOrder.displayNumber} marked as complete.'),
-          backgroundColor: Colors.green,
+          backgroundColor: AppTheme.accentBlue,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -319,37 +428,49 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 26),
-            SizedBox(width: 8),
-            Expanded(child: Text('Complete Pickup Manually?', style: TextStyle(fontSize: 18))),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.two_wheeler, color: AppTheme.accentBlue, size: 22),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Complete Pickup Manually?',
+                style: GoogleFonts.lexend(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+              ),
+            ),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'The rider hasn\'t marked this pickup as complete in the app.',
-              style: TextStyle(fontWeight: FontWeight.w500),
+              style: GoogleFonts.lexend(fontSize: 13, color: AppTheme.textLight),
             ),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                color: AppTheme.softGray,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.borderGray),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.info_outline, size: 16, color: Colors.orange),
-                  SizedBox(width: 8),
+                  const Icon(Icons.info_outline, size: 18, color: AppTheme.accentBlue),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Only proceed if the laundry is physically at the shop.',
-                      style: TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.w600),
+                      style: GoogleFonts.lexend(fontSize: 12, color: AppTheme.textDark, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
@@ -357,19 +478,44 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             ),
           ],
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('Complete Pickup'),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF475569),
+                    backgroundColor: const Color(0xFFF8FAFC),
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF475569)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    'Complete Pickup',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -392,7 +538,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Pickup completed. You can now check in the laundry.'),
-          backgroundColor: Colors.green,
+          backgroundColor: AppTheme.accentBlue,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -411,41 +557,56 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   Future<bool> _showForceCompleteDeliveryDialog() async {
+    final isAlreadyOut = _isOutForDelivery;
     return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.purple, size: 26),
-            SizedBox(width: 8),
-            Expanded(child: Text('Complete Delivery Manually?', style: TextStyle(fontSize: 18))),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.local_shipping_outlined, color: AppTheme.accentBlue, size: 22),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Complete Delivery Manually?',
+                style: GoogleFonts.lexend(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+              ),
+            ),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'The rider hasn\'t marked this delivery as complete.',
-              style: TextStyle(fontWeight: FontWeight.w500),
+            Text(
+              isAlreadyOut
+                  ? 'The rider hasn\'t marked this delivery as complete in the app.'
+                  : 'Rider hasn\'t started delivery in the app yet.',
+              style: GoogleFonts.lexend(fontSize: 13, color: AppTheme.textLight),
             ),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                color: AppTheme.lightBlue.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.25)),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.info_outline, size: 16, color: Colors.red),
-                  SizedBox(width: 8),
+                  const Icon(Icons.info_outline, size: 18, color: AppTheme.accentBlue),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Only proceed if the customer has confirmed receipt of laundry.',
-                      style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.w600),
+                      'Use this if the laundry was delivered off-app or if the customer claimed it directly at the counter.',
+                      style: GoogleFonts.lexend(fontSize: 12, color: AppTheme.textDark, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
@@ -453,19 +614,45 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             ),
           ],
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.purple,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('Complete Delivery'),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF475569),
+                    backgroundColor: const Color(0xFFF8FAFC),
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF475569)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    'Complete & Release',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -487,7 +674,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Delivery completed. Order is now complete.'),
-          backgroundColor: Colors.green,
+          backgroundColor: AppTheme.accentBlue,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -595,13 +782,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withValues(alpha: 0.1),
+                        color: AppTheme.errorRed.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                        border: Border.all(color: AppTheme.errorRed.withValues(alpha: 0.3)),
                       ),
                       child: const Row(
                         children: [
-                          Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 18),
+                          Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 18),
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -807,6 +994,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 if (result == true && mounted) {
                   await _refreshOrderData();
                 }
+              } else if (value == 'override_pickup') {
+                _forceCompletePickup();
+              } else if (value == 'override_delivery') {
+                _forceCompleteDelivery();
               } else if (value == 'cancel') {
                 _showCancelOrderModal();
               }
@@ -841,6 +1032,38 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                     ],
                   ),
                 ),
+              if (_isPendingPickup) ...[
+                const PopupMenuDivider(),
+                const PopupMenuItem<String>(
+                  value: 'override_pickup',
+                  child: Row(
+                    children: [
+                      Icon(Icons.handshake_outlined, size: 18, color: AppTheme.accentBlue),
+                      SizedBox(width: 10),
+                      Text(
+                        'Complete Pickup Manually',
+                        style: TextStyle(fontSize: 13, color: AppTheme.textDark, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (_isReadyForDelivery || _isOutForDelivery) ...[
+                const PopupMenuDivider(),
+                const PopupMenuItem<String>(
+                  value: 'override_delivery',
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle_outline, size: 18, color: AppTheme.accentBlue),
+                      SizedBox(width: 10),
+                      Text(
+                        'Complete Delivery Manually',
+                        style: TextStyle(fontSize: 13, color: AppTheme.textDark, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               if (_canCancel) ...[
                 const PopupMenuDivider(),
                 const PopupMenuItem<String>(
@@ -1716,12 +1939,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.orange.shade100,
+                color: AppTheme.errorRed.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
                 'OVER LIMIT',
-                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.errorRed),
               ),
             ),
         ],
@@ -1733,24 +1956,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     Widget actionButton;
 
     if (_isPendingPickup) {
-      actionButton = ElevatedButton.icon(
-        onPressed: _isUpdating ? null : _forceCompletePickup,
-        icon: _isUpdating
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-              )
-            : const Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
-        label: Text(
-          _isUpdating ? 'Completing...' : 'Complete Pickup Manually (Staff Override)',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: Colors.white),
+      actionButton = Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppTheme.softGray,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.borderGray),
         ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.accentBlue,
-          disabledBackgroundColor: Colors.grey,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.two_wheeler, color: AppTheme.accentBlue, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Waiting for Rider Pickup',
+              style: GoogleFonts.lexend(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: AppTheme.textDark,
+              ),
+            ),
+          ],
         ),
       );
     } else if (_currentOrder.needsCheckIn) {
@@ -1768,13 +1995,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           }
         },
         icon: const Icon(Icons.scale_outlined, color: Colors.white, size: 20),
-        label: const Text(
+        label: Text(
           'Check In & Weigh Laundry',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
+          style: GoogleFonts.lexend(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: AppTheme.accentBlue,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          minimumSize: const Size.fromHeight(50),
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
       );
@@ -1790,13 +2018,40 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             : const Icon(Icons.local_shipping_outlined, color: Colors.white, size: 20),
         label: Text(
           _isUpdating ? 'Updating...' : 'Mark Ready for Delivery',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
+          style: GoogleFonts.lexend(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.accentBlue,
+          backgroundColor: AppTheme.primaryBlue,
+          foregroundColor: Colors.white,
           disabledBackgroundColor: Colors.grey,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          minimumSize: const Size.fromHeight(50),
           padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+      );
+    } else if (_isReadyForDelivery) {
+      actionButton = Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppTheme.lightBlue.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.inventory_2_outlined, color: AppTheme.accentBlue, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Packed & Waiting for Rider Dispatch',
+              style: GoogleFonts.lexend(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: AppTheme.accentBlue,
+              ),
+            ),
+          ],
         ),
       );
     } else if (_canComplete) {
@@ -1811,27 +2066,40 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             : const Icon(Icons.check_circle, color: Colors.white, size: 20),
         label: Text(
           _isUpdating ? 'Completing...' : 'Mark Order as Complete',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
+          style: GoogleFonts.lexend(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.accentBlue,
+          backgroundColor: AppTheme.primaryBlue,
+          foregroundColor: Colors.white,
           disabledBackgroundColor: Colors.grey,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          minimumSize: const Size.fromHeight(50),
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
       );
     } else if (_isOutForDelivery) {
-      actionButton = OutlinedButton.icon(
-        onPressed: _isUpdating ? null : _forceCompleteDelivery,
-        icon: const Icon(Icons.warning_amber_rounded, color: AppTheme.accentBlue, size: 18),
-        label: Text(
-          _isUpdating ? 'Completing...' : 'Force Complete Delivery (Staff Override)',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: AppTheme.accentBlue),
+      actionButton = Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppTheme.lightBlue.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.3)),
         ),
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: AppTheme.accentBlue, width: 1.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          padding: const EdgeInsets.symmetric(vertical: 13),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.local_shipping_outlined, color: AppTheme.accentBlue, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Out for Delivery with Rider',
+              style: GoogleFonts.lexend(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: AppTheme.accentBlue,
+              ),
+            ),
+          ],
         ),
       );
     } else if (_currentStatus == OrderStatus.cancelled) {

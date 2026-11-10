@@ -8,8 +8,13 @@ import '../services/location_service.dart';
 /// Provider for managing GPS location state
 /// Handles permission requests, location updates, and error states
 class GpsProvider with ChangeNotifier {
+  static final GpsProvider _instance = GpsProvider._internal();
+  factory GpsProvider() => _instance;
+  GpsProvider._internal();
+
   final LocationService _locationService = LocationService();
 
+  static LatLng? _cachedLocation;
   LatLng? _currentLocation;
   bool _isTracking = false;
   String? _errorMessage;
@@ -17,12 +22,12 @@ class GpsProvider with ChangeNotifier {
   bool _isServiceEnabled = false;
 
   // Getters
-  LatLng? get currentLocation => _currentLocation;
+  LatLng? get currentLocation => _currentLocation ?? _cachedLocation;
   bool get isTracking => _isTracking;
   String? get errorMessage => _errorMessage;
   bool get hasPermission => _hasPermission;
   bool get isServiceEnabled => _isServiceEnabled;
-  bool get isReady => _hasPermission && _isServiceEnabled && _currentLocation != null;
+  bool get isReady => _hasPermission && _isServiceEnabled && currentLocation != null;
   
   /// Stream of location updates
   Stream<LocationData> get locationStream => _locationService.locationStream;
@@ -68,10 +73,13 @@ class GpsProvider with ChangeNotifier {
         return;
       }
 
-      // Get initial location
-      final initialLocation = await _locationService.getCurrentLocation();
-      if (initialLocation != null) {
-        _currentLocation = LatLng(initialLocation.latitude!, initialLocation.longitude!);
+      // Get initial location if not already cached
+      if (currentLocation == null) {
+        final initialLocation = await _locationService.getCurrentLocation();
+        if (initialLocation != null) {
+          _currentLocation = LatLng(initialLocation.latitude!, initialLocation.longitude!);
+          _cachedLocation = _currentLocation;
+        }
       }
 
       notifyListeners();
@@ -97,6 +105,7 @@ class GpsProvider with ChangeNotifier {
         (locationData) {
           if (locationData.latitude != null && locationData.longitude != null) {
             _currentLocation = LatLng(locationData.latitude!, locationData.longitude!);
+            _cachedLocation = _currentLocation;
             notifyListeners();
           }
         },
