@@ -14,6 +14,8 @@ import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
 import '../../../services/customer_service.dart';
 import '../../../services/photo_file_service.dart';
+import '../../../services/payment_service.dart';
+import '../../../widgets/gcash_unavailable_dialog.dart';
 import '../../../widgets/in_app_camera_screen.dart';
 
 class RequestServiceFlow extends StatefulWidget {
@@ -28,6 +30,9 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   final CollectionMethod _selectedCollection = CollectionMethod.riderPickup;
   ReturnMethod _selectedReturn = ReturnMethod.delivery;
   String _selectedPaymentPreference = 'GCash';
+  final PaymentService _paymentService = PaymentService();
+  bool _isGcashAvailable = true;
+  bool _isCheckingGcash = true;
   
   // Photo upload state
   final List<File> _laundryPhotos = [];
@@ -65,6 +70,37 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   void initState() {
     super.initState();
     _loadCustomerData();
+    _checkGcashAvailability();
+  }
+
+  Future<void> _checkGcashAvailability() async {
+    final hasQr = await _paymentService.hasUploadedGcashQr();
+    if (!mounted) return;
+    setState(() {
+      _isGcashAvailable = hasQr;
+      _isCheckingGcash = false;
+      if (!hasQr && _selectedPaymentPreference == 'GCash') {
+        _selectedPaymentPreference = 'Cash on Delivery';
+      }
+    });
+  }
+
+  Future<void> _onSelectGcash() async {
+    if (_isCheckingGcash) {
+      final hasQr = await _paymentService.hasUploadedGcashQr();
+      if (!mounted) return;
+      _isGcashAvailable = hasQr;
+      _isCheckingGcash = false;
+    }
+
+    if (!_isGcashAvailable) {
+      if (mounted) {
+        await showGcashUnavailableDialog(context);
+      }
+      return;
+    }
+
+    setState(() => _selectedPaymentPreference = 'GCash');
   }
 
   Future<void> _loadCustomerData() async {
@@ -1568,7 +1604,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
             // GCash Option
             GestureDetector(
-              onTap: () => setState(() => _selectedPaymentPreference = 'GCash'),
+              onTap: _onSelectGcash,
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -1590,13 +1626,35 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                       child: const Icon(Icons.account_balance_wallet_outlined, color: AppTheme.primaryBlue, size: 20),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('GCash / E-Wallet', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                          SizedBox(height: 2),
-                          Text('Pay via QR or number once weighed', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
+                          Row(
+                            children: [
+                              const Text('GCash / E-Wallet', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              if (!_isCheckingGcash && !_isGcashAvailable) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    'Unavailable',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textLight,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          const Text('Pay via QR or number once weighed', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
                         ],
                       ),
                     ),
@@ -1741,6 +1799,17 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     const SnackBar(content: Text('Please enter your pickup address')),
                   );
                   return;
+                }
+
+                if (_selectedPaymentPreference == 'GCash') {
+                  final hasQr = await _paymentService.hasUploadedGcashQr(forceRefresh: true);
+                  if (!hasQr) {
+                    if (mounted) {
+                      setState(() => _selectedPaymentPreference = 'Cash on Delivery');
+                      await showGcashUnavailableDialog(context);
+                    }
+                    return;
+                  }
                 }
 
                 final String fullNote = [

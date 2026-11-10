@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
@@ -39,6 +40,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   bool _ordersDirty = false;
   bool _hasLoadedOrders = false;
   String? _error;
+  bool _hasCheckedInitialPendingOrders = false;
 
   @override
   void initState() {
@@ -133,6 +135,17 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
         _hasLoadedOrders = true;
       });
 
+      if (!_hasCheckedInitialPendingOrders) {
+        _hasCheckedInitialPendingOrders = true;
+        if (_queueCounts.requests > 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _showPendingOrderModal(context, _queueCounts.requests);
+            }
+          });
+        }
+      }
+
       print('✅ Loaded accurate queue counts: '
           'requests=${_queueCounts.requests}, '
           'processing=${_queueCounts.processing}, '
@@ -180,6 +193,122 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _showPendingOrderModal(BuildContext context, int count) async {
+    final label = count == 1 ? 'New Order Request' : 'New Order Requests';
+    final message = count == 1
+        ? 'There is 1 new pending order request waiting for review.'
+        : 'There are $count new pending order requests waiting for review.';
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+        contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.assignment_late_outlined,
+                color: AppTheme.primaryBlue,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.lexend(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: GoogleFonts.lexend(
+            fontSize: 14,
+            color: AppTheme.textLight,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.textLight,
+                    side: const BorderSide(color: AppTheme.borderGray),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'Later',
+                    style: GoogleFonts.lexend(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const OrdersScreen(initialTab: 0),
+                      ),
+                    ).then((_) {
+                      if (mounted) _loadOrders();
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'View Pending Order',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.lexend(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -492,7 +621,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
             Expanded(
               child: _buildQuickActionCard(
                 context,
-                'RFID\nChecker',
+                'Loyalty Card\nChecker',
                 Icons.nfc,
                 const Color(0xFF00897B),
                 const Color(0xFFE0F2F1),

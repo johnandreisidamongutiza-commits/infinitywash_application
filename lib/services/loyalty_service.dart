@@ -31,7 +31,7 @@ class LoyaltyCardInfo {
   });
 
   bool get isActive => status == 'active';
-  bool get hasOwner => customerId != null;
+  bool get hasOwner => customerId != null && customerId!.isNotEmpty && ownerName != 'Unassigned';
 
   /// Alias for UI consistency (same as pointsBalance)
   int get currentPoints => pointsBalance;
@@ -48,14 +48,27 @@ class LoyaltyCardInfo {
   int get freeLoadsAvailable => pointsBalance ~/ 10;
 
   factory LoyaltyCardInfo.fromJson(Map<String, dynamic> json) {
+    final customerData = json['customers'] is Map<String, dynamic>
+        ? json['customers'] as Map<String, dynamic>
+        : null;
+
+    final customerId = json['customer_id'] as String?;
+    final ownerName = json['owner_name'] as String? ??
+        customerData?['full_name'] as String? ??
+        (customerId == null || customerId.isEmpty ? 'Unassigned' : 'Unknown Customer');
+    final ownerPhone = json['owner_phone'] as String? ??
+        customerData?['phone'] as String?;
+    final ownerEmail = json['owner_email'] as String? ??
+        customerData?['email'] as String?;
+
     return LoyaltyCardInfo(
-      cardId: json['card_id'] as String,
-      uid: json['uid'] as String,
+      cardId: (json['card_id'] ?? json['id'] ?? '') as String,
+      uid: (json['uid'] as String?) ?? '',
       status: (json['card_status'] ?? json['status']) as String? ?? 'active',
-      customerId: json['customer_id'] as String?,
-      ownerName: json['owner_name'] as String? ?? 'Unassigned Customer',
-      ownerPhone: json['owner_phone'] as String?,
-      ownerEmail: json['owner_email'] as String?,
+      customerId: customerId,
+      ownerName: ownerName,
+      ownerPhone: ownerPhone,
+      ownerEmail: ownerEmail,
       totalOrders: (json['total_orders'] as num?)?.toInt() ?? 0,
       totalLoads: (json['total_loads'] as num?)?.toInt() ?? 0,
       pointsBalance: (json['points_balance'] as num?)?.toInt() ?? 0,
@@ -539,6 +552,117 @@ class LoyaltyService {
     } catch (e) {
       print('❌ Error unlinking card: $e');
       rethrow;
+    }
+  }
+
+  /// Fetches a paginated list of RFID loyalty cards with owner information.
+  /// Ordered by created_at descending.
+  /// Supports filtering by [filter]: 'all', 'assigned', 'unassigned'.
+  Future<List<LoyaltyCardInfo>> getPaginatedCards({
+    int offset = 0,
+    int limit = 3,
+    String filter = 'all',
+  }) async {
+    try {
+      // 1. Primary approach: Join rfid_loyalty_cards with customers table
+      var query = _client.from('rfid_loyalty_cards').select('''
+            id,
+            uid,
+            customer_id,
+            total_orders,
+            total_loads,
+            points_balance,
+            status,
+            created_at,
+            updated_at,
+            customers (
+              id,
+              full_name,
+              phone,
+              email
+            )
+          ''');
+
+      if (filter == 'assigned') {
+        query = query.not('customer_id', 'is', null);
+      } else if (filter == 'unassigned') {
+        query = query.isFilter('customer_id', null);
+      }
+
+      final response = await query
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      return (response as List<dynamic>)
+          .map((row) => LoyaltyCardInfo.fromJson(row as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      print('⚠️ Primary getPaginatedCards join failed: $e, trying vw_rfid_loyalty_cards view...');
+      try {
+        var viewQuery = _client.from('vw_rfid_loyalty_cards').select();
+        if (filter == 'assigned') {
+          viewQuery = viewQuery.not('customer_id', 'is', null);
+        } else if (filter == 'unassigned') {
+          viewQuery = viewQuery.isFilter('customer_id', null);
+        }
+
+        final viewResponse = await viewQuery
+            .order('card_created_at', ascending: false)
+            .range(offset, offset + limit - 1);
+
+        return (viewResponse as List<dynamic>)
+            .map((row) => LoyaltyCardInfo.fromJson(row as Map<String, dynamic>))
+            .toList();
+      } catch (e2) {
+        print('⚠️ View getPaginatedCards failed: $e2, trying direct select with manual customer lookup...');
+        var simpleQuery = _client.from('rfid_loyalty_cards').select();
+        if (filter == 'assigned') {
+          simpleQuery = simpleQuery.not('customer_id', 'is', null);
+        } else if (filter == 'unassigned') {
+          simpleQuery = simpleQuery.isFilter('customer_id', null);
+        }
+
+        final simpleResponse = await simpleQuery
+            .order('created_at', ascending: false)
+            .range(offset, offset + limit - 1);
+
+        final cardsList = (simpleResponse as List<dynamic>)
+            .map((row) => Map<String, dynamic>.from(row as Map))
+            .toList();
+
+        final customerIds = cardsList
+            .map((c) => c['customer_id'] as String?)
+            .where((id) => id != null && id.isNotEmpty)
+            .cast<String>()
+            .toSet()
+            .toList();
+
+        final Map<String, Map<String, dynamic>> customerDetails = {};
+        if (customerIds.isNotEmpty) {
+          try {
+            final custRows = await _client
+                .from('customers')
+                .select('id, full_name, phone, email')
+                .inFilter('id', customerIds);
+            for (final cust in custRows) {
+              customerDetails[cust['id'] as String] = cust;
+            }
+          } catch (_) {}
+        }
+
+        return cardsList.map((row) {
+          final custId = row['customer_id'] as String?;
+          final cust = custId != null ? customerDetails[custId] : null;
+          if (cust != null) {
+            row['owner_name'] = cust['full_name'];
+            row['owner_phone'] = cust['phone'];
+            row['owner_email'] = cust['email'];
+          } else if (custId == null) {
+            row['owner_name'] = 'Unassigned';
+          }
+          return LoyaltyCardInfo.fromJson(row);
+        }).toList();
+      }
     }
   }
 }

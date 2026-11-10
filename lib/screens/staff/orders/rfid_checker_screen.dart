@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
@@ -15,7 +16,8 @@ class RfidCheckerScreen extends StatefulWidget {
   State<RfidCheckerScreen> createState() => _RfidCheckerScreenState();
 }
 
-class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
+class _RfidCheckerScreenState extends State<RfidCheckerScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _manualTagController = TextEditingController();
   final LoyaltyService _loyaltyService = LoyaltyService();
   final CustomerService _customerService = CustomerService();
@@ -37,14 +39,110 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
   String? _lastRealtimeUid;
   DateTime? _lastRealtimeScanAt;
 
+  // Pulse & ripple animation state
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulseAnimation;
+  late final Animation<double> _waveAnimation;
+
+  // Loyalty Cards list & pagination state
+  final ScrollController _scrollController = ScrollController();
+  final List<LoyaltyCardInfo> _loyaltyCards = [];
+  bool _isLoadingCards = false;
+  bool _isLoadingMoreCards = false;
+  bool _hasMoreCards = true;
+  static const int _cardsPageSize = 3;
+  String _cardFilter = 'all'; // 'all', 'assigned', 'unassigned'
+
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat();
+
+    _pulseAnimation = CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    );
+
+    _waveAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _pulseController,
+        curve: Curves.easeOutQuad,
+      ),
+    );
+
+    _scrollController.addListener(_onScroll);
+    _loadInitialCards();
     _subscribeToLiveRfidScans();
     if (widget.initialTag != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _scanCard(widget.initialTag!);
       });
+    }
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (maxScroll - currentScroll <= 150) {
+      _loadMoreCards();
+    }
+  }
+
+  Future<void> _loadInitialCards() async {
+    setState(() {
+      _isLoadingCards = true;
+      _hasMoreCards = true;
+    });
+
+    try {
+      final cards = await _loyaltyService.getPaginatedCards(
+        offset: 0,
+        limit: _cardsPageSize,
+        filter: _cardFilter,
+      );
+      if (!mounted) return;
+      setState(() {
+        _loyaltyCards.clear();
+        _loyaltyCards.addAll(cards);
+        _isLoadingCards = false;
+        _hasMoreCards = cards.length >= _cardsPageSize;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingCards = false;
+      });
+      debugPrint('Error loading initial loyalty cards: $e');
+    }
+  }
+
+  Future<void> _loadMoreCards() async {
+    if (_isLoadingMoreCards || !_hasMoreCards || _isLoadingCards) return;
+
+    setState(() => _isLoadingMoreCards = true);
+
+    try {
+      final nextCards = await _loyaltyService.getPaginatedCards(
+        offset: _loyaltyCards.length,
+        limit: _cardsPageSize,
+        filter: _cardFilter,
+      );
+      if (!mounted) return;
+      setState(() {
+        _loyaltyCards.addAll(nextCards);
+        _isLoadingMoreCards = false;
+        if (nextCards.length < _cardsPageSize) {
+          _hasMoreCards = false;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoadingMoreCards = false);
+      debugPrint('Error loading more loyalty cards: $e');
     }
   }
 
@@ -82,6 +180,9 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
 
   @override
   void dispose() {
+    _pulseController.dispose();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     if (_scanChannel != null) {
       Supabase.instance.client.removeChannel(_scanChannel!);
     }
@@ -162,6 +263,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
         ),
       );
       _scanCard(_scannedUid!);
+      _loadInitialCards();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -427,6 +529,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
 
                                     // 4. Instantly auto-scan to show active loyalty dashboard
                                     _scanCard(_scannedUid!);
+                                    _loadInitialCards();
                                   } catch (e) {
                                     setSheetState(() => isSubmitting = false);
                                     if (!mounted) return;
@@ -564,6 +667,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
 
       // Re-scan to show fresh card info
       _scanCard(_scannedUid!);
+      _loadInitialCards();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -593,6 +697,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -624,6 +729,9 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                   _buildCardNotFoundResult(),
               ] else
                 _buildIdleGuide(),
+
+              const SizedBox(height: 28),
+              _buildLoyaltyCardsListSection(),
             ],
           ),
         ),
@@ -634,18 +742,21 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
   // ─── Scanner Hero Panel ───────────────────────────────────────────────────────
 
   Widget _buildScannerHero() {
-    final isActive = _scannedUid != null && !_isSearching;
-    final borderColor = _isSearching
+    final isSearching = _isSearching;
+    final hasScanned = _scannedUid != null && !isSearching;
+    final isWaiting = _scannedUid == null && !isSearching;
+
+    final borderColor = isSearching
         ? Colors.orange
-        : isActive
+        : hasScanned
             ? (_cardInfo != null
                 ? (_cardInfo!.hasOwner ? Colors.green : Colors.amber.shade700)
                 : AppTheme.errorRed)
-            : AppTheme.accentBlue.withValues(alpha: 0.3);
+            : AppTheme.accentBlue.withValues(alpha: 0.35);
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 18),
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
@@ -658,135 +769,163 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: borderColor,
-          width: _isSearching || isActive ? 2.0 : 1.0,
+          width: isSearching || hasScanned ? 2.0 : 1.2,
         ),
       ),
       child: Column(
         children: [
           // Status LED
           _buildStatusLed(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
-          // NFC Icon
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _isSearching
-                      ? Colors.orange.withValues(alpha: 0.15)
-                      : AppTheme.accentBlue.withValues(alpha: 0.10),
-                ),
-              ),
-              Container(
-                width: 68,
-                height: 68,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: _isSearching
-                          ? Colors.orange.withValues(alpha: 0.3)
-                          : AppTheme.accentBlue.withValues(alpha: 0.2),
-                      blurRadius: 16,
-                      spreadRadius: 2,
+          // Animated NFC / Card Pulse Waves
+          AnimatedBuilder(
+            animation: _pulseController,
+            builder: (context, child) {
+              final wave = _waveAnimation.value;
+              final pulse = _pulseAnimation.value;
+
+              return SizedBox(
+                width: 140,
+                height: 140,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Outer ripple waves (actively listening when waiting or reading)
+                    if (isWaiting || isSearching) ...[
+                      // Layer 1: Expanding outer wave
+                      Transform.scale(
+                        scale: 1.0 + (wave * 0.45),
+                        child: Container(
+                          width: 90,
+                          height: 90,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: (isSearching ? Colors.orange : AppTheme.accentBlue)
+                                  .withValues(alpha: (1.0 - wave) * 0.5),
+                              width: 2.0,
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Layer 2: Expanding inner wave (staggered)
+                      Transform.scale(
+                        scale: 1.0 + (((wave + 0.5) % 1.0) * 0.4),
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: (isSearching ? Colors.orange : AppTheme.accentBlue)
+                                  .withValues(alpha: (1.0 - ((wave + 0.5) % 1.0)) * 0.4),
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+
+                    // Breathing background glow
+                    Container(
+                      width: 84 + (isWaiting ? (pulse * 6) : 0),
+                      height: 84 + (isWaiting ? (pulse * 6) : 0),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isSearching
+                            ? Colors.orange.withValues(alpha: 0.15)
+                            : isWaiting
+                                ? AppTheme.accentBlue.withValues(alpha: 0.12 + (pulse * 0.08))
+                                : hasScanned && _cardInfo != null
+                                    ? Colors.green.withValues(alpha: 0.12)
+                                    : Colors.red.withValues(alpha: 0.12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (isSearching
+                                    ? Colors.orange
+                                    : isWaiting
+                                        ? AppTheme.accentBlue
+                                        : Colors.green)
+                                .withValues(alpha: 0.15 + (pulse * 0.15)),
+                            blurRadius: 18 + (pulse * 8),
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Solid central card circle
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: (isSearching
+                                    ? Colors.orange
+                                    : isWaiting
+                                        ? AppTheme.accentBlue
+                                        : Colors.green)
+                                .withValues(alpha: 0.25),
+                            blurRadius: 14,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        isSearching
+                            ? Icons.wifi_tethering
+                            : isWaiting
+                                ? Icons.credit_card_outlined
+                                : hasScanned && _cardInfo != null
+                                    ? Icons.check_circle_outline
+                                    : Icons.credit_card_off_outlined,
+                        size: 34,
+                        color: isSearching
+                            ? Colors.orange
+                            : isWaiting
+                                ? AppTheme.accentBlue
+                                : hasScanned && _cardInfo != null
+                                    ? Colors.green
+                                    : AppTheme.errorRed,
+                      ),
                     ),
                   ],
                 ),
-                child: Icon(
-                  Icons.credit_card_outlined,
-                  size: 34,
-                  color:
-                      _isSearching ? Colors.orange : AppTheme.accentBlue,
-                ),
-              ),
-            ],
+              );
+            },
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
 
+          // Main Status Title
           Text(
-            _isSearching
+            isSearching
                 ? 'Scanning Card: $_scannedUid'
-                : _scannedUid != null
+                : hasScanned
                     ? 'Card UID: $_scannedUid'
-                    : 'Waiting for RFID Loyalty Card',
-            style: const TextStyle(
-              fontSize: 15,
+                    : 'Waiting for Loyalty Card.',
+            style: GoogleFonts.lexend(
+              fontSize: 17,
               fontWeight: FontWeight.bold,
               color: AppTheme.textDark,
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 5),
+
+          // Subtitle
           Text(
-            _isSearching
+            isSearching
                 ? 'Looking up customer loyalty data...'
                 : _cardInfo != null
                     ? 'Card linked to ${_cardInfo!.ownerName}'
-                    : 'Tap card to reader, or enter UID manually below',
+                    : 'Tap card to counter RFID reader',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
           ),
-          // Manual input row (only shown when waiting for a card)
-          if (_cardInfo == null) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.borderGray),
-                    ),
-                    child: TextField(
-                      controller: _manualTagController,
-                      textCapitalization: TextCapitalization.characters,
-                      inputFormatters: InputFormatters.uppercaseCardUid,
-                      decoration: const InputDecoration(
-                        hintText: 'Enter Card UID (e.g. A3F9C2)...',
-                        hintStyle:
-                            TextStyle(fontSize: 12, color: AppTheme.textLight),
-                        prefixIcon: Icon(Icons.qr_code_scanner,
-                            size: 18, color: AppTheme.textLight),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding:
-                            EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-                      ),
-                      onSubmitted: _scanCard,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () => _scanCard(_manualTagController.text),
-                  child: Container(
-                    height: 44,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accentBlue,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    alignment: Alignment.center,
-                    child: const Text(
-                      'Scan',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );
@@ -827,10 +966,16 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: ledColor, shape: BoxShape.circle),
+          AnimatedBuilder(
+            animation: _pulseController,
+            builder: (context, _) => Opacity(
+              opacity: _scannedUid == null ? (0.4 + (_pulseAnimation.value * 0.6)) : 1.0,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: ledColor, shape: BoxShape.circle),
+              ),
+            ),
           ),
           const SizedBox(width: 8),
           Flexible(
@@ -1935,6 +2080,419 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  // ─── Loyalty Cards List Section & Lazy Pagination ────────────────────────────
+
+  Widget _buildLoyaltyCardsListSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.style_outlined,
+                    size: 18,
+                    color: AppTheme.primaryBlue,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Loyalty Cards',
+                  style: GoogleFonts.lexend(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                // Dropdown Nav (All / Assigned / Unassigned)
+                Container(
+                  height: 32,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.borderGray),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _cardFilter,
+                      icon: const Icon(
+                        Icons.arrow_drop_down,
+                        color: AppTheme.primaryBlue,
+                        size: 20,
+                      ),
+                      isDense: true,
+                      style: GoogleFonts.lexend(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'all',
+                          child: Text('All'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'assigned',
+                          child: Text('Assigned'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'unassigned',
+                          child: Text('Unassigned'),
+                        ),
+                      ],
+                      onChanged: (newVal) {
+                        if (newVal != null && newVal != _cardFilter) {
+                          setState(() {
+                            _cardFilter = newVal;
+                          });
+                          _loadInitialCards();
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 20, color: AppTheme.primaryBlue),
+                  tooltip: 'Refresh list',
+                  onPressed: _isLoadingCards ? null : _loadInitialCards,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        if (_isLoadingCards)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Column(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 12),
+                  Text(
+                    'Loading loyalty cards...',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else if (_loyaltyCards.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+            decoration: BoxDecoration(
+              color: AppTheme.softGray,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.borderGray),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.credit_card_off_outlined,
+                  size: 36,
+                  color: AppTheme.textLight.withValues(alpha: 0.5),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'No loyalty cards found',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Tap or enter a card UID above to register new cards.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          ..._loyaltyCards.map(_buildLoyaltyCardItem),
+          const SizedBox(height: 6),
+          if (_isLoadingMoreCards)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 14),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Loading more cards...',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_hasMoreCards)
+            Center(
+              child: TextButton.icon(
+                onPressed: _loadMoreCards,
+                icon: const Icon(Icons.expand_more, size: 18),
+                label: const Text('Load More (Next 3)'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.primaryBlue,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+              ),
+            )
+          else
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'All ${_loyaltyCards.length} loyalty cards loaded',
+                  style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildLoyaltyCardItem(LoyaltyCardInfo card) {
+    final isSelected = _scannedUid == card.uid;
+    final isUnassigned = !card.hasOwner;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isSelected
+              ? AppTheme.accentBlue
+              : AppTheme.borderGray.withValues(alpha: 0.8),
+          width: isSelected ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            _scanCard(card.uid);
+            if (_scrollController.hasClients) {
+              _scrollController.animateTo(
+                0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top row: UID and Points
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // UID
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.nfc,
+                              size: 16,
+                              color: AppTheme.accentBlue,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'CARD UID',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textLight,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                Text(
+                                  card.uid,
+                                  style: GoogleFonts.lexend(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textDark,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Points balance badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentBlue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: AppTheme.accentBlue.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.stars_rounded,
+                            size: 16,
+                            color: AppTheme.accentBlue,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${card.pointsBalance} pts',
+                            style: GoogleFonts.lexend(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.accentBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+                const Divider(height: 1, color: AppTheme.softGray),
+                const SizedBox(height: 10),
+
+                // Bottom row: Owner info or Unassigned chip
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(
+                            isUnassigned
+                                ? Icons.person_off_outlined
+                                : Icons.person_outline,
+                            size: 16,
+                            color: isUnassigned
+                                ? Colors.amber.shade800
+                                : AppTheme.textLight,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: isUnassigned
+                                ? Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        'Unassigned',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.amber.shade900,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : Text(
+                                    card.ownerName,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textDark,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    Row(
+                      children: [
+                        Text(
+                          'Tap to check',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.accentBlue.withValues(alpha: 0.8),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 16,
+                          color: AppTheme.accentBlue.withValues(alpha: 0.8),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -17,6 +17,7 @@ import '../../../services/service_request_service.dart';
 import '../../../services/customer_service.dart';
 import '../../../services/feedback_service.dart';
 import '../../../services/payment_service.dart';
+import '../../../widgets/gcash_unavailable_dialog.dart';
 import '../../shared/gcash_qr_payment_screen.dart';
 import 'request_service_flow.dart';
 import 'customer_order_details_screen.dart';
@@ -459,6 +460,13 @@ class _CustomerOrdersScreenState extends State<CustomerOrdersScreen>
   /// Opens the admin-uploaded GCash QR, lets the customer capture/upload
   /// the payment receipt, then records the payment.
   Future<void> _payWithGcash(LaundryOrder order, double amount) async {
+    final hasQr = await _paymentService.hasUploadedGcashQr();
+    if (!mounted) return;
+    if (!hasQr) {
+      await showGcashUnavailableDialog(context);
+      return;
+    }
+
     final receipt = await Navigator.push<File>(
       context,
       MaterialPageRoute(
