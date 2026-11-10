@@ -23,6 +23,9 @@ class GcashSettings {
 
   const GcashSettings({this.qrImageUrl, this.accountName, this.accountNumber});
 
+  /// Returns true if an admin has uploaded an active GCash QR code image.
+  bool get hasQrCode => qrImageUrl != null && qrImageUrl!.trim().isNotEmpty;
+
   /// Used when the row is missing or unreadable — screens fall back to
   /// the default account instructions.
   static const GcashSettings empty = GcashSettings();
@@ -49,6 +52,16 @@ class PaymentService {
   static const int _settingsRowId = 1;
   static const String _receiptBucket = 'payment-receipts';
 
+  GcashSettings? _cachedSettings;
+  DateTime? _lastFetchTime;
+  static const Duration _cacheDuration = Duration(seconds: 30);
+
+  /// Checks whether an admin has uploaded an active GCash QR code image.
+  Future<bool> hasUploadedGcashQr({bool forceRefresh = false}) async {
+    final settings = await fetchGcashSettings(forceRefresh: forceRefresh);
+    return settings.hasQrCode;
+  }
+
   Future<String?> getLatestReceiptRejectionReason(String orderId) async {
     final row = await _client
         .from('gcash_receipt_submissions')
@@ -70,7 +83,14 @@ class PaymentService {
   /// name and number shown on the payment screens.
   /// Returns [GcashSettings.empty] when the row is missing or unreadable,
   /// so callers fall back to the default account instructions.
-  Future<GcashSettings> fetchGcashSettings() async {
+  Future<GcashSettings> fetchGcashSettings({bool forceRefresh = false}) async {
+    if (!forceRefresh &&
+        _cachedSettings != null &&
+        _lastFetchTime != null &&
+        DateTime.now().difference(_lastFetchTime!) < _cacheDuration) {
+      return _cachedSettings!;
+    }
+
     try {
       final row = await _client
           .from('gcash_settings')
@@ -78,24 +98,45 @@ class PaymentService {
           .eq('id', _settingsRowId)
           .maybeSingle();
 
-      if (row == null) {
-        print('⚠️ gcash_settings row (id=1) not found');
-        return GcashSettings.empty;
-      }
-
       String? clean(dynamic value) {
         final trimmed = (value as String?)?.trim();
         return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
       }
 
-      return GcashSettings(
+      if (row == null) {
+        final fallback = await _client
+            .from('gcash_settings')
+            .select('qr_image_url, account_name, account_number')
+            .limit(1)
+            .maybeSingle();
+        if (fallback != null) {
+          final settings = GcashSettings(
+            qrImageUrl: clean(fallback['qr_image_url']),
+            accountName: clean(fallback['account_name']),
+            accountNumber: clean(fallback['account_number']),
+          );
+          _cachedSettings = settings;
+          _lastFetchTime = DateTime.now();
+          return settings;
+        }
+
+        print('⚠️ gcash_settings row (id=1) not found');
+        _cachedSettings = GcashSettings.empty;
+        _lastFetchTime = DateTime.now();
+        return GcashSettings.empty;
+      }
+
+      final settings = GcashSettings(
         qrImageUrl: clean(row['qr_image_url']),
         accountName: clean(row['account_name']),
         accountNumber: clean(row['account_number']),
       );
+      _cachedSettings = settings;
+      _lastFetchTime = DateTime.now();
+      return settings;
     } catch (e) {
       print('❌ Could not load GCash settings from gcash_settings: $e');
-      return GcashSettings.empty;
+      return _cachedSettings ?? GcashSettings.empty;
     }
   }
 

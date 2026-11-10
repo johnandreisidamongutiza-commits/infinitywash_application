@@ -12,6 +12,7 @@ import '../../services/payment_service.dart';
 import '../../services/photo_file_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/permission_manager.dart';
+import '../../widgets/gcash_unavailable_dialog.dart';
 import '../../widgets/in_app_camera_screen.dart';
 
 /// Shared GCash payment flow for staff and customer screens.
@@ -391,7 +392,15 @@ class _GcashQrPaymentScreenState extends State<GcashQrPaymentScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => setState(() => _step = 2),
+              onPressed: () {
+                if (!_settings.hasQrCode &&
+                    _qrImageUrl == null &&
+                    _qrImageBytes == null) {
+                  showGcashUnavailableDialog(context);
+                  return;
+                }
+                setState(() => _step = 2);
+              },
               icon: const Icon(Icons.arrow_forward, size: 18),
               label: const Text(
                 'Next',

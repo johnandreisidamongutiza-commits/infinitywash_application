@@ -9,6 +9,7 @@ import '../../../services/customer_service.dart';
 import '../../../services/order_service.dart';
 import '../../../services/payment_service.dart';
 import '../../../services/arrival_proof_service.dart';
+import '../../../widgets/gcash_unavailable_dialog.dart';
 import '../../../widgets/star_rating.dart';
 import '../../../widgets/order_timeline_view.dart';
 import '../../shared/gcash_qr_payment_screen.dart';
@@ -208,8 +209,14 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
               Text('Total: ₱${(order.totalAmount ?? 0).toStringAsFixed(2)}', style: const TextStyle(color: AppTheme.textLight)),
               const SizedBox(height: 16),
               OutlinedButton.icon(
-                onPressed: () {
+                onPressed: () async {
                   Navigator.pop(sheetContext);
+                  final hasQr = await PaymentService().hasUploadedGcashQr();
+                  if (!mounted) return;
+                  if (!hasQr) {
+                    await showGcashUnavailableDialog(context);
+                    return;
+                  }
                   _payOrderWithGcash(order);
                 },
                 icon: const Icon(Icons.qr_code_2),
@@ -234,6 +241,13 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
   }
 
   Future<void> _payOrderWithGcash(LaundryOrder order) async {
+    final hasQr = await PaymentService().hasUploadedGcashQr();
+    if (!mounted) return;
+    if (!hasQr) {
+      await showGcashUnavailableDialog(context);
+      return;
+    }
+
     final amount = order.totalAmount ?? 0;
     final receipt = await Navigator.push<File>(
       context,
