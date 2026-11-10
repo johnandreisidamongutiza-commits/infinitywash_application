@@ -249,90 +249,6 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     );
   }
 
-  void _showContactSheet(String phone, String name) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.borderGray,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Contact $name',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textDark,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: const BoxDecoration(
-                  color: AppTheme.lightBlue,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.phone, color: AppTheme.accentBlue),
-              ),
-              title: const Text('Phone Call', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              subtitle: Text(phone, style: const TextStyle(fontSize: 13, color: AppTheme.textLight)),
-              trailing: IconButton(
-                icon: const Icon(Icons.phone, size: 18, color: AppTheme.accentBlue),
-                tooltip: 'Call $name',
-                onPressed: () {
-                  Navigator.pop(context);
-                  PhoneHelper.openDialer(context, phone: phone, contactName: name);
-                },
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                PhoneHelper.openDialer(context, phone: phone, contactName: name);
-              },
-            ),
-            const Divider(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.teal.shade50,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.chat_bubble_outline, color: Colors.teal.shade800),
-              ),
-              title: const Text('In-App Chat', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              subtitle: Text('Direct message regarding Order #${widget.job.jobNumber ?? widget.job.orderId}', style: const TextStyle(fontSize: 13, color: AppTheme.textLight)),
-              trailing: const Icon(Icons.chevron_right, color: AppTheme.textLight),
-              onTap: () {
-                Navigator.pop(context);
-                _openCustomerChat(name);
-              },
-            ),
-            const SizedBox(height: 12),
-          ],
-        ),
-      ),
-    );
-  }
-
   String _getInitials(String name) {
     final parts = name.trim().split(RegExp(r'\s+'));
     if (parts.isEmpty || parts[0].isEmpty) return '?';
@@ -833,7 +749,11 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
               if (_customerPhone != null && _customerPhone!.isNotEmpty) ...[
                 const SizedBox(width: 4),
                 IconButton(
-                  onPressed: () => _showContactSheet(_customerPhone!, customerName),
+                  onPressed: () => PhoneHelper.openDialer(
+                    context,
+                    phone: _customerPhone!,
+                    contactName: customerName,
+                  ),
                   icon: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: const BoxDecoration(
@@ -842,7 +762,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
                     ),
                     child: const Icon(Icons.phone, size: 18, color: AppTheme.accentBlue),
                   ),
-                  tooltip: 'Contact Customer',
+                  tooltip: 'Call Customer',
                 ),
               ],
             ],
