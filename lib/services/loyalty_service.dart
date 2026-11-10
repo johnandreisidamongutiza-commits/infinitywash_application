@@ -557,15 +557,15 @@ class LoyaltyService {
 
   /// Fetches a paginated list of RFID loyalty cards with owner information.
   /// Ordered by created_at descending.
+  /// Supports filtering by [filter]: 'all', 'assigned', 'unassigned'.
   Future<List<LoyaltyCardInfo>> getPaginatedCards({
     int offset = 0,
     int limit = 3,
+    String filter = 'all',
   }) async {
     try {
       // 1. Primary approach: Join rfid_loyalty_cards with customers table
-      final response = await _client
-          .from('rfid_loyalty_cards')
-          .select('''
+      var query = _client.from('rfid_loyalty_cards').select('''
             id,
             uid,
             customer_id,
@@ -581,7 +581,15 @@ class LoyaltyService {
               phone,
               email
             )
-          ''')
+          ''');
+
+      if (filter == 'assigned') {
+        query = query.not('customer_id', 'is', null);
+      } else if (filter == 'unassigned') {
+        query = query.isFilter('customer_id', null);
+      }
+
+      final response = await query
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
 
@@ -591,9 +599,14 @@ class LoyaltyService {
     } catch (e) {
       print('⚠️ Primary getPaginatedCards join failed: $e, trying vw_rfid_loyalty_cards view...');
       try {
-        final viewResponse = await _client
-            .from('vw_rfid_loyalty_cards')
-            .select()
+        var viewQuery = _client.from('vw_rfid_loyalty_cards').select();
+        if (filter == 'assigned') {
+          viewQuery = viewQuery.not('customer_id', 'is', null);
+        } else if (filter == 'unassigned') {
+          viewQuery = viewQuery.isFilter('customer_id', null);
+        }
+
+        final viewResponse = await viewQuery
             .order('card_created_at', ascending: false)
             .range(offset, offset + limit - 1);
 
@@ -602,9 +615,14 @@ class LoyaltyService {
             .toList();
       } catch (e2) {
         print('⚠️ View getPaginatedCards failed: $e2, trying direct select with manual customer lookup...');
-        final simpleResponse = await _client
-            .from('rfid_loyalty_cards')
-            .select()
+        var simpleQuery = _client.from('rfid_loyalty_cards').select();
+        if (filter == 'assigned') {
+          simpleQuery = simpleQuery.not('customer_id', 'is', null);
+        } else if (filter == 'unassigned') {
+          simpleQuery = simpleQuery.isFilter('customer_id', null);
+        }
+
+        final simpleResponse = await simpleQuery
             .order('created_at', ascending: false)
             .range(offset, offset + limit - 1);
 
