@@ -25,7 +25,7 @@ void main() {
   testWidgets('RfidCheckerScreen renders completely without a blank screen', (
     WidgetTester tester,
   ) async {
-    tester.view.physicalSize = const Size(390, 844); // iPhone 12/13/14 size
+    tester.view.physicalSize = const Size(780, 1688); // iPhone 12/13/14 size (390x844 logical)
     tester.view.devicePixelRatio = 2.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);

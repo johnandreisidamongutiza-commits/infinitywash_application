@@ -2090,10 +2090,14 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
           children: [
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
                   padding: const EdgeInsets.all(7),
@@ -2119,6 +2123,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen>
               ],
             ),
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 // Dropdown Nav (All / Assigned / Unassigned)
                 Container(
