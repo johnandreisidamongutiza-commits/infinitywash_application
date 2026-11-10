@@ -68,6 +68,8 @@ class OrdersScreenState extends State<OrdersScreen>
   int _historyTotalCount = 0;    // total rows from DB
   int get _historyTotalPages =>
       _historyTotalCount == 0 ? 1 : (_historyTotalCount / _kHistoryPageSize).ceil();
+  OrderStatus? _selectedHistoryStatus;
+  Map<String, int> _historyStatusCounts = {};
 
   // ── Rejected count (badge only, not paginated) ──────────────────────────
   int _rejectedCount = 0;
@@ -210,7 +212,11 @@ class OrdersScreenState extends State<OrdersScreen>
 
   Future<void> _refreshMetadata() async {
     _metadataDirty = false;
-    await Future.wait([_loadRejectedCount(), _loadActiveStatusCounts()]);
+    await Future.wait([
+      _loadRejectedCount(),
+      _loadActiveStatusCounts(),
+      _loadHistoryStatusCounts(),
+    ]);
   }
 
   Future<int> _cleanupRejectedIfNeeded() async {
@@ -266,6 +272,24 @@ class OrdersScreenState extends State<OrdersScreen>
             'ready': results[2],
             'out_for_delivery': results[3],
             'all': results[0] + results[1] + results[2] + results[3],
+          };
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadHistoryStatusCounts() async {
+    try {
+      final results = await Future.wait([
+        _orderService.fetchOrderCount(statuses: ['completed']),
+        _orderService.fetchOrderCount(statuses: ['cancelled']),
+      ]);
+      if (mounted) {
+        setState(() {
+          _historyStatusCounts = {
+            'completed': results[0],
+            'cancelled': results[1],
+            'all': results[0] + results[1],
           };
         });
       }
@@ -424,17 +448,20 @@ class OrdersScreenState extends State<OrdersScreen>
     try {
       final searchTerm = _searchQuery.trim().isEmpty ? null : _searchQuery.trim();
       final offset = (_historyPage - 1) * _kHistoryPageSize;
+      final statusesToFetch = _selectedHistoryStatus != null
+          ? [_selectedHistoryStatus!.name]
+          : ['completed', 'cancelled'];
 
       // Fetch the page rows + total count in parallel.
       final results = await Future.wait([
         _orderService.fetchOrders(
-          statuses: ['completed'],
+          statuses: statusesToFetch,
           limit: _kHistoryPageSize,
           offset: offset,
           search: searchTerm,
         ),
         _orderService.fetchOrderCount(
-          statuses: ['completed'],
+          statuses: statusesToFetch,
           search: searchTerm,
         ),
       ]);
@@ -468,6 +495,7 @@ class OrdersScreenState extends State<OrdersScreen>
       if (_historyInitialized) _initHistory(),
       _loadRejectedCount(),
       _loadActiveStatusCounts(),
+      _loadHistoryStatusCounts(),
     ]);
   }
 
@@ -544,8 +572,6 @@ class OrdersScreenState extends State<OrdersScreen>
     return '${date.month}/${date.day}/${date.year}';
   }
 
-  Color _statusColor(OrderStatus status) => AppTheme.statusColor(status);
-
   String _statusLabel(OrderStatus status) {
     switch (status) {
       case OrderStatus.pending_approval:
@@ -584,7 +610,7 @@ class OrdersScreenState extends State<OrdersScreen>
       case OrderStatus.rejected:
         return Icons.cancel_outlined;
       case OrderStatus.cancelled:
-        return Icons.remove_circle_outline_rounded;
+        return Icons.cancel_outlined;
     }
   }
 
@@ -723,12 +749,11 @@ class OrdersScreenState extends State<OrdersScreen>
           AnimatedBuilder(
             animation: _tabController,
             builder: (context, _) {
-              final isCurrentTabActive =
-                  (_tabController.animation?.value.round() ??
-                          _tabController.index) ==
-                      1;
-              if (!isCurrentTabActive) return const SizedBox.shrink();
-              return _buildActiveStatusFilter();
+              final tabIndex =
+                  (_tabController.animation?.value.round() ?? _tabController.index);
+              if (tabIndex == 1) return _buildActiveStatusFilter();
+              if (tabIndex == 2) return _buildHistoryStatusFilter();
+              return const SizedBox.shrink();
             },
           ),
           Expanded(
@@ -930,10 +955,26 @@ class OrdersScreenState extends State<OrdersScreen>
     }
 
     if (!_historyLoading && _history.isEmpty) {
+      if (_selectedHistoryStatus != null) {
+        final label = _statusLabel(_selectedHistoryStatus!);
+        return _buildEmptyState(
+          icon: _statusIcon(_selectedHistoryStatus!),
+          title: 'No $label orders',
+          subtitle: 'There are currently no orders in history marked as $label.',
+          actionLabel: 'Show All History',
+          onAction: () {
+            setState(() {
+              _selectedHistoryStatus = null;
+              _historyPage = 1;
+            });
+            _fetchHistory();
+          },
+        );
+      }
       return _buildEmptyState(
         icon: Icons.history_rounded,
         title: 'No order history',
-        subtitle: 'Completed orders will show up here.',
+        subtitle: 'Completed and cancelled orders will show up here.',
       );
     }
 
@@ -1085,8 +1126,16 @@ class OrdersScreenState extends State<OrdersScreen>
             const SizedBox(height: 6),
             Text(
               totalCount == 0
-                  ? 'No completed orders'
-                  : 'Showing $startItem–$endItem of $totalCount completed orders',
+                  ? (_selectedHistoryStatus == OrderStatus.cancelled
+                      ? 'No cancelled orders'
+                      : _selectedHistoryStatus == OrderStatus.completed
+                          ? 'No completed orders'
+                          : 'No orders in history')
+                  : (_selectedHistoryStatus == OrderStatus.cancelled
+                      ? 'Showing $startItem–$endItem of $totalCount cancelled orders'
+                      : _selectedHistoryStatus == OrderStatus.completed
+                          ? 'Showing $startItem–$endItem of $totalCount completed orders'
+                          : 'Showing $startItem–$endItem of $totalCount orders'),
               style: GoogleFonts.lexend(
                 fontSize: 11,
                 color: AppTheme.textLight,
@@ -1226,6 +1275,118 @@ class OrdersScreenState extends State<OrdersScreen>
                       _selectedActiveStatus = status;
                     });
                     _initActive();
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: isSelected ? color : AppTheme.softGray,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSelected ? color : Colors.black.withValues(alpha: 0.06),
+                        width: 1,
+                      ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: color.withValues(alpha: 0.28),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          icon,
+                          size: 15,
+                          color: isSelected ? Colors.white : color,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          label,
+                          style: GoogleFonts.lexend(
+                            fontSize: 12,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color: isSelected ? Colors.white : AppTheme.textDark,
+                          ),
+                        ),
+                        if (count != null && count > 0) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? Colors.white.withValues(alpha: 0.25)
+                                  : color.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '$count',
+                              style: GoogleFonts.lexend(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: isSelected ? Colors.white : color,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryStatusFilter() {
+    final statuses = [
+      null, // All
+      OrderStatus.completed,
+      OrderStatus.cancelled,
+    ];
+
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.only(bottom: 10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: statuses.map((status) {
+            final isSelected = _selectedHistoryStatus == status;
+            final label = status == null ? 'All' : _statusLabel(status);
+            final icon = status == null ? Icons.history_rounded : _statusIcon(status);
+            final Color color = status == OrderStatus.cancelled
+                ? AppTheme.errorRed
+                : (status == OrderStatus.completed
+                    ? AppTheme.statusCompleted
+                    : AppTheme.primaryBlue);
+
+            final countKey = status == null ? 'all' : status.name;
+            final count = _historyStatusCounts[countKey];
+
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () {
+                    if (_selectedHistoryStatus == status) return;
+                    setState(() {
+                      _selectedHistoryStatus = status;
+                      _historyPage = 1;
+                    });
+                    _fetchHistory();
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
@@ -1691,6 +1852,7 @@ class OrdersScreenState extends State<OrdersScreen>
                 await _initHistory();
               }
               _loadActiveStatusCounts();
+              _loadHistoryStatusCounts();
             }
           },
           child: Padding(
@@ -1772,22 +1934,32 @@ class OrdersScreenState extends State<OrdersScreen>
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    order.needsCheckIn
-                                        ? 'Needs check-in'
-                                        : (order.status == OrderStatus.pending_pickup && order.loads.isEmpty)
-                                            ? 'Waiting for pickup'
-                                            : '${order.loads.length} load${order.loads.length != 1 ? 's' : ''} • ${order.weightDisplay}',
+                                    order.status == OrderStatus.cancelled
+                                        ? (order.rejectionReason != null && order.rejectionReason!.isNotEmpty
+                                            ? 'Reason: ${order.rejectionReason}'
+                                            : 'Order cancelled')
+                                        : (order.needsCheckIn
+                                            ? 'Needs check-in'
+                                            : (order.status == OrderStatus.pending_pickup && order.loads.isEmpty)
+                                                ? 'Waiting for pickup'
+                                                : '${order.loads.length} load${order.loads.length != 1 ? 's' : ''} • ${order.weightDisplay}'),
                                     style: GoogleFonts.lexend(
                                       fontSize: 12,
-                                      color: order.needsCheckIn
-                                          ? AppTheme.statusRequest
-                                          : (order.status == OrderStatus.pending_pickup && order.loads.isEmpty)
-                                              ? AppTheme.statusPending
-                                              : AppTheme.textLight,
-                                      fontWeight: (order.needsCheckIn || (order.status == OrderStatus.pending_pickup && order.loads.isEmpty))
+                                      color: order.status == OrderStatus.cancelled
+                                          ? AppTheme.errorRed
+                                          : (order.needsCheckIn
+                                              ? AppTheme.statusRequest
+                                              : (order.status == OrderStatus.pending_pickup && order.loads.isEmpty)
+                                                  ? AppTheme.statusPending
+                                                  : AppTheme.textLight),
+                                      fontWeight: (order.status == OrderStatus.cancelled ||
+                                              order.needsCheckIn ||
+                                              (order.status == OrderStatus.pending_pickup && order.loads.isEmpty))
                                           ? FontWeight.w600
                                           : FontWeight.normal,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),

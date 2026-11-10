@@ -1202,6 +1202,34 @@ class OrderService {
     }
   }
 
+  /// Cancel an order with a reason and optional staff notes
+  Future<void> cancelOrder({
+    required String orderId,
+    required String reason,
+    String? staffNotes,
+  }) async {
+    try {
+      final updates = <String, dynamic>{
+        'status': 'cancelled',
+        'rejection_reason': reason,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      if (staffNotes != null && staffNotes.trim().isNotEmpty) {
+        updates['staff_notes'] = staffNotes.trim();
+      }
+
+      await _client
+          .from('orders')
+          .update(updates)
+          .eq('id', orderId);
+
+      print('✅ Order $orderId cancelled with reason: $reason');
+    } catch (e) {
+      print('❌ Error cancelling order: $e');
+      rethrow;
+    }
+  }
+
   /// Complete an order (status='completed' + loyalty points) from ANY path.
   ///
   /// Previously loyalty points were only awarded when staff completed the

@@ -80,6 +80,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   bool get _isPendingPickup => _currentStatus == OrderStatus.pending_pickup;
   bool get _isOutForDelivery => _currentStatus == OrderStatus.out_for_delivery;
+  bool get _canCancel =>
+      _currentStatus != OrderStatus.cancelled &&
+      _currentStatus != OrderStatus.rejected &&
+      _currentStatus != OrderStatus.completed &&
+      _currentStatus != OrderStatus.out_for_delivery;
 
   // ───────────────────────────────────────────────────────────────────────────
   // Parsing Helpers for clean metadata separation
@@ -261,7 +266,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Order ${_currentOrder.displayNumber} marked as complete ✓'),
+          content: Text('Order ${_currentOrder.displayNumber} marked as complete.'),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
         ),
@@ -290,7 +295,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Order ${_currentOrder.displayNumber} marked as ready for delivery ✓'),
+          content: Text('Order ${_currentOrder.displayNumber} marked as ready for delivery.'),
           backgroundColor: AppTheme.accentBlue,
           behavior: SnackBarBehavior.floating,
         ),
@@ -386,7 +391,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('✓ Pickup completed. You can now check in the laundry.'),
+          content: Text('Pickup completed. You can now check in the laundry.'),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
         ),
@@ -481,7 +486,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('✓ Delivery completed. Order is now complete.'),
+          content: Text('Delivery completed. Order is now complete.'),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
         ),
@@ -500,7 +505,260 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
+  void _showCancelOrderModal() {
+    String selectedReason = 'Customer changed mind / took laundry back';
+    final notesController = TextEditingController();
+    bool isSubmitting = false;
 
+    final reasons = [
+      'Customer changed mind / took laundry back',
+      'Wrong details or duplicate entry',
+      'Cannot meet turnaround time',
+      'Other reason',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppTheme.borderGray,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.statusErrorBg,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.cancel_outlined,
+                          color: AppTheme.errorRed,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Cancel Order ${_currentOrder.displayNumber}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: AppTheme.textDark,
+                              ),
+                            ),
+                            const Text(
+                              'Please select a cancellation reason',
+                              style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: AppTheme.textLight),
+                        onPressed: () => Navigator.pop(sheetContext),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  if (_currentStatus == OrderStatus.processing) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 18),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Notice: Clothes are currently in processing. Ensure laundry is stopped and returned to customer.',
+                              style: TextStyle(fontSize: 11, color: AppTheme.textDark),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
+                  ...reasons.map((r) => InkWell(
+                        onTap: () => setSheetState(() => selectedReason = r),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: selectedReason == r
+                                ? AppTheme.statusErrorBg
+                                : AppTheme.softGray,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: selectedReason == r
+                                  ? AppTheme.errorRed.withValues(alpha: 0.4)
+                                  : AppTheme.borderGray,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                selectedReason == r
+                                    ? Icons.radio_button_checked
+                                    : Icons.radio_button_unchecked,
+                                size: 18,
+                                color: selectedReason == r
+                                    ? AppTheme.errorRed
+                                    : AppTheme.textLight,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  r,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: selectedReason == r
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                    color: AppTheme.textDark,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )),
+
+                  const SizedBox(height: 8),
+
+                  TextField(
+                    controller: notesController,
+                    decoration: const InputDecoration(
+                      labelText: 'Staff Notes (Optional)',
+                      hintText: 'e.g. Customer took back laundry bag',
+                      labelStyle: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                      hintStyle: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(sheetContext),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 46),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            side: const BorderSide(color: AppTheme.borderGray),
+                          ),
+                          child: const Text(
+                            'Keep Order',
+                            style: TextStyle(color: AppTheme.textLight, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: isSubmitting
+                              ? null
+                              : () async {
+                                  setSheetState(() => isSubmitting = true);
+                                  try {
+                                    await _orderService.cancelOrder(
+                                      orderId: _currentOrder.id,
+                                      reason: selectedReason,
+                                      staffNotes: notesController.text.trim().isNotEmpty
+                                          ? notesController.text.trim()
+                                          : null,
+                                    );
+                                    if (!mounted || !sheetContext.mounted) return;
+                                    Navigator.pop(sheetContext);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Order ${_currentOrder.displayNumber} cancelled.'),
+                                        backgroundColor: AppTheme.errorRed,
+                                      ),
+                                    );
+                                    await _refreshOrderData();
+                                  } catch (e) {
+                                    setSheetState(() => isSubmitting = false);
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Failed to cancel order: $e'),
+                                        backgroundColor: AppTheme.errorRed,
+                                      ),
+                                    );
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.errorRed,
+                            minimumSize: const Size(0, 46),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: isSubmitting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                )
+                              : const Text(
+                                  'Confirm Cancel',
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -520,26 +778,26 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.copy, size: 19, color: AppTheme.accentBlue),
-            tooltip: 'Copy Order Number',
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: _currentOrder.displayNumber));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Order number copied to clipboard ✓'),
-                  duration: Duration(seconds: 1),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
+            icon: const Icon(Icons.refresh, size: 22, color: AppTheme.textDark),
+            tooltip: 'Refresh',
+            onPressed: _refreshOrderData,
           ),
-          if (_currentOrder.channel == OrderChannel.walkIn &&
-              _currentOrder.status != OrderStatus.cancelled &&
-              _currentOrder.status != OrderStatus.rejected)
-            IconButton(
-              icon: const Icon(Icons.edit_outlined, size: 20, color: AppTheme.accentBlue),
-              tooltip: 'Edit Order',
-              onPressed: () async {
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: AppTheme.textDark),
+            tooltip: 'More options',
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            onSelected: (value) async {
+              if (value == 'copy') {
+                Clipboard.setData(ClipboardData(text: _currentOrder.displayNumber));
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Order number copied to clipboard.'),
+                    duration: Duration(seconds: 1),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              } else if (value == 'edit') {
                 final result = await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(
@@ -549,12 +807,61 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 if (result == true && mounted) {
                   await _refreshOrderData();
                 }
-              },
-            ),
-          IconButton(
-            icon: const Icon(Icons.refresh, size: 22, color: AppTheme.textDark),
-            tooltip: 'Refresh',
-            onPressed: _refreshOrderData,
+              } else if (value == 'cancel') {
+                _showCancelOrderModal();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem<String>(
+                value: 'copy',
+                child: Row(
+                  children: [
+                    Icon(Icons.copy_rounded, size: 18, color: AppTheme.textDark),
+                    SizedBox(width: 10),
+                    Text(
+                      'Copy Order ID',
+                      style: TextStyle(fontSize: 13, color: AppTheme.textDark),
+                    ),
+                  ],
+                ),
+              ),
+              if (_currentOrder.channel == OrderChannel.walkIn &&
+                  _currentOrder.status != OrderStatus.cancelled &&
+                  _currentOrder.status != OrderStatus.rejected)
+                const PopupMenuItem<String>(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit_outlined, size: 18, color: AppTheme.accentBlue),
+                      SizedBox(width: 10),
+                      Text(
+                        'Edit Order Details',
+                        style: TextStyle(fontSize: 13, color: AppTheme.textDark),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_canCancel) ...[
+                const PopupMenuDivider(),
+                const PopupMenuItem<String>(
+                  value: 'cancel',
+                  child: Row(
+                    children: [
+                      Icon(Icons.cancel_outlined, size: 18, color: AppTheme.errorRed),
+                      SizedBox(width: 10),
+                      Text(
+                        'Cancel Order',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.errorRed,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -725,6 +1032,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       bgColor = AppTheme.statusCompletedBg;
       title = 'Order Completed';
       subtitle = 'Laundry was claimed/delivered and payment has been verified.';
+    } else if (_currentStatus == OrderStatus.cancelled) {
+      icon = Icons.cancel_outlined;
+      color = AppTheme.errorRed;
+      bgColor = AppTheme.statusErrorBg;
+      title = 'Order Cancelled';
+      subtitle = _currentOrder.rejectionReason != null && _currentOrder.rejectionReason!.isNotEmpty
+          ? 'Reason: ${_currentOrder.rejectionReason}'
+          : 'This order was cancelled.';
+    } else if (_currentStatus == OrderStatus.rejected) {
+      icon = Icons.block;
+      color = AppTheme.errorRed;
+      bgColor = AppTheme.statusErrorBg;
+      title = 'Order Rejected';
+      subtitle = _currentOrder.rejectionReason != null && _currentOrder.rejectionReason!.isNotEmpty
+          ? 'Reason: ${_currentOrder.rejectionReason}'
+          : 'This booking was rejected.';
     } else {
       icon = Icons.info_outline;
       color = AppTheme.statusError;
@@ -1261,7 +1584,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         width: photoSize,
         height: photoSize,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => errorPlaceholder,
+        errorBuilder: (_, _, _) => errorPlaceholder,
         loadingBuilder: (_, child, progress) => progress == null
             ? child
             : Container(
@@ -1287,7 +1610,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           width: photoSize,
           height: photoSize,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => errorPlaceholder,
+          errorBuilder: (_, _, _) => errorPlaceholder,
         );
       } catch (_) {
         return errorPlaceholder;
@@ -1301,7 +1624,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         width: photoSize,
         height: photoSize,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => errorPlaceholder,
+        errorBuilder: (_, _, _) => errorPlaceholder,
       );
     }
     return errorPlaceholder;
@@ -1511,6 +1834,56 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           padding: const EdgeInsets.symmetric(vertical: 13),
         ),
       );
+    } else if (_currentStatus == OrderStatus.cancelled) {
+      actionButton = Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppTheme.statusErrorBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.errorRed.withValues(alpha: 0.3)),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.cancel_outlined, color: AppTheme.errorRed, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Order is Cancelled',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                color: AppTheme.errorRed,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (_currentStatus == OrderStatus.rejected) {
+      actionButton = Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppTheme.statusErrorBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.errorRed.withValues(alpha: 0.3)),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.block, color: AppTheme.errorRed, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Order is Rejected',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                color: AppTheme.errorRed,
+              ),
+            ),
+          ],
+        ),
+      );
     } else {
       actionButton = Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1520,11 +1893,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppTheme.statusCompletedBorder),
         ),
-        child: Row(
+        child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.check_circle, color: AppTheme.statusCompleted, size: 20),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Text(
               'Order is Complete',
               style: TextStyle(
