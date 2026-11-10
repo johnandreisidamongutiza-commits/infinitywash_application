@@ -558,12 +558,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _hasStrongPassword(_newPasswordController.text) && _passwordsMatch;
 
   bool _hasStrongPassword(String password) =>
-      password.length >= 8 &&
-      password.length <= 72 &&
-      RegExp(r'[A-Z]').hasMatch(password) &&
-      RegExp(r'[a-z]').hasMatch(password) &&
-      RegExp(r'[0-9]').hasMatch(password) &&
-      RegExp(r'[^A-Za-z0-9]').hasMatch(password);
+      Validators.hasStrongPassword(password);
 
   Widget _buildPasswordRequirement(String label, bool isSatisfied) {
     return Padding(

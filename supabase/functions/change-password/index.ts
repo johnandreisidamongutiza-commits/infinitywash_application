@@ -8,7 +8,26 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 }
 const MAX_CHANGES_PER_HOUR = 3
-const MIN_PASSWORD_LENGTH = 6
+const MIN_PASSWORD_LENGTH = 8
+const MAX_PASSWORD_LENGTH = 72
+
+function validateNewPassword(password: string): string | null {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`
+  }
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return `Password must be no more than ${MAX_PASSWORD_LENGTH} characters long.`
+  }
+  if (
+    !/[A-Z]/.test(password) ||
+    !/[a-z]/.test(password) ||
+    !/[0-9]/.test(password) ||
+    !/[^A-Za-z0-9]/.test(password)
+  ) {
+    return "Password must include an uppercase letter, a lowercase letter, a number, and a symbol."
+  }
+  return null
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -39,8 +58,15 @@ Deno.serve(async (req) => {
   const email = (body.email ?? "").trim().toLowerCase()
   const currentPassword = body.current_password ?? ""
   const newPassword = body.new_password ?? ""
-  if (!email || !currentPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
-    return json({ error: `Enter your current password and a new password of at least ${MIN_PASSWORD_LENGTH} characters.` }, 400)
+  if (!email || !currentPassword) {
+    return json({ error: "Enter your current password and a new password." }, 400)
+  }
+  if (currentPassword === newPassword) {
+    return json({ error: "New password must be different from current password." }, 400)
+  }
+  const passwordError = validateNewPassword(newPassword)
+  if (passwordError) {
+    return json({ error: passwordError }, 400)
   }
 
   const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })

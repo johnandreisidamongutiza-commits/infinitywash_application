@@ -31,10 +31,11 @@ final Map<String, Widget> _screens = {
 };
 
 const List<String> _requirementLabels = [
-  'At least 6 characters (up to 72)',
-  'Contains both letters and numbers',
-  'New passwords match',
-  'Different from current password',
+  'At least 8 characters',
+  'One uppercase letter',
+  'One lowercase letter',
+  'One number',
+  'One symbol (for example, ! or @)',
 ];
 
 /// Gives every test a tall viewport so the whole form is on screen.
@@ -83,14 +84,12 @@ void main() {
       expect(find.text('Confirm New Password'), findsOneWidget);
       expect(find.text('Update Password'), findsOneWidget);
 
-      // Requirement checklist, all unmet except "different from current",
-      // which is satisfied while the current password is still empty.
-      expect(find.text('Password Requirements'), findsOneWidget);
+      // Requirement checklist, all 5 initially unsatisfied
       for (final label in _requirementLabels) {
         expect(find.text(label), findsOneWidget);
       }
-      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.radio_button_unchecked_rounded), findsNWidgets(3));
+      expect(find.byIcon(Icons.radio_button_unchecked), findsNWidgets(5));
+      expect(find.byIcon(Icons.check_circle), findsNothing);
     });
 
     testWidgets('$role: checklist tracks what is typed', (
@@ -104,22 +103,21 @@ void main() {
       final fields = find.byType(TextFormField);
       expect(fields, findsNWidgets(3));
 
-      await tester.enterText(fields.at(0), 'oldpass1');
-      await tester.enterText(fields.at(1), 'wash1234');
-      await tester.enterText(fields.at(2), 'wash1234');
+      await tester.enterText(fields.at(0), 'Oldpass1@');
+      await tester.enterText(fields.at(1), 'Newpass1@');
+      await tester.enterText(fields.at(2), 'Newpass1@');
       await tester.pump();
 
-      // Every requirement is met by a valid, distinct, matching password.
-      expect(find.byIcon(Icons.check_circle_rounded), findsNWidgets(4));
-      expect(find.byIcon(Icons.radio_button_unchecked_rounded), findsNothing);
+      // All 5 requirements are met by a valid password, plus the match row
+      expect(find.byIcon(Icons.check_circle), findsNWidgets(6));
+      expect(find.text('Passwords match'), findsOneWidget);
+      expect(find.byIcon(Icons.radio_button_unchecked), findsNothing);
 
-      // Reusing the current password un-ticks "Different from current" only:
-      // the confirm field is updated too so the match row stays satisfied.
-      await tester.enterText(fields.at(1), 'oldpass1');
-      await tester.enterText(fields.at(2), 'oldpass1');
+      // Mismatched confirm password shows "Passwords do not match"
+      await tester.enterText(fields.at(2), 'Different1@');
       await tester.pump();
-      expect(find.byIcon(Icons.check_circle_rounded), findsNWidgets(3));
-      expect(find.byIcon(Icons.radio_button_unchecked_rounded), findsOneWidget);
+      expect(find.text('Passwords do not match'), findsOneWidget);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
     });
 
     testWidgets('$role: lays out on a phone-sized viewport without overflow', (
@@ -148,9 +146,9 @@ void main() {
       await tester.pump();
 
       final fields = find.byType(TextFormField);
-      await tester.enterText(fields.at(0), 'wash1234');
-      await tester.enterText(fields.at(1), 'wash1234');
-      await tester.enterText(fields.at(2), 'wash1234');
+      await tester.enterText(fields.at(0), 'Newpass1@');
+      await tester.enterText(fields.at(1), 'Newpass1@');
+      await tester.enterText(fields.at(2), 'Newpass1@');
       await tester.pump();
 
       await tester.tap(find.text('Update Password'));

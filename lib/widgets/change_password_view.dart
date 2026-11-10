@@ -47,6 +47,20 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
     super.dispose();
   }
 
+  bool get _hasMinLength => _newPasswordController.text.length >= 8;
+  bool get _hasUppercase =>
+      RegExp(r'[A-Z]').hasMatch(_newPasswordController.text);
+  bool get _hasLowercase =>
+      RegExp(r'[a-z]').hasMatch(_newPasswordController.text);
+  bool get _hasNumber =>
+      RegExp(r'[0-9]').hasMatch(_newPasswordController.text);
+  bool get _hasSymbol =>
+      RegExp(r'[^A-Za-z0-9]').hasMatch(_newPasswordController.text);
+
+  bool get _passwordsMatch =>
+      _confirmPasswordController.text.isNotEmpty &&
+      _newPasswordController.text == _confirmPasswordController.text;
+
   Future<void> _changePassword() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -64,7 +78,7 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
       return;
     }
 
-    final passwordError = Validators.newPassword(_newPasswordController.text);
+    final passwordError = Validators.strongPassword(_newPasswordController.text);
     if (passwordError != null) {
       _showMessage(passwordError, isError: true);
       return;
@@ -297,7 +311,7 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
             isPassword: true,
             controller: _newPasswordController,
             validator: (v) {
-              final err = Validators.passwordField(v);
+              final err = Validators.strongPassword(v);
               if (err != null) return err;
               if (_currentPasswordController.text.isNotEmpty &&
                   v == _currentPasswordController.text) {
@@ -306,7 +320,29 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
               return null;
             },
             maxLength: Validators.passwordMax,
+            textInputAction: TextInputAction.next,
             onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          _buildPasswordRequirement(
+            'At least 8 characters',
+            _hasMinLength,
+          ),
+          _buildPasswordRequirement(
+            'One uppercase letter',
+            _hasUppercase,
+          ),
+          _buildPasswordRequirement(
+            'One lowercase letter',
+            _hasLowercase,
+          ),
+          _buildPasswordRequirement(
+            'One number',
+            _hasNumber,
+          ),
+          _buildPasswordRequirement(
+            'One symbol (for example, ! or @)',
+            _hasSymbol,
           ),
           const SizedBox(height: 20),
           CustomTextField(
@@ -318,7 +354,53 @@ class _ChangePasswordViewState extends State<ChangePasswordView> {
             validator: (v) =>
                 Validators.confirmPassword(v, _newPasswordController.text),
             maxLength: Validators.passwordMax,
+            textInputAction: TextInputAction.done,
             onChanged: (_) => setState(() {}),
+          ),
+          if (_confirmPasswordController.text.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  _passwordsMatch ? Icons.check_circle : Icons.error_outline,
+                  size: 18,
+                  color: _passwordsMatch ? Colors.green : AppTheme.errorRed,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _passwordsMatch
+                      ? 'Passwords match'
+                      : 'Passwords do not match',
+                  style: TextStyle(
+                    color: _passwordsMatch ? Colors.green : AppTheme.errorRed,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPasswordRequirement(String label, bool isSatisfied) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            isSatisfied ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 17,
+            color: isSatisfied ? Colors.green : AppTheme.textLight,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: isSatisfied ? Colors.green : AppTheme.textLight,
+            ),
           ),
         ],
       ),

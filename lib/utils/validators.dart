@@ -43,6 +43,41 @@ class Validators {
     return null;
   }
 
+  static const int strongPasswordMin = 8;
+
+  /// Returns true if [password] meets all strong password requirements:
+  /// - 8 to 72 characters
+  /// - At least one uppercase letter
+  /// - At least one lowercase letter
+  /// - At least one number
+  /// - At least one symbol
+  static bool hasStrongPassword(String password) =>
+      password.length >= strongPasswordMin &&
+      password.length <= passwordMax &&
+      RegExp(r'[A-Z]').hasMatch(password) &&
+      RegExp(r'[a-z]').hasMatch(password) &&
+      RegExp(r'[0-9]').hasMatch(password) &&
+      RegExp(r'[^A-Za-z0-9]').hasMatch(password);
+
+  /// Password field adhering to strong password requirements.
+  static String? strongPassword(String? value) {
+    final v = value ?? '';
+    if (v.isEmpty) return 'Please enter a password.';
+    if (v.length < strongPasswordMin) {
+      return 'Password must be at least $strongPasswordMin characters.';
+    }
+    if (v.length > passwordMax) {
+      return 'Password must be at most $passwordMax characters.';
+    }
+    if (!RegExp(r'[A-Z]').hasMatch(v) ||
+        !RegExp(r'[a-z]').hasMatch(v) ||
+        !RegExp(r'[0-9]').hasMatch(v) ||
+        !RegExp(r'[^A-Za-z0-9]').hasMatch(v)) {
+      return 'Use at least 8 characters with uppercase, lowercase, a number, and a symbol.';
+    }
+    return null;
+  }
+
   /// Generic required field with a friendly field name.
   static String? required(String? value, String fieldName) {
     if ((value ?? '').trim().isEmpty) return 'Please enter $fieldName.';
