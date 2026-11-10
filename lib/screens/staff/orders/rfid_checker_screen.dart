@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
@@ -37,14 +38,85 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
   String? _lastRealtimeUid;
   DateTime? _lastRealtimeScanAt;
 
+  // Loyalty Cards list & pagination state
+  final ScrollController _scrollController = ScrollController();
+  final List<LoyaltyCardInfo> _loyaltyCards = [];
+  bool _isLoadingCards = false;
+  bool _isLoadingMoreCards = false;
+  bool _hasMoreCards = true;
+  static const int _cardsPageSize = 3;
+
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
+    _loadInitialCards();
     _subscribeToLiveRfidScans();
     if (widget.initialTag != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _scanCard(widget.initialTag!);
       });
+    }
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (maxScroll - currentScroll <= 150) {
+      _loadMoreCards();
+    }
+  }
+
+  Future<void> _loadInitialCards() async {
+    setState(() {
+      _isLoadingCards = true;
+      _hasMoreCards = true;
+    });
+
+    try {
+      final cards = await _loyaltyService.getPaginatedCards(
+        offset: 0,
+        limit: _cardsPageSize,
+      );
+      if (!mounted) return;
+      setState(() {
+        _loyaltyCards.clear();
+        _loyaltyCards.addAll(cards);
+        _isLoadingCards = false;
+        _hasMoreCards = cards.length >= _cardsPageSize;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingCards = false;
+      });
+      debugPrint('Error loading initial loyalty cards: $e');
+    }
+  }
+
+  Future<void> _loadMoreCards() async {
+    if (_isLoadingMoreCards || !_hasMoreCards || _isLoadingCards) return;
+
+    setState(() => _isLoadingMoreCards = true);
+
+    try {
+      final nextCards = await _loyaltyService.getPaginatedCards(
+        offset: _loyaltyCards.length,
+        limit: _cardsPageSize,
+      );
+      if (!mounted) return;
+      setState(() {
+        _loyaltyCards.addAll(nextCards);
+        _isLoadingMoreCards = false;
+        if (nextCards.length < _cardsPageSize) {
+          _hasMoreCards = false;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoadingMoreCards = false);
+      debugPrint('Error loading more loyalty cards: $e');
     }
   }
 
@@ -82,6 +154,8 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     if (_scanChannel != null) {
       Supabase.instance.client.removeChannel(_scanChannel!);
     }
@@ -162,6 +236,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
         ),
       );
       _scanCard(_scannedUid!);
+      _loadInitialCards();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -427,6 +502,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
 
                                     // 4. Instantly auto-scan to show active loyalty dashboard
                                     _scanCard(_scannedUid!);
+                                    _loadInitialCards();
                                   } catch (e) {
                                     setSheetState(() => isSubmitting = false);
                                     if (!mounted) return;
@@ -564,6 +640,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
 
       // Re-scan to show fresh card info
       _scanCard(_scannedUid!);
+      _loadInitialCards();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -593,6 +670,7 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -624,6 +702,9 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
                   _buildCardNotFoundResult(),
               ] else
                 _buildIdleGuide(),
+
+              const SizedBox(height: 28),
+              _buildLoyaltyCardsListSection(),
             ],
           ),
         ),
@@ -1935,6 +2016,365 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  // ─── Loyalty Cards List Section & Lazy Pagination ────────────────────────────
+
+  Widget _buildLoyaltyCardsListSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.style_outlined,
+                    size: 18,
+                    color: AppTheme.primaryBlue,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Loyalty Cards List',
+                  style: GoogleFonts.lexend(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ],
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 20, color: AppTheme.primaryBlue),
+              tooltip: 'Refresh list',
+              onPressed: _isLoadingCards ? null : _loadInitialCards,
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        if (_isLoadingCards)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Column(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 12),
+                  Text(
+                    'Loading loyalty cards...',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else if (_loyaltyCards.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+            decoration: BoxDecoration(
+              color: AppTheme.softGray,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.borderGray),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.credit_card_off_outlined,
+                  size: 36,
+                  color: AppTheme.textLight.withValues(alpha: 0.5),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'No loyalty cards found',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Tap or enter a card UID above to register new cards.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          ..._loyaltyCards.map(_buildLoyaltyCardItem),
+          const SizedBox(height: 6),
+          if (_isLoadingMoreCards)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 14),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Loading more cards...',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textLight),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_hasMoreCards)
+            Center(
+              child: TextButton.icon(
+                onPressed: _loadMoreCards,
+                icon: const Icon(Icons.expand_more, size: 18),
+                label: const Text('Load More (Next 3)'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.primaryBlue,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+              ),
+            )
+          else
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'All ${_loyaltyCards.length} loyalty cards loaded',
+                  style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildLoyaltyCardItem(LoyaltyCardInfo card) {
+    final isSelected = _scannedUid == card.uid;
+    final isUnassigned = !card.hasOwner;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isSelected
+              ? AppTheme.accentBlue
+              : AppTheme.borderGray.withValues(alpha: 0.8),
+          width: isSelected ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            _scanCard(card.uid);
+            if (_scrollController.hasClients) {
+              _scrollController.animateTo(
+                0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top row: UID and Points
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // UID
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentBlue.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.nfc,
+                              size: 16,
+                              color: AppTheme.accentBlue,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'CARD UID',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textLight,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                Text(
+                                  card.uid,
+                                  style: GoogleFonts.lexend(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textDark,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Points balance badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentBlue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: AppTheme.accentBlue.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.stars_rounded,
+                            size: 16,
+                            color: AppTheme.accentBlue,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${card.pointsBalance} pts',
+                            style: GoogleFonts.lexend(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.accentBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+                const Divider(height: 1, color: AppTheme.softGray),
+                const SizedBox(height: 10),
+
+                // Bottom row: Owner info or Unassigned chip
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(
+                            isUnassigned
+                                ? Icons.person_off_outlined
+                                : Icons.person_outline,
+                            size: 16,
+                            color: isUnassigned
+                                ? Colors.amber.shade800
+                                : AppTheme.textLight,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: isUnassigned
+                                ? Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        'Unassigned',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.amber.shade900,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : Text(
+                                    card.ownerName,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textDark,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    Row(
+                      children: [
+                        Text(
+                          'Tap to check',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.accentBlue.withValues(alpha: 0.8),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 16,
+                          color: AppTheme.accentBlue.withValues(alpha: 0.8),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

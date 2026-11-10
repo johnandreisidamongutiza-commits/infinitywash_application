@@ -621,7 +621,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
             Expanded(
               child: _buildQuickActionCard(
                 context,
-                'RFID\nChecker',
+                'Loyalty Card\nChecker',
                 Icons.nfc,
                 const Color(0xFF00897B),
                 const Color(0xFFE0F2F1),
