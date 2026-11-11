@@ -71,6 +71,12 @@ class OrdersScreenState extends State<OrdersScreen>
   OrderStatus? _selectedHistoryStatus;
   Map<String, int> _historyStatusCounts = {};
 
+  void switchToTab(int tabIndex) {
+    if (mounted && tabIndex >= 0 && tabIndex < _tabController.length) {
+      _tabController.animateTo(tabIndex);
+    }
+  }
+
   // ── Rejected count (badge only, not paginated) ──────────────────────────
   int _rejectedCount = 0;
   final Set<int> _dirtyTabs = {};

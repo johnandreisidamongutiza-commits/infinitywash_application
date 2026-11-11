@@ -3,9 +3,15 @@ package com.example.infinitywash
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -79,6 +85,14 @@ class MainActivity : FlutterActivity() {
                         result.error("notification_failed", error.message, null)
                     }
                 }
+                "playNotificationSound" -> {
+                    try {
+                        playDefaultNotificationSound()
+                        result.success(true)
+                    } catch (error: Exception) {
+                        result.error("sound_failed", error.message, null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -87,6 +101,12 @@ class MainActivity : FlutterActivity() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
+        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val audioAttributes = AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+            .build()
+
         val channel = NotificationChannel(
             notificationChannelId,
             "InfinityWash notifications",
@@ -94,8 +114,46 @@ class MainActivity : FlutterActivity() {
         ).apply {
             description = "Order updates and announcements"
             enableVibration(true)
+            setSound(defaultSoundUri, audioAttributes)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    }
+
+    private fun playDefaultNotificationSound() {
+        try {
+            val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val ringtone = RingtoneManager.getRingtone(applicationContext, defaultSoundUri)
+            ringtone?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    it.isLooping = false
+                }
+                it.play()
+            }
+        } catch (_: Exception) {
+            // Ignore sound error
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                vibratorManager?.defaultVibrator?.vibrate(
+                    VibrationEffect.createOneShot(350, VibrationEffect.DEFAULT_AMPLITUDE)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator?.vibrate(
+                        VibrationEffect.createOneShot(350, VibrationEffect.DEFAULT_AMPLITUDE)
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(350)
+                }
+            }
+        } catch (_: Exception) {
+            // Ignore vibration error
+        }
     }
 
     private fun showForegroundNotification(id: Int, title: String, body: String) {
@@ -109,6 +167,8 @@ class MainActivity : FlutterActivity() {
             )
         }
 
+        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
         val notification = NotificationCompat.Builder(this, notificationChannelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -117,7 +177,8 @@ class MainActivity : FlutterActivity() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setAutoCancel(true)
-            .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+            .setSound(defaultSoundUri)
+            .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
             .setContentIntent(pendingIntent)
             .build()
 

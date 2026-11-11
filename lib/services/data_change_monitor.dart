@@ -14,6 +14,15 @@ class DataChangeMonitor {
   final ValueNotifier<int> dispatchJobsVersion = ValueNotifier<int>(0);
   final ValueNotifier<int> operationalDataVersion = ValueNotifier<int>(0);
 
+  final StreamController<Map<String, dynamic>> _newServiceRequestController =
+      StreamController<Map<String, dynamic>>.broadcast();
+
+  /// Stream of incoming service requests (orders with status 'pending_approval')
+  Stream<Map<String, dynamic>> get onNewServiceRequest =>
+      _newServiceRequestController.stream;
+
+  final Map<String, DateTime> _recentRequestAlerts = {};
+
   RealtimeChannel? _channel;
   Timer? _fallbackTimer;
   Timer? _changeDebounce;
@@ -33,7 +42,10 @@ class DataChangeMonitor {
             event: PostgresChangeEvent.all,
             schema: 'public',
             table: 'orders',
-            callback: (_) => _notifyOrdersChanged(),
+            callback: (payload) {
+              _notifyOrdersChanged();
+              _inspectOrderChange(payload);
+            },
           )
           .onPostgresChanges(
             event: PostgresChangeEvent.all,
@@ -103,5 +115,33 @@ class DataChangeMonitor {
       _ordersChangePending = false;
       _dispatchChangePending = false;
     });
+  }
+
+  void _inspectOrderChange(PostgresChangePayload payload) {
+    try {
+      final newRecord = payload.newRecord;
+      final newStatus = newRecord['status']?.toString();
+      if (newStatus != 'pending_approval') return;
+
+      final orderId = (newRecord['id'] ?? newRecord['order_number'])?.toString();
+      if (orderId != null) {
+        final now = DateTime.now();
+        final lastAlerted = _recentRequestAlerts[orderId];
+        if (lastAlerted != null && now.difference(lastAlerted).inSeconds < 30) {
+          return;
+        }
+        _recentRequestAlerts[orderId] = now;
+        _recentRequestAlerts.removeWhere((_, time) => now.difference(time).inMinutes >= 5);
+      }
+
+      _newServiceRequestController.add(newRecord);
+    } catch (e) {
+      debugPrint('DataChangeMonitor order inspection error: $e');
+    }
+  }
+
+  /// Manually dispatch a new service request alert (e.g. from push payload)
+  void notifyNewServiceRequest(Map<String, dynamic> orderData) {
+    _newServiceRequestController.add(orderData);
   }
 }

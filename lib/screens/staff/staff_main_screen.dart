@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/firebase_chat_service.dart';
+import '../../services/sound_service.dart';
+import '../../services/data_change_monitor.dart';
+import '../../widgets/top_notification.dart';
 import 'home/staff_home_screen.dart';
 import 'orders/orders_screen.dart';
 import 'chats/staff_chats_screen.dart';
@@ -16,6 +20,46 @@ class StaffMainScreen extends StatefulWidget {
 
 class _StaffMainScreenState extends State<StaffMainScreen> {
   int _currentIndex = 0;
+  final GlobalKey<OrdersScreenState> _ordersKey = GlobalKey<OrdersScreenState>();
+  StreamSubscription<Map<String, dynamic>>? _requestSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    DataChangeMonitor.instance.start();
+    _requestSubscription = DataChangeMonitor.instance.onNewServiceRequest.listen(
+      _onIncomingServiceRequest,
+    );
+  }
+
+  @override
+  void dispose() {
+    _requestSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _onIncomingServiceRequest(Map<String, dynamic> data) {
+    if (!mounted) return;
+
+    final orderNumber = (data['order_number'] ?? data['orderNumber'] ?? 'New Request').toString();
+    final customerName = (data['customer_name'] ?? data['customerName'])?.toString();
+
+    SoundService.instance.playNotificationSound();
+
+    showNewRequestNotification(
+      context,
+      orderNumber: orderNumber,
+      customerName: customerName,
+      onReview: () {
+        setState(() {
+          _currentIndex = 1;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _ordersKey.currentState?.switchToTab(0);
+        });
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +81,7 @@ class _StaffMainScreenState extends State<StaffMainScreen> {
         index: _currentIndex,
         children: [
           StaffHomeScreen(isActive: _currentIndex == 0),
-          OrdersScreen(isActive: _currentIndex == 1),
+          OrdersScreen(key: _ordersKey, isActive: _currentIndex == 1),
           const StaffChatsScreen(),
           PaymentScreen(isActive: _currentIndex == 3),
           const StaffProfileScreen(),

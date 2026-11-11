@@ -1073,7 +1073,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
                         const Text(
                           'Rider Pick-up',
@@ -1083,7 +1086,6 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                             color: AppTheme.textDark,
                           ),
                         ),
-                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3),
@@ -1204,7 +1206,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 4,
                     children: [
                       Text(
                         title,
@@ -1216,7 +1221,6 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                               : AppTheme.textDark,
                         ),
                       ),
-                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 7, vertical: 2),

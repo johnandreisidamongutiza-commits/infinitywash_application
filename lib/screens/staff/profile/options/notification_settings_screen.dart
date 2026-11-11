@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../theme/app_theme.dart';
+import '../../../../services/sound_service.dart';
+import '../../../../widgets/top_notification.dart';
 
 /// Staff notification preferences.
 ///
@@ -19,6 +21,36 @@ class NotificationSettingsScreen extends StatefulWidget {
 class _NotificationSettingsScreenState extends State<NotificationSettingsScreen> {
   bool _newOrder = true;
   bool _paymentAlerts = true;
+  bool _soundAlerts = true;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    final sound = await SoundService.instance.isSoundEnabled();
+    if (mounted) {
+      setState(() {
+        _soundAlerts = sound;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _testSound() async {
+    await SoundService.instance.playNotificationSound(force: true);
+    if (mounted) {
+      showTopNotification(
+        context,
+        message: 'Playing default notification chime',
+        icon: Icons.volume_up_rounded,
+        backgroundColor: AppTheme.accentBlue,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,40 +78,105 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeaderCard(),
-            const SizedBox(height: 20),
-            _buildSwitchTile(
-              icon: Icons.assignment_outlined,
-              title: 'New Order Assigned',
-              subtitle: 'Receive alerts when a new laundry order is assigned.',
-              value: _newOrder,
-              onChanged: (val) => setState(() => _newOrder = val),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeaderCard(),
+                  const SizedBox(height: 20),
+                  _buildSwitchTile(
+                    icon: Icons.volume_up_outlined,
+                    title: 'Audible Sound Alert',
+                    subtitle: 'Play an alert sound when a new service request arrives.',
+                    value: _soundAlerts,
+                    onChanged: (val) async {
+                      setState(() => _soundAlerts = val);
+                      await SoundService.instance.setSoundEnabled(val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTestSoundCard(),
+                  const SizedBox(height: 12),
+                  _buildSwitchTile(
+                    icon: Icons.assignment_outlined,
+                    title: 'New Order Requests',
+                    subtitle: 'Receive alerts when a new laundry order request is submitted.',
+                    value: _newOrder,
+                    onChanged: (val) => setState(() => _newOrder = val),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildSwitchTile(
+                    icon: Icons.payments_outlined,
+                    title: 'Payment Alerts',
+                    subtitle: 'Receive notifications for successful payments.',
+                    value: _paymentAlerts,
+                    onChanged: (val) => setState(() => _paymentAlerts = val),
+                  ),
+                  const SizedBox(height: 20),
+                  _buildDeviceNote(),
+                  const SizedBox(height: 24),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            _buildSwitchTile(
-              icon: Icons.payments_outlined,
-              title: 'Payment Alerts',
-              subtitle: 'Receive notifications for successful payments.',
-              value: _paymentAlerts,
-              onChanged: (val) => setState(() => _paymentAlerts = val),
-            ),
-            const SizedBox(height: 20),
-            _buildDeviceNote(),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
     );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
   // UI COMPONENTS
   // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildTestSoundCard() {
+    return InkWell(
+      onTap: _testSound,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppTheme.accentBlue.withValues(alpha: 0.25),
+            width: 1.2,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.lightBlue,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                size: 20,
+                color: AppTheme.accentBlue,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                'Test Notification Chime',
+                style: GoogleFonts.lexend(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.accentBlue,
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppTheme.accentBlue,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildHeaderCard() {
     return Container(

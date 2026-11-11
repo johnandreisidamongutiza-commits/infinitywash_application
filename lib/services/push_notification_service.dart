@@ -9,6 +9,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/permission_manager.dart';
 import 'supabase_service.dart';
+import 'sound_service.dart';
+import 'data_change_monitor.dart';
 
 /// Global navigator key used by push handling to reach the overlay from
 /// outside the widget tree (foreground banners and tap routing).
@@ -289,6 +291,19 @@ class PushNotificationService {
     }
   }
 
+  /// Force-resync FCM token (e.g. after database table is created or user signs in).
+  Future<void> syncTokenNow() async {
+    try {
+      final token = await _messaging.getToken();
+      if (token != null && token.isNotEmpty) {
+        _registeredToken = null;
+        await _registerToken(token);
+      }
+    } catch (e) {
+      debugPrint('🔔 FCM sync error: $e');
+    }
+  }
+
   /// Drop this device's token row (called on sign-out so the backend
   /// doesn't push to a device nobody is signed in on).
   Future<void> unregisterCurrentUser() async {
@@ -313,6 +328,18 @@ class PushNotificationService {
         message.data['body'] as String? ??
         message.data['message'] as String? ??
         'You have a new notification.';
+
+    final isServiceRequest = title.toLowerCase().contains('service request') ||
+        title.toLowerCase().contains('new request') ||
+        message.data['type'] == 'service_request';
+
+    if (isServiceRequest) {
+      SoundService.instance.playNotificationSound();
+      DataChangeMonitor.instance.notifyNewServiceRequest({
+        'order_number': message.data['order_number'] ?? message.data['orderNumber'] ?? '',
+        'id': message.data['order_id'] ?? message.data['orderId'],
+      });
+    }
 
     await _showSystemNotification(
       id: message.messageId?.hashCode ??
