@@ -2709,7 +2709,6 @@ class _CustomerRequestPhotoViewerState
   late int _currentIndex;
   late List<String> _photos;
   bool _isSaving = false;
-  bool _isDeleting = false;
 
   @override
   void initState() {
@@ -2759,25 +2758,19 @@ class _CustomerRequestPhotoViewerState
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _isSaving ? null : _saveToGallery,
-                    icon: _isSaving
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.download_outlined),
-                    label: const Text('Save to gallery'),
+              child: Center(
+                child: OutlinedButton.icon(
+                  onPressed: _isSaving ? null : _saveToGallery,
+                  icon: _isSaving
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.download_outlined, color: Colors.white),
+                  label: const Text('Save to gallery', style: TextStyle(color: Colors.white)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.white38),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: _isDeleting ? null : _deletePhoto,
-                    icon: _isDeleting
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.delete_outline),
-                    label: const Text('Delete'),
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -2820,44 +2813,7 @@ class _CustomerRequestPhotoViewerState
     }
   }
 
-  Future<void> _deletePhoto() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete this photo?'),
-        content: const Text('It will be removed from this service request for you and the InfinityWash team.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _isDeleting = true);
-    try {
-      await ServiceRequestService().deleteCustomerRequestPhoto(
-        orderId: widget.orderId,
-        photoUrl: _photos[_currentIndex],
-      );
-      _photos.removeAt(_currentIndex);
-      await widget.onDeleted();
-      if (!mounted) return;
-      if (_photos.isEmpty) {
-        Navigator.of(context).pop();
-      } else {
-        if (_currentIndex >= _photos.length) _currentIndex = _photos.length - 1;
-        _pageController.jumpToPage(_currentIndex);
-        setState(() => _isDeleting = false);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _isDeleting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not delete this photo. Please try again.')),
-        );
-      }
-    }
-  }
+
 
   Widget _buildFullImage(String path) {
     if (path.startsWith('http://') || path.startsWith('https://')) {

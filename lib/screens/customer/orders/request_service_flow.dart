@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:gal/gal.dart';
 import 'dart:io';
@@ -259,13 +260,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
     }
   }
 
-  void _removePhoto(int index) {
-    final photo = _laundryPhotos[index];
-    setState(() {
-      _laundryPhotos.removeAt(index);
-    });
-    PhotoFileService.deleteTemporary(photo);
-  }
+
 
   void _showPhotoSourceSelector() {
     showModalBottomSheet(
@@ -468,13 +463,30 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.softGray,
       appBar: AppBar(
-        title: Text(_currentStep == 5 ? 'Request Status' : 'Request Service'),
+        title: Text(
+          _currentStep == 5 ? 'Request Status' : 'Request Service',
+          style: GoogleFonts.lexend(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+            color: AppTheme.textDark,
+          ),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shape: Border(
+          bottom: BorderSide(
+            color: AppTheme.borderGray.withValues(alpha: 0.5),
+            width: 1,
+          ),
+        ),
         leading: IconButton(
-          icon: Icon(_currentStep > 1 && _currentStep < 5 ? Icons.arrow_back : Icons.close, color: AppTheme.textDark),
+          icon: Icon(
+            _currentStep > 1 && _currentStep < 5 ? Icons.arrow_back : Icons.close,
+            color: AppTheme.textDark,
+          ),
           onPressed: () {
             if (_currentStep > 1 && _currentStep < 5) {
               setState(() => _currentStep = _currentStep - 1);
@@ -506,7 +518,16 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: AppTheme.borderGray.withValues(alpha: 0.5),
+            width: 1,
+          ),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -515,7 +536,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             children: [
               Text(
                 'Step $_currentStep of 4',
-                style: const TextStyle(
+                style: GoogleFonts.lexend(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: AppTheme.textLight,
@@ -523,7 +544,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               ),
               Text(
                 currentLabel,
-                style: const TextStyle(
+                style: GoogleFonts.lexend(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.primaryBlue,
@@ -531,13 +552,13 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Row(
             children: List.generate(4, (index) {
               final isDoneOrCurrent = index < _currentStep;
               return Expanded(
                 child: Container(
-                  height: 4,
+                  height: 5,
                   margin: EdgeInsets.only(
                     left: index == 0 ? 0 : 3,
                     right: index == 3 ? 0 : 3,
@@ -545,8 +566,8 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   decoration: BoxDecoration(
                     color: isDoneOrCurrent
                         ? AppTheme.primaryBlue
-                        : AppTheme.softGray,
-                    borderRadius: BorderRadius.circular(2),
+                        : AppTheme.borderGray.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(3),
                   ),
                 ),
               );
@@ -583,30 +604,32 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
           children: [
             Text(
               'Collection Method',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
+              style: GoogleFonts.lexend(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
               ),
             ),
             const SizedBox(height: 6),
-            Text(
+            const Text(
               'Door-to-door laundry pickup from your location.',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
+              style: TextStyle(fontSize: 13, color: AppTheme.textLight),
             ),
             const SizedBox(height: 14),
             _buildConfirmedCollectionCard(),
             const SizedBox(height: 28),
             Text(
               'Return Method',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
+              style: GoogleFonts.lexend(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
               ),
             ),
             const SizedBox(height: 6),
-            Text(
+            const Text(
               'Choose how you would like to receive your cleaned laundry.',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
+              style: TextStyle(fontSize: 13, color: AppTheme.textLight),
             ),
             const SizedBox(height: 14),
             _buildReturnMethodCard(
@@ -640,18 +663,18 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   elevation: 0,
                 ),
                 onPressed: () => setState(() => _currentStep = 2),
-                child: const Row(
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       'Continue',
-                      style: TextStyle(
+                      style: GoogleFonts.lexend(
                         fontSize: 15,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward_rounded, size: 18),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward_rounded, size: 18),
                   ],
                 ),
               ),
@@ -677,15 +700,20 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 children: [
                   Text(
                     'Show Us Your Laundry',
-                    style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
+                    style: GoogleFonts.lexend(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
+                      color: AppTheme.textDark,
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text(
+                  const Text(
                     'Take 1-3 photos of your laundry pile so our staff can estimate the volume and confirm it meets the 2-load minimum.',
-                    style: AppTheme.lightTheme.textTheme.bodyMedium,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppTheme.textLight,
+                      height: 1.4,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   
@@ -693,20 +721,27 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryBlue.withValues(alpha: 0.04),
-                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: AppTheme.primaryBlue.withValues(alpha: 0.15)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primaryBlue.withValues(alpha: 0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
-                            Icon(Icons.lightbulb_outline, color: AppTheme.primaryBlue, size: 18),
-                            SizedBox(width: 8),
+                            const Icon(Icons.lightbulb_outline, color: AppTheme.primaryBlue, size: 18),
+                            const SizedBox(width: 8),
                             Text(
                               'Tips for best results:',
-                              style: TextStyle(
+                              style: GoogleFonts.lexend(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
                                 color: AppTheme.primaryBlue,
@@ -728,13 +763,15 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     children: [
                       Text(
                         'Photos (${_laundryPhotos.length}/$_maxPhotos)',
-                        style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                        style: GoogleFonts.lexend(
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
+                          color: AppTheme.textDark,
                         ),
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           color: canContinue
                               ? AppTheme.primaryBlue.withValues(alpha: 0.1)
@@ -772,14 +809,40 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                       }
                     },
                   ),
-                  
+
+                  const SizedBox(height: 10),
+
+                  // Notice: photos cannot be deleted
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.5)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.shield_outlined, size: 14, color: AppTheme.textLight),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Uploaded photos are attached to your request and cannot be deleted.',
+                            style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                   const SizedBox(height: 20),
                   
                   // Description field
                   Text(
                     'Description (Optional)',
-                    style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                    style: GoogleFonts.lexend(
+                      fontSize: 14,
                       fontWeight: FontWeight.bold,
+                      color: AppTheme.textDark,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -794,10 +857,18 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                         color: AppTheme.textLight.withValues(alpha: 0.6),
                       ),
                       filled: true,
-                      fillColor: AppTheme.softGray,
+                      fillColor: Colors.white,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
+                        borderSide: BorderSide(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppTheme.primaryBlue, width: 1.5),
                       ),
                       contentPadding: const EdgeInsets.all(14),
                     ),
@@ -809,9 +880,9 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryBlue.withValues(alpha: 0.05),
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.primaryBlue.withValues(alpha: 0.15)),
+                      border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
                     ),
                     child: const Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -838,9 +909,12 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
             decoration: BoxDecoration(
               color: Colors.white,
+              border: Border(
+                top: BorderSide(color: AppTheme.borderGray.withValues(alpha: 0.5)),
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
+                  color: Colors.black.withValues(alpha: 0.04),
                   blurRadius: 10,
                   offset: const Offset(0, -3),
                 ),
@@ -870,9 +944,9 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                       canContinue
                           ? 'Continue to Add-ons'
                           : 'Add at least 1 photo to continue',
-                      style: TextStyle(
+                      style: GoogleFonts.lexend(
                         fontSize: 14,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
                         color: canContinue ? Colors.white : AppTheme.textLight,
                       ),
                     ),
@@ -909,36 +983,46 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   }
 
   Widget _buildPhotoCard(int index) {
-    return Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: GestureDetector(
-            onTap: () => _showPreparedPhoto(index),
-            child: Image.file(
-              _laundryPhotos[index],
-              width: double.infinity,
-              height: double.infinity,
-              fit: BoxFit.cover,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(
+            _laundryPhotos[index],
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.cover,
+          ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _showPreparedPhoto(index),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: AppTheme.borderGray.withValues(alpha: 0.8),
+                    width: 1,
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-        Positioned(
-          top: 4,
-          right: 4,
-          child: GestureDetector(
-            onTap: () => _removePhoto(index),
+          Positioned(
+            bottom: 6,
+            right: 6,
             child: Container(
               padding: const EdgeInsets.all(4),
-              decoration: const BoxDecoration(
-                color: Colors.red,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.close, color: Colors.white, size: 16),
+              child: const Icon(Icons.fullscreen, color: Colors.white, size: 14),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -947,21 +1031,35 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
       onTap: _showPhotoSourceSelector,
       child: Container(
         decoration: BoxDecoration(
-          color: AppTheme.softGray,
-          borderRadius: BorderRadius.circular(12),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: AppTheme.primaryBlue.withValues(alpha: 0.35),
+            color: AppTheme.primaryBlue.withValues(alpha: 0.4),
             width: 1.5,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
-        child: const Column(
+        child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add_a_photo_outlined, color: AppTheme.primaryBlue, size: 28),
-            SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.add_a_photo_outlined, color: AppTheme.primaryBlue, size: 22),
+            ),
+            const SizedBox(height: 6),
             Text(
               'Add Photo',
-              style: TextStyle(
+              style: GoogleFonts.lexend(
                 fontSize: 11,
                 color: AppTheme.primaryBlue,
                 fontWeight: FontWeight.bold,
@@ -1016,13 +1114,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     style: TextButton.styleFrom(foregroundColor: Colors.white),
                   ),
                   TextButton.icon(
-                    onPressed: () {
-                      Navigator.pop(dialogContext);
-                      _removePhoto(index);
-                    },
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Delete'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.close),
+                    label: const Text('Close'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.white),
                   ),
                 ],
               ),
@@ -1078,9 +1173,9 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                       spacing: 8,
                       runSpacing: 4,
                       children: [
-                        const Text(
+                        Text(
                           'Rider Pick-up',
-                          style: TextStyle(
+                          style: GoogleFonts.lexend(
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
                             color: AppTheme.textDark,
@@ -1213,7 +1308,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     children: [
                       Text(
                         title,
-                        style: TextStyle(
+                        style: GoogleFonts.lexend(
                           fontWeight: FontWeight.bold,
                           fontSize: 15,
                           color: isSelected
@@ -1277,14 +1372,18 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
           children: [
             Text(
               'Extra Services (Optional)',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(fontSize: 22),
+              style: GoogleFonts.lexend(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(
+            const SizedBox(height: 6),
+            const Text(
               'Enhance your laundry experience with these add-ons.',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
+              style: TextStyle(fontSize: 13, color: AppTheme.textLight),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             
             // Fabric Conditioner
             _buildAddOnCard(
@@ -1293,9 +1392,9 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               price: 20.0,
               icon: Icons.bubble_chart_outlined,
               value: _addExtraFabCon,
-              onChanged: (val) => setState(() => _addExtraFabCon = val!),
+              onChanged: (val) => setState(() => _addExtraFabCon = val ?? false),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             
             // Extra Detergent
             _buildAddOnCard(
@@ -1304,7 +1403,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               price: 20.0,
               icon: Icons.local_laundry_service_outlined,
               value: _addExtraDetergent,
-              onChanged: (val) => setState(() => _addExtraDetergent = val!),
+              onChanged: (val) => setState(() => _addExtraDetergent = val ?? false),
             ),
             const SizedBox(height: 24),
             
@@ -1313,9 +1412,16 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryBlue.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: AppTheme.primaryBlue.withValues(alpha: 0.2)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1323,12 +1429,22 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Add-ons Total:', 
-                                     style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('₱${_calculateAddonsTotal().toStringAsFixed(2)}',
-                             style: const TextStyle(fontWeight: FontWeight.bold, 
-                                                   fontSize: 18, 
-                                                   color: AppTheme.primaryBlue)),
+                        Text(
+                          'Add-ons Total:',
+                          style: GoogleFonts.lexend(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        Text(
+                          '₱${_calculateAddonsTotal().toStringAsFixed(2)}',
+                          style: GoogleFonts.lexend(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -1339,7 +1455,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                         Expanded(
                           child: Text(
                             'Base price will be calculated after staff weighs your laundry',
-                            style: TextStyle(fontSize: 11, color: AppTheme.textDark),
+                            style: TextStyle(fontSize: 11, color: AppTheme.textLight),
                           ),
                         ),
                       ],
@@ -1364,15 +1480,18 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   elevation: 0,
                 ),
                 onPressed: () => setState(() => _currentStep = 4),
-                child: const Row(
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       'Continue to Details',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      style: GoogleFonts.lexend(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward_rounded, size: 18),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward_rounded, size: 18),
                   ],
                 ),
               ),
@@ -1388,9 +1507,12 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   foregroundColor: AppTheme.textLight,
                 ),
                 onPressed: () => setState(() => _currentStep = 4),
-                child: const Text(
+                child: Text(
                   'Skip Add-ons',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  style: GoogleFonts.lexend(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ),
@@ -1414,13 +1536,23 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: value ? AppTheme.primaryBlue : AppTheme.borderGray,
+          color: value ? AppTheme.primaryBlue : AppTheme.borderGray.withValues(alpha: 0.6),
           width: value ? 2 : 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: value
+                ? AppTheme.primaryBlue.withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: CheckboxListTile(
         value: value,
         onChanged: onChanged,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         title: Row(
           children: [
             Container(
@@ -1429,39 +1561,50 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 color: value 
                     ? AppTheme.primaryBlue.withValues(alpha: 0.1) 
                     : AppTheme.softGray,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, 
-                         color: value ? AppTheme.primaryBlue : AppTheme.textLight, 
-                         size: 20),
+              child: Icon(
+                icon, 
+                color: value ? AppTheme.primaryBlue : AppTheme.textLight, 
+                size: 20,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, 
-                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  Text(
+                    title, 
+                    style: GoogleFonts.lexend(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(description, 
-                       style: const TextStyle(fontSize: 12, color: AppTheme.textLight)),
+                  Text(
+                    description, 
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                  ),
                 ],
               ),
             ),
           ],
         ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(left: 44, top: 4),
+          padding: const EdgeInsets.only(left: 42, top: 4),
           child: Text(
             '₱${price.toStringAsFixed(2)}',
-            style: TextStyle(
+            style: GoogleFonts.lexend(
               fontWeight: FontWeight.bold,
-              color: value ? AppTheme.primaryBlue : AppTheme.textDark,
-              fontSize: 14,
+              color: value ? AppTheme.primaryBlue : AppTheme.textLight,
+              fontSize: 13,
             ),
           ),
         ),
         activeColor: AppTheme.primaryBlue,
+        checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
         controlAffinity: ListTileControlAffinity.trailing,
       ),
     );
@@ -1476,12 +1619,16 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
           children: [
             Text(
               'Pick-up & Contact Details',
-              style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(fontSize: 22),
+              style: GoogleFonts.lexend(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
+              ),
             ),
             const SizedBox(height: 6),
-            Text(
+            const Text(
               'Confirm where our rider should collect your laundry.',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
+              style: TextStyle(fontSize: 13, color: AppTheme.textLight),
             ),
             const SizedBox(height: 20),
 
@@ -1492,16 +1639,30 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
             // Service Summary Banner
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: AppTheme.softGray,
-                borderRadius: BorderRadius.circular(14),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.local_shipping_outlined, color: AppTheme.primaryBlue, size: 20),
-                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.local_shipping_outlined, color: AppTheme.primaryBlue, size: 20),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1510,9 +1671,10 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                           'Selected Service',
                           style: TextStyle(fontSize: 11, color: AppTheme.textLight),
                         ),
+                        const SizedBox(height: 2),
                         Text(
                           'Rider Pick-up  •  ${_selectedReturn == ReturnMethod.delivery ? 'Rider Delivery' : 'Shop Pickup'}  •  ${_laundryPhotos.length} photo${_laundryPhotos.length != 1 ? 's' : ''}',
-                          style: const TextStyle(
+                          style: GoogleFonts.lexend(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textDark,
@@ -1526,17 +1688,19 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     children: [
                       TextButton(
                         onPressed: () => setState(() => _currentStep = 2),
-                        child: const Text(
-                          'View Photos',
-                          style: TextStyle(color: AppTheme.primaryBlue, fontSize: 12, fontWeight: FontWeight.bold),
+                        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4)),
+                        child: Text(
+                          'Photos',
+                          style: GoogleFonts.lexend(color: AppTheme.primaryBlue, fontSize: 12, fontWeight: FontWeight.bold),
                         ),
                       ),
                       const Text('•', style: TextStyle(color: AppTheme.textLight)),
                       TextButton(
                         onPressed: () => setState(() => _currentStep = 1),
-                        child: const Text(
+                        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4)),
+                        child: Text(
                           'Change',
-                          style: TextStyle(color: AppTheme.primaryBlue, fontSize: 12, fontWeight: FontWeight.bold),
+                          style: GoogleFonts.lexend(color: AppTheme.primaryBlue, fontSize: 12, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ],
@@ -1551,7 +1715,14 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Special Instructions', style: AppTheme.lightTheme.textTheme.titleMedium),
+                Text(
+                  'Special Instructions',
+                  style: GoogleFonts.lexend(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textDark,
+                  ),
+                ),
                 const Text('Optional', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
               ],
             ),
@@ -1563,10 +1734,22 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   InputFormatters.text(maxLength: Validators.notesMax),
               decoration: InputDecoration(
                 hintText: 'e.g. Separate whites, delicate garments, ring doorbell twice...',
-                hintStyle: TextStyle(color: AppTheme.textLight.withValues(alpha: 0.5)),
+                hintStyle: TextStyle(fontSize: 13, color: AppTheme.textLight.withValues(alpha: 0.6)),
                 filled: true,
-                fillColor: AppTheme.softGray,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: AppTheme.primaryBlue, width: 1.5),
+                ),
+                contentPadding: const EdgeInsets.all(14),
               ),
             ),
 
@@ -1578,7 +1761,11 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 Expanded(
                   child: Text(
                     'Payment Method',
-                    style: AppTheme.lightTheme.textTheme.titleMedium,
+                    style: GoogleFonts.lexend(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textDark,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1609,25 +1796,37 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             // GCash Option
             GestureDetector(
               onTap: _onSelectGcash,
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+                  color: _selectedPaymentPreference == 'GCash'
+                      ? AppTheme.primaryBlue.withValues(alpha: 0.03)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _selectedPaymentPreference == 'GCash' ? AppTheme.primaryBlue : AppTheme.borderGray,
+                    color: _selectedPaymentPreference == 'GCash' ? AppTheme.primaryBlue : AppTheme.borderGray.withValues(alpha: 0.6),
                     width: _selectedPaymentPreference == 'GCash' ? 2 : 1,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _selectedPaymentPreference == 'GCash'
+                          ? AppTheme.primaryBlue.withValues(alpha: 0.06)
+                          : Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: _selectedPaymentPreference == 'GCash' ? AppTheme.primaryBlue.withValues(alpha: 0.1) : AppTheme.softGray,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.account_balance_wallet_outlined, color: AppTheme.primaryBlue, size: 20),
+                      child: const Icon(Icons.account_balance_wallet_outlined, color: AppTheme.primaryBlue, size: 22),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1636,7 +1835,14 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                         children: [
                           Row(
                             children: [
-                              const Text('GCash / E-Wallet', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              Text(
+                                'GCash / E-Wallet',
+                                style: GoogleFonts.lexend(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: _selectedPaymentPreference == 'GCash' ? AppTheme.primaryBlue : AppTheme.textDark,
+                                ),
+                              ),
                               if (!_isCheckingGcash && !_isGcashAvailable) ...[
                                 const SizedBox(width: 8),
                                 Container(
@@ -1664,8 +1870,8 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     ),
                     Icon(
                       _selectedPaymentPreference == 'GCash' ? Icons.radio_button_checked : Icons.radio_button_off,
-                      color: _selectedPaymentPreference == 'GCash' ? AppTheme.primaryBlue : AppTheme.textLight,
-                      size: 20,
+                      color: _selectedPaymentPreference == 'GCash' ? AppTheme.primaryBlue : AppTheme.borderGray,
+                      size: 22,
                     ),
                   ],
                 ),
@@ -1676,41 +1882,60 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             // Cash on Delivery Option
             GestureDetector(
               onTap: () => setState(() => _selectedPaymentPreference = 'Cash on Delivery'),
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+                  color: _selectedPaymentPreference == 'Cash on Delivery'
+                      ? AppTheme.primaryBlue.withValues(alpha: 0.03)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.primaryBlue : AppTheme.borderGray,
+                    color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.primaryBlue : AppTheme.borderGray.withValues(alpha: 0.6),
                     width: _selectedPaymentPreference == 'Cash on Delivery' ? 2 : 1,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _selectedPaymentPreference == 'Cash on Delivery'
+                          ? AppTheme.primaryBlue.withValues(alpha: 0.06)
+                          : Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.primaryBlue.withValues(alpha: 0.1) : AppTheme.softGray,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.payments_outlined, color: Colors.green, size: 20),
+                      child: const Icon(Icons.payments_outlined, color: Colors.green, size: 22),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Cash on Delivery / Pickup', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                          SizedBox(height: 2),
-                          Text('Pay cash to rider upon delivery', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
+                          Text(
+                            'Cash on Delivery / Pickup',
+                            style: GoogleFonts.lexend(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.primaryBlue : AppTheme.textDark,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text('Pay cash to rider upon delivery', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
                         ],
                       ),
                     ),
                     Icon(
                       _selectedPaymentPreference == 'Cash on Delivery' ? Icons.radio_button_checked : Icons.radio_button_off,
-                      color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.primaryBlue : AppTheme.textLight,
-                      size: 20,
+                      color: _selectedPaymentPreference == 'Cash on Delivery' ? AppTheme.primaryBlue : AppTheme.borderGray,
+                      size: 22,
                     ),
                   ],
                 ),
@@ -1721,11 +1946,18 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
             // Official Pricing Card (₱170 Full Service)
             Container(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.softGray,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.borderGray),
+                border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1733,22 +1965,26 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(6),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryBlue.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
+                          color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.local_laundry_service_outlined, color: AppTheme.primaryBlue, size: 18),
+                        child: const Icon(Icons.local_laundry_service_outlined, color: AppTheme.primaryBlue, size: 20),
                       ),
-                      const SizedBox(width: 10),
-                      const Expanded(
+                      const SizedBox(width: 12),
+                      Expanded(
                         child: Text(
                           'FULL SERVICE: Wash, Dry & Fold',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                          style: GoogleFonts.lexend(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: AppTheme.textDark,
+                          ),
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: AppTheme.primaryBlue,
                           borderRadius: BorderRadius.circular(8),
@@ -1760,10 +1996,18 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '✓ Detergent + Fab Con included with every full service load.',
-                    style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w600),
+                  const SizedBox(height: 10),
+                  const Row(
+                    children: [
+                      Icon(Icons.check_circle_outline, size: 15, color: Colors.green),
+                      SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Detergent + Fab Con included with every full service load.',
+                          style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 6),
                   const Text(
@@ -2095,33 +2339,47 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.orange.shade50,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.shade200, width: 2),
+        border: Border.all(color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.35), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.location_on, color: Colors.orange.shade700, size: 24),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.teamMemberIconOrange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.location_on_outlined, color: AppTheme.teamMemberIconOrange, size: 22),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Set Your Pickup Address',
-                  style: TextStyle(
+                  style: GoogleFonts.lexend(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Colors.orange.shade900,
+                    color: AppTheme.textDark,
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            'Please enter your address where our rider should pick up your laundry. This will be saved to your profile.',
-            style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+          const Text(
+            'Please enter the address where our rider should pick up your laundry. This will be saved to your profile.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textLight),
           ),
           const SizedBox(height: 16),
           AddressInputWidget(
@@ -2131,39 +2389,52 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             selectedBarangay: _formSelectedBarangay,
             onBarangayChanged: (v) =>
                 setState(() => _formSelectedBarangay = v),
-            fillColor: Colors.white,
-            borderRadius: 16,
+            fillColor: AppTheme.softGray,
+            borderRadius: 14,
           ),
           const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () {
-              final street = _formHouseStreetCtrl.text.trim();
-              if (street.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter your house/unit/street number')),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryBlue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+              onPressed: () {
+                final street = _formHouseStreetCtrl.text.trim();
+                if (street.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter your house/unit/street number')),
+                  );
+                  return;
+                }
+                if (_formSelectedBarangay == null || _formSelectedBarangay!.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please select your barangay')),
+                  );
+                  return;
+                }
+                final full = AddressInputWidget.buildFullAddress(
+                  houseStreet: street,
+                  selectedBarangay: _formSelectedBarangay,
+                  customBarangay: _formCustomBarangayCtrl.text.trim(),
                 );
-                return;
-              }
-              if (_formSelectedBarangay == null || _formSelectedBarangay!.isEmpty) {
+                setState(() {
+                  _pickupAddress = full;
+                  _landmark = _formLandmarkCtrl.text.trim();
+                });
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please select your barangay')),
+                  const SnackBar(content: Text('Address set! This will be saved when you submit your request.')),
                 );
-                return;
-              }
-              final full = AddressInputWidget.buildFullAddress(
-                houseStreet: street,
-                selectedBarangay: _formSelectedBarangay,
-                customBarangay: _formCustomBarangayCtrl.text.trim(),
-              );
-              setState(() {
-                _pickupAddress = full;
-                _landmark = _formLandmarkCtrl.text.trim();
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Address set! This will be saved when you submit your request.')),
-              );
-            },
-            child: const Text('Save Address'),
+              },
+              child: Text(
+                'Save Address',
+                style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ),
           ),
         ],
       ),
@@ -2173,26 +2444,33 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   Widget _buildWaitingApproval() {
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
         child: Column(
           children: [
             const SizedBox(height: 10),
             Container(
-              width: 72,
-              height: 72,
+              width: 76,
+              height: 76,
               decoration: BoxDecoration(
                 color: Colors.green.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_circle_rounded, size: 48, color: Colors.green),
+              child: const Icon(Icons.check_circle_rounded, size: 50, color: Colors.green),
             ),
-            const SizedBox(height: 16),
-            Text('Request Placed!', style: AppTheme.lightTheme.textTheme.headlineMedium),
+            const SizedBox(height: 18),
+            Text(
+              'Request Placed!',
+              style: GoogleFonts.lexend(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
+              ),
+            ),
             const SizedBox(height: 6),
             const Text(
               'Your laundry pickup request has been dispatched to InfinityWash.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.textLight, fontSize: 13),
+              style: TextStyle(color: AppTheme.textLight, fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 24),
 
@@ -2200,9 +2478,16 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: AppTheme.softGray,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppTheme.borderGray),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2210,19 +2495,27 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Order Progress',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textDark),
+                        style: GoogleFonts.lexend(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: AppTheme.textDark,
+                        ),
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryBlue.withValues(alpha: 0.12),
+                          color: AppTheme.primaryBlue.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           _selectedPaymentPreference,
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primaryBlue),
+                          style: GoogleFonts.lexend(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                          ),
                         ),
                       ),
                     ],
@@ -2265,20 +2558,41 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
             const SizedBox(height: 32),
 
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context, true); // Return true to trigger refresh
-              },
-              child: const Text('View in Active Orders'),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 0,
+                ),
+                onPressed: () {
+                  Navigator.pop(context, true); // Return true to trigger refresh
+                },
+                child: Text(
+                  'View in Active Orders',
+                  style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
             ),
             const SizedBox(height: 12),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, true); // Return true to trigger refresh
-              },
-              child: const Text(
-                'Back to Home',
-                style: TextStyle(color: AppTheme.textLight, fontWeight: FontWeight.w600),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: TextButton(
+                onPressed: () {
+                  Navigator.pop(context, true); // Return true to trigger refresh
+                },
+                child: Text(
+                  'Back to Home',
+                  style: GoogleFonts.lexend(
+                    color: AppTheme.textLight,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
               ),
             ),
           ],
@@ -2314,7 +2628,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             children: [
               Text(
                 title,
-                style: TextStyle(
+                style: GoogleFonts.lexend(
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                   color: isPending ? AppTheme.textLight : AppTheme.textDark,
