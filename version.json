@@ -1,11 +1,14 @@
 {
-  "latestVersion": "1.0.1",
-  "latestBuildNumber": 2,
+  "latestVersion": "1.0.2",
+  "latestBuildNumber": 3,
   "minSupportedBuildNumber": 1,
-  "apkUrl": "https://raw.githubusercontent.com/johnandreisidamongutiza-commits/infinitywash_application/master/app-release.apk",
+  "apkUrl": "https://raw.githubusercontent.com/johnandreisidamongutiza-commits/infinitywash_application/master/infinitywash.apk",
   "releaseNotes": [
-    "Fixed minor issues and improved stability",
-    "Added in-app update support"
+    "Added rider active route tracking with live GPS & navigation",
+    "Added customer order management & service request flow",
+    "Added staff order management & RFID loyalty card checker",
+    "Added GCash payment & password reset enhancements",
+    "Stability improvements and bug fixes"
   ],
   "forceUpdate": false
 }
