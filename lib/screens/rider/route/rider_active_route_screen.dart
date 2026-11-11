@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,11 +18,7 @@ import '../payments/rider_payment_process_screen.dart';
 import '../../../widgets/address_input_widget.dart';
 import '../../../state/rider_location_provider.dart';
 import '../../../utils/screen_wake_helper.dart';
-import '../../../widgets/in_app_camera_screen.dart';
-import '../../../services/photo_file_service.dart';
 import '../../../utils/phone_helper.dart';
-
-enum _ArrivalPhotoReviewAction { retake, usePhoto }
 
 /// Active Route Tracking Screen
 /// Shows rider's live location centered on map with rotating arrow pointing to next destination
@@ -1073,65 +1068,6 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
       return;
     }
 
-    // Capture arrival evidence before offering payment or completing the stop.
-    // Riders can skip the photo and continue through the same flow.
-    final addArrivalPhoto = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.camera_alt_outlined, color: AppTheme.accentBlue),
-            SizedBox(width: 8),
-            Text('Arrival Photo'),
-          ],
-        ),
-        content: const Text(
-          'Take a photo as proof that you arrived at this stop. You can skip this step.',
-          style: TextStyle(height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Skip Photo'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () => Navigator.pop(ctx, true),
-            icon: const Icon(Icons.camera_alt_outlined),
-            label: const Text('Take Photo'),
-          ),
-        ],
-      ),
-    );
-    if (addArrivalPhoto == null || !mounted) return;
-
-    if (addArrivalPhoto) {
-      final photo = await _captureAndReviewArrivalPhoto();
-      if (photo == null || !mounted) return;
-
-      try {
-        await _riderService.submitArrivalProof(job.id, photo);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Arrival photo saved.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        debugPrint('Could not save rider arrival proof: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Could not save the arrival photo. Please try again or skip this photo.'),
-            backgroundColor: AppTheme.errorRed,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        return;
-      }
-    }
-
     // Payment prompt for deliveries if payment is not completed
     if (job.jobType == 'delivery') {
       try {
@@ -1261,87 +1197,6 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         ),
       );
     }
-  }
-
-  Future<File?> _captureAndReviewArrivalPhoto() async {
-    while (mounted) {
-      final photo = await Navigator.of(context).push<File>(
-        MaterialPageRoute(builder: (_) => const InAppCameraScreen()),
-      );
-      if (photo == null || !mounted) return null;
-
-      final action = await showDialog<_ArrivalPhotoReviewAction>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) => Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Review arrival photo',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Make sure the photo is clear. Retake it if it looks blurry.',
-                  style: TextStyle(color: AppTheme.textLight),
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  height: MediaQuery.sizeOf(dialogContext).height * 0.48,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.file(
-                      photo,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Center(
-                        child: Text('Could not preview this photo.'),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => Navigator.pop(
-                          dialogContext,
-                          _ArrivalPhotoReviewAction.retake,
-                        ),
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Retake'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => Navigator.pop(
-                          dialogContext,
-                          _ArrivalPhotoReviewAction.usePhoto,
-                        ),
-                        icon: const Icon(Icons.check),
-                        label: const Text('Use photo'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      if (action == _ArrivalPhotoReviewAction.usePhoto) return photo;
-
-      await PhotoFileService.deleteTemporary(photo);
-      if (action == null) return null;
-    }
-    return null;
   }
 
   void _showCompletionDialog() {
@@ -1748,7 +1603,10 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Badges: Job Type + Order Number + Distance
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       // Job Type Chip
                       Container(
@@ -1785,7 +1643,6 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 8),
 
                       // Order ID chip
                       if (nextJob.jobNumber != null || nextJob.orderId.isNotEmpty)
@@ -1804,8 +1661,6 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
                             ),
                           ),
                         ),
-
-                      const Spacer(),
 
                       // Distance pill
                       Container(
