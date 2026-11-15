@@ -517,7 +517,6 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
         : '';
 
     return Container(
-      color: Colors.white,
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 14),
       decoration: BoxDecoration(
         color: Colors.white,
