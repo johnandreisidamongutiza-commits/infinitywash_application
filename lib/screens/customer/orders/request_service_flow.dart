@@ -260,7 +260,13 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
     }
   }
 
-
+  void _removePhoto(int index) {
+    if (index >= 0 && index < _laundryPhotos.length) {
+      final photo = _laundryPhotos.removeAt(index);
+      setState(() {});
+      PhotoFileService.deleteTemporary(photo);
+    }
+  }
 
   void _showPhotoSourceSelector() {
     showModalBottomSheet(
@@ -811,7 +817,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
                   const SizedBox(height: 10),
 
-                  // Notice: photos cannot be deleted
+                  // Tip: tap photo to preview or tap X to remove
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
@@ -821,12 +827,12 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     ),
                     child: const Row(
                       children: [
-                        Icon(Icons.shield_outlined, size: 14, color: AppTheme.textLight),
+                        Icon(Icons.info_outline, size: 14, color: AppTheme.primaryBlue),
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Uploaded photos are attached to your request and cannot be deleted.',
-                            style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                            'Tap a photo to preview, or tap × to remove and replace it.',
+                            style: TextStyle(fontSize: 11, color: AppTheme.textDark),
                           ),
                         ),
                       ],
@@ -1009,6 +1015,22 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
             ),
           ),
           Positioned(
+            top: 6,
+            right: 6,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _removePhoto(index),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.65),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
+              ),
+            ),
+          ),
+          Positioned(
             bottom: 6,
             right: 6,
             child: Container(
@@ -1092,25 +1114,12 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   TextButton.icon(
-                    onPressed: () async {
-                      try {
-                        await Gal.putImage(_laundryPhotos[index].path);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Photo saved to your gallery.')),
-                          );
-                        }
-                      } catch (_) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Could not save the photo. Check gallery permission and try again.')),
-                          );
-                        }
-                      }
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                      _removePhoto(index);
                     },
-                    icon: const Icon(Icons.download_outlined),
-                    label: const Text('Save to gallery'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.white),
+                    icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed),
+                    label: const Text('Remove', style: TextStyle(color: AppTheme.errorRed)),
                   ),
                   TextButton.icon(
                     onPressed: () => Navigator.pop(dialogContext),
