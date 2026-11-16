@@ -85,8 +85,16 @@ class SavedAccountsDatabase {
     }
   }
 
-  // Save or update an account
+  // Save or update an account (only accounts with passwords, i.e. email/password logins)
   Future<void> saveAccount(SavedAccount account) async {
+    // Only save accounts that have a password. OAuth / Google accounts are never saved.
+    if (account.password == null || account.password!.isEmpty) {
+      final existing = await getAccountById(account.id);
+      if (existing == null || existing.password == null || existing.password!.isEmpty) {
+        return;
+      }
+    }
+
     final db = await database;
 
     // Update last_login_date to now
@@ -100,6 +108,10 @@ class SavedAccountsDatabase {
       }
     }
 
+    if (updatedAccount.password == null || updatedAccount.password!.isEmpty) {
+      return;
+    }
+
     await db.insert(
       'saved_accounts',
       updatedAccount.toMap(),
@@ -107,11 +119,21 @@ class SavedAccountsDatabase {
     );
   }
 
-  // Get all saved accounts, ordered by most recent login
+  // Get all saved accounts, ordered by most recent login (only email/password accounts)
   Future<List<SavedAccount>> getAllAccounts() async {
     final db = await database;
+
+    // Clean up any legacy saved accounts that do not have a password (e.g. Google sign-ins)
+    await db.delete(
+      'saved_accounts',
+      where: 'password IS NULL OR password = ?',
+      whereArgs: [''],
+    );
+
     final result = await db.query(
       'saved_accounts',
+      where: 'password IS NOT NULL AND password != ?',
+      whereArgs: [''],
       orderBy: 'last_login_date DESC',
     );
 

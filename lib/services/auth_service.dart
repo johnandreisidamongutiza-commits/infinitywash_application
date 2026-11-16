@@ -719,6 +719,13 @@ class AuthService {
     required String email,
     String? password,
   }) async {
+    // Only email/password accounts are saved. Google / OAuth accounts are never saved.
+    if (password == null || password.isEmpty) {
+      print('ℹ️ REMEMBER ME: No password (OAuth / Google user) — account is not saved');
+      await _secureStorage.clearLastAutoLoginUser();
+      return;
+    }
+
     try {
       print('🔐 REMEMBER ME: Starting save process...');
       print('🔐 User ID: ${user.id}');

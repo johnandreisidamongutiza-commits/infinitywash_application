@@ -258,11 +258,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           );
           return;
         }
-        if (_saveAccount) {
-          await _authService.rememberCurrentSession();
-        } else {
-          await SecureStorageService.instance.clearLastAutoLoginUser();
-        }
+        // Google accounts are never saved to the local saved accounts list
+        await SecureStorageService.instance.clearLastAutoLoginUser();
         Navigator.pushAndRemoveUntil(
           context,
           RoleEntryTransition.route(const CustomerMainScreen()),
@@ -277,11 +274,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         if (mounted) _showMessage('This account does not have an active app role. Please contact support.');
         return;
       }
-      if (_saveAccount) {
-        await _authService.rememberCurrentSession();
-      } else {
-        await SecureStorageService.instance.clearLastAutoLoginUser();
-      }
+      // Google accounts are never saved to the local saved accounts list
+      await SecureStorageService.instance.clearLastAutoLoginUser();
       Navigator.pushAndRemoveUntil(
         context,
         RoleEntryTransition.route(destination),

@@ -85,6 +85,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     super.initState();
     if (widget.isGoogleRegistration) {
       _isGoogleRegistration = true;
+      _saveAccount = false;
       _step = widget.initialStep;
     }
     _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((state) {
@@ -194,9 +195,6 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
       }
       if (profile != null && await _authService.isCustomerProfileComplete()) {
         if (!mounted) return;
-        if (_saveAccount) {
-          await _authService.rememberCurrentSession();
-        }
         Navigator.pushAndRemoveUntil(
           context,
           RoleEntryTransition.route(const CustomerMainScreen()),
@@ -438,9 +436,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         for (final document in requiredLegalDocuments()) {
           await _legalService.accept(document, source: 'registration');
         }
-        if (_saveAccount) {
-          await _authService.rememberCurrentSession();
-        }
+        // Google accounts are never saved to the local saved accounts list
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
           context,
