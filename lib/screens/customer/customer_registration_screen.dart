@@ -21,9 +21,17 @@ import '../../services/google_sign_in_service.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/legal_consent_checkbox.dart';
 import 'customer_main_screen.dart';
+import '../login_screen.dart';
 
 class CustomerRegistrationScreen extends StatefulWidget {
-  const CustomerRegistrationScreen({super.key});
+  final bool isGoogleRegistration;
+  final int initialStep;
+
+  const CustomerRegistrationScreen({
+    super.key,
+    this.isGoogleRegistration = false,
+    this.initialStep = 0,
+  });
 
   /// Lets the underlying login route leave Google OAuth callbacks to this
   /// registration route while it is open above the login screen.
@@ -75,6 +83,10 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
   @override
   void initState() {
     super.initState();
+    if (widget.isGoogleRegistration) {
+      _isGoogleRegistration = true;
+      _step = widget.initialStep;
+    }
     _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((state) {
       if (state.event == AuthChangeEvent.signedIn &&
           (CustomerRegistrationScreen.googleSignupInProgress ||
@@ -765,6 +777,36 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     );
   }
 
+  Future<void> _handleBack() async {
+    // If at the initial step (Step 1 for Google registration, Step 0 for email signup)
+    if ((_isGoogleRegistration && _step <= 1) || (!_isGoogleRegistration && _step == 0)) {
+      if (_isGoogleRegistration) {
+        // Sign out incomplete Google session so it doesn't linger
+        await _authService.signOut();
+      }
+      if (!mounted) return;
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      if (_step == 6) {
+        _step = _isPendingResume ? 0 : 5;
+      } else if (_step == 5) {
+        _step = _isGoogleRegistration ? 3 : 4;
+      } else {
+        _step = _step - 1;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final titles = ['Sign up', 'Your name', 'Contact details', 'Your address', 'Set a password', 'Review and consent', 'Verify your email'];
@@ -818,51 +860,53 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
                 value: _agreedToLegal,
                 onChanged: (v) => setState(() => _agreedToLegal = v),
               ),
-              const SizedBox(height: 12),
-              Divider(
-                height: 1,
-                color: AppTheme.borderGray.withValues(alpha: 0.5),
-              ),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: () => setState(() => _saveAccount = !_saveAccount),
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: Checkbox(
-                          value: _saveAccount,
-                          onChanged: (v) =>
-                              setState(() => _saveAccount = v ?? false),
-                          activeColor: AppTheme.accentBlue,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Save account on this device for quick sign-in',
-                          style: GoogleFonts.lexend(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.textDark,
+              if (!_isGoogleRegistration) ...[
+                const SizedBox(height: 12),
+                Divider(
+                  height: 1,
+                  color: AppTheme.borderGray.withValues(alpha: 0.5),
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () => setState(() => _saveAccount = !_saveAccount),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: Checkbox(
+                            value: _saveAccount,
+                            onChanged: (v) =>
+                                setState(() => _saveAccount = v ?? false),
+                            activeColor: AppTheme.accentBlue,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Save account on this device for quick sign-in',
+                            style: GoogleFonts.lexend(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.textDark,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -884,121 +928,124 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         TextButton(onPressed: _isLoading ? null : _resendCode, child: const Text('Resend code')),
       ]),
     ];
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: _step == 0
-              ? () => Navigator.pop(context)
-              : () => setState(() => _step = _step == 6
-                  ? (_isPendingResume ? 0 : 5)
-                  : (_step == 5 ? 4 : _step - 1)),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+            onPressed: _handleBack,
+          ),
         ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_step == 0) Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppTheme.softGray,
-                      shape: BoxShape.circle,
-                    ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        height: 100,
-                        width: 100,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => const Icon(
-                          Icons.wash,
-                          size: 100,
-                          color: AppTheme.accentBlue,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_step == 0) Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.softGray,
+                        shape: BoxShape.circle,
+                      ),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          height: 100,
+                          width: 100,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => const Icon(
+                            Icons.wash,
+                            size: 100,
+                            color: AppTheme.accentBlue,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 30),
-                Text(
-                  titles[_step],
-                  style: AppTheme.lightTheme.textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 8),
-                Text(
-          _step == 6
-                      ? 'Your account becomes active after email verification.'
-                      : 'Step $displayedStep of $stepCount · Complete each section to continue.',
-                  style: AppTheme.lightTheme.textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 30),
-                LinearProgressIndicator(value: progress),
-                const SizedBox(height: 24),
-                pageFields[_step],
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: (_isLoading || (_step == 2 && (_phoneTaken || _phoneChecking == true)))
-                      ? null
-                      : (_step == 6 ? _verifyCode : _nextStep),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(_step == 0
-                          ? 'Continue'
-                          : (_step == 6
-                              ? 'Continue'
-                              : (_step == 5
-                                  ? (_isGoogleRegistration ? 'Complete registration' : 'Send verification code')
-                                  : 'Next'))),
-                ),
-                if (_step == 0) ...[
-                  const SizedBox(height: 12),
-                  const Center(child: Text('Or sign up with')),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _isLoading ? null : _continueWithGoogle,
-                      icon: const Icon(Icons.g_mobiledata, size: 28),
-                      label: Text(_isLoading ? 'Connecting...' : 'Continue with Google'),
-                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-                    ),
+                  const SizedBox(height: 30),
+                  Text(
+                    titles[_step],
+                    style: AppTheme.lightTheme.textTheme.headlineMedium,
                   ),
-                ],
-                const SizedBox(height: 24),
-                // Wrap so the prompt and its action stack instead of
-                // overflowing when the text gets wider than the row.
-                if (_step == 0) Wrap(
-                  alignment: WrapAlignment.center,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    const Text('Already have an account? '),
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: const Text(
-                        'Sign In',
-                        style: TextStyle(
-                          color: AppTheme.accentBlue,
-                          fontWeight: FontWeight.bold,
-                        ),
+                  const SizedBox(height: 8),
+                  Text(
+            _step == 6
+                        ? 'Your account becomes active after email verification.'
+                        : 'Step $displayedStep of $stepCount · Complete each section to continue.',
+                    style: AppTheme.lightTheme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 30),
+                  LinearProgressIndicator(value: progress),
+                  const SizedBox(height: 24),
+                  pageFields[_step],
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: (_isLoading || (_step == 2 && (_phoneTaken || _phoneChecking == true)))
+                        ? null
+                        : (_step == 6 ? _verifyCode : _nextStep),
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(_step == 0
+                            ? 'Continue'
+                            : (_step == 6
+                                ? 'Continue'
+                                : (_step == 5
+                                    ? (_isGoogleRegistration ? 'Complete registration' : 'Send verification code')
+                                    : 'Next'))),
+                  ),
+                  if (_step == 0) ...[
+                    const SizedBox(height: 12),
+                    const Center(child: Text('Or sign up with')),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _isLoading ? null : _continueWithGoogle,
+                        icon: const Icon(Icons.g_mobiledata, size: 28),
+                        label: Text(_isLoading ? 'Connecting...' : 'Continue with Google'),
+                        style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 20),
-              ],
+                  const SizedBox(height: 24),
+                  // Wrap so the prompt and its action stack instead of
+                  // overflowing when the text gets wider than the row.
+                  if (_step == 0) Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      const Text('Already have an account? '),
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: const Text(
+                          'Sign In',
+                          style: TextStyle(
+                            color: AppTheme.accentBlue,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           ),
         ),

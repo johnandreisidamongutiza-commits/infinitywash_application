@@ -3,10 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/saved_account.dart';
 import '../services/auth_service.dart';
+import '../services/google_sign_in_service.dart';
+import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/role_entry_transition.dart';
 import 'customer/customer_main_screen.dart';
-import 'customer/google_profile_completion_screen.dart';
+import 'customer/customer_registration_screen.dart';
 import 'login_screen.dart';
 import 'rider/rider_main_screen.dart';
 import 'staff/staff_main_screen.dart';
@@ -93,10 +95,48 @@ class _SavedAccountsScreenState extends State<SavedAccountsScreen> with SingleTi
   Future<void> _openAccount(SavedAccount account) async {
     setState(() => _openingAccountId = account.id);
     try {
-      // Do not call Supabase signOut while switching saved accounts. Supabase
-      // revokes the active refresh token on sign-out, which would invalidate
-      // that account's encrypted saved session. tryAutoLogin installs the
-      // selected account's session directly.
+      if (account.password == null) {
+        // OAuth / Google account without stored password: re-authenticate via Google
+        try {
+          await GoogleSignInService.signIn();
+        } catch (e) {
+          if (mounted && !GoogleSignInService.isCancelled(e)) {
+            _message(GoogleSignInService.errorMessage(e));
+          }
+          return;
+        }
+
+        final user = SupabaseService.client.auth.currentUser;
+        if (user == null) return;
+        final role = await _authService.getUserRole();
+        if (!mounted) return;
+        if (role == 'customer') {
+          if (!await _authService.isCustomerProfileComplete()) {
+            _replaceWith(
+              const CustomerRegistrationScreen(
+                isGoogleRegistration: true,
+                initialStep: 1,
+              ),
+            );
+            return;
+          }
+          _replaceWith(const CustomerMainScreen());
+        } else if (role == 'staff') {
+          _replaceWith(const StaffMainScreen());
+        } else if (role == 'rider') {
+          _replaceWith(const RiderMainScreen());
+        } else {
+          _replaceWith(
+            const CustomerRegistrationScreen(
+              isGoogleRegistration: true,
+              initialStep: 1,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Email/password account: automatically signs in with saved credentials
       final response = await _authService.tryAutoLogin(userId: account.id);
       final user = response?.user;
       if (user == null) {
@@ -113,7 +153,12 @@ class _SavedAccountsScreenState extends State<SavedAccountsScreen> with SingleTi
       if (!mounted) return;
       if (role == 'customer') {
         if (!await _authService.isCustomerProfileComplete()) {
-          _replaceWith(const GoogleProfileCompletionScreen());
+          _replaceWith(
+            const CustomerRegistrationScreen(
+              isGoogleRegistration: true,
+              initialStep: 1,
+            ),
+          );
           return;
         }
         _replaceWith(const CustomerMainScreen());
@@ -122,7 +167,12 @@ class _SavedAccountsScreenState extends State<SavedAccountsScreen> with SingleTi
       } else if (role == 'rider') {
         _replaceWith(const RiderMainScreen());
       } else if (user.appMetadata['provider'] == 'google') {
-        _replaceWith(const GoogleProfileCompletionScreen());
+        _replaceWith(
+          const CustomerRegistrationScreen(
+            isGoogleRegistration: true,
+            initialStep: 1,
+          ),
+        );
       } else {
         _message(
           'We could not verify this saved account. Please sign in again.',

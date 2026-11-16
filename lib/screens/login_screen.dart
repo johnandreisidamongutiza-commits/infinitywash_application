@@ -172,10 +172,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         await _authService.ensureCustomerProfileFromMetadata();
         if (!await _authService.isCustomerProfileComplete()) {
           if (!mounted) return;
-          Navigator.pushAndRemoveUntil(
+          Navigator.push(
             context,
-            RoleEntryTransition.route(const GoogleProfileCompletionScreen()),
-            (_) => false,
+            RoleEntryTransition.route(
+              const CustomerRegistrationScreen(
+                isGoogleRegistration: true,
+                initialStep: 1,
+              ),
+            ),
           );
           return;
         }
@@ -243,10 +247,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         final ready = profile != null && await _authService.isCustomerProfileComplete();
         if (!mounted) return;
         if (!ready) {
-          Navigator.pushAndRemoveUntil(
+          Navigator.push(
             context,
-            RoleEntryTransition.route(const GoogleProfileCompletionScreen()),
-            (_) => false,
+            RoleEntryTransition.route(
+              const CustomerRegistrationScreen(
+                isGoogleRegistration: true,
+                initialStep: 1,
+              ),
+            ),
           );
           return;
         }

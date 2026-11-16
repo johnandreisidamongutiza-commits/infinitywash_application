@@ -1,6 +1,7 @@
 class SavedAccount {
   final String id;
   final String email;
+  final String? password;
   final String? firstName;
   final String? lastName;
   final String? profilePictureUrl;
@@ -9,6 +10,7 @@ class SavedAccount {
   SavedAccount({
     required this.id,
     required this.email,
+    this.password,
     this.firstName,
     this.lastName,
     this.profilePictureUrl,
@@ -20,6 +22,7 @@ class SavedAccount {
     return {
       'id': id,
       'email': email,
+      'password': password,
       'first_name': firstName,
       'last_name': lastName,
       'profile_picture_url': profilePictureUrl,
@@ -32,6 +35,7 @@ class SavedAccount {
     return SavedAccount(
       id: map['id'] as String,
       email: map['email'] as String,
+      password: map['password'] as String?,
       firstName: map['first_name'] as String?,
       lastName: map['last_name'] as String?,
       profilePictureUrl: map['profile_picture_url'] as String?,
@@ -63,6 +67,7 @@ class SavedAccount {
   SavedAccount copyWith({
     String? id,
     String? email,
+    String? password,
     String? firstName,
     String? lastName,
     String? profilePictureUrl,
@@ -71,6 +76,7 @@ class SavedAccount {
     return SavedAccount(
       id: id ?? this.id,
       email: email ?? this.email,
+      password: password ?? this.password,
       firstName: firstName ?? this.firstName,
       lastName: lastName ?? this.lastName,
       profilePictureUrl: profilePictureUrl ?? this.profilePictureUrl,

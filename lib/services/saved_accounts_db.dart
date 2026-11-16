@@ -20,7 +20,7 @@ class SavedAccountsDatabase {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -31,6 +31,7 @@ class SavedAccountsDatabase {
       CREATE TABLE saved_accounts (
         id TEXT PRIMARY KEY,
         email TEXT NOT NULL,
+        password TEXT,
         first_name TEXT,
         last_name TEXT,
         profile_picture_url TEXT,
@@ -44,12 +45,8 @@ class SavedAccountsDatabase {
     ''');
   }
 
-  /// Migrate from v1 (which stored a `role` column) to v2 (role removed).
-  ///
-  /// Existing rows are preserved: all columns except `role` are copied into a
-  /// new table, then the old table is replaced. The whole migration runs in a
-  /// single transaction so a partial failure rolls back and never leaves the
-  /// database corrupted.
+  /// Migrate from v1 (which stored a `role` column) to v2 (role removed),
+  /// and v2 to v3 (adding password column for offline / device credential persistence).
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.transaction((txn) async {
@@ -78,6 +75,14 @@ class SavedAccountsDatabase {
         await txn.execute('CREATE INDEX idx_email ON saved_accounts(email)');
       });
     }
+
+    if (oldVersion < 3) {
+      final columns = await db.rawQuery('PRAGMA table_info(saved_accounts)');
+      final hasPassword = columns.any((col) => col['name'] == 'password');
+      if (!hasPassword) {
+        await db.execute('ALTER TABLE saved_accounts ADD COLUMN password TEXT');
+      }
+    }
   }
 
   // Save or update an account
@@ -85,7 +90,15 @@ class SavedAccountsDatabase {
     final db = await database;
 
     // Update last_login_date to now
-    final updatedAccount = account.copyWith(lastLoginDate: DateTime.now());
+    var updatedAccount = account.copyWith(lastLoginDate: DateTime.now());
+
+    // Preserve existing saved password if updated model has null password
+    if (updatedAccount.password == null) {
+      final existing = await getAccountById(account.id);
+      if (existing != null && existing.password != null) {
+        updatedAccount = updatedAccount.copyWith(password: existing.password);
+      }
+    }
 
     await db.insert(
       'saved_accounts',

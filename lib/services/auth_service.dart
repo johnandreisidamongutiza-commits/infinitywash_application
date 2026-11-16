@@ -742,6 +742,7 @@ class AuthService {
       final savedAccount = SavedAccount(
         id: user.id,
         email: email,
+        password: password,
         firstName: firstName,
         lastName: lastName,
         profilePictureUrl: null, // Can be extended later
@@ -750,7 +751,7 @@ class AuthService {
 
       // Save account to database
       await _savedAccountsDb.saveAccount(savedAccount);
-      print('✅ REMEMBER ME: Account saved to SQLite database');
+      print('✅ REMEMBER ME: Account saved to SQLite database (email + password)');
 
       // Save credentials to secure storage (email/password login only)
       if (password != null) {
@@ -790,13 +791,22 @@ class AuthService {
         return null;
       }
 
-      // Check if we have saved credentials for this user
-      final credentials = await _secureStorage.getCredentials(targetUserId);
+      // Check SQLite first for saved account and password
+      final savedAcc = await _savedAccountsDb.getAccountById(targetUserId);
+      String? email = savedAcc?.email;
+      String? password = savedAcc?.password;
 
-      if (credentials == null) {
-        print('❌ AUTO-LOGIN: No saved credentials found');
-        // Clean up orphaned account entry
-        await _removeRememberMeData(targetUserId);
+      // Fallback to secure storage if password was not stored in SQLite
+      if (email == null || password == null) {
+        final credentials = await _secureStorage.getCredentials(targetUserId);
+        if (credentials != null) {
+          email ??= credentials.email;
+          password ??= credentials.password;
+        }
+      }
+
+      if (email == null || password == null) {
+        print('❌ AUTO-LOGIN: No saved credentials found for $targetUserId');
         return null;
       }
 
@@ -804,13 +814,12 @@ class AuthService {
 
       try {
         final response = await _auth.signInWithPassword(
-          email: credentials.email,
-          password: credentials.password,
+          email: email,
+          password: password,
         );
 
         if (response.user == null) {
           print('❌ AUTO-LOGIN: Sign-in returned no user');
-          await _removeRememberMeData(targetUserId);
           return null;
         }
 

@@ -6,7 +6,7 @@ import '../theme/app_theme.dart';
 import '../utils/role_entry_transition.dart';
 import '../widgets/update_dialog.dart';
 import 'customer/customer_main_screen.dart';
-import 'customer/google_profile_completion_screen.dart';
+import 'customer/customer_registration_screen.dart';
 import 'login_screen.dart';
 import 'rider/rider_main_screen.dart';
 import 'saved_accounts_screen.dart';
@@ -86,7 +86,12 @@ class _SplashScreenState extends State<SplashScreen> {
 
         if (role == 'customer') {
           if (!await _authService.isCustomerProfileComplete()) {
-            _replaceWith(const GoogleProfileCompletionScreen());
+            _replaceWith(
+              const CustomerRegistrationScreen(
+                isGoogleRegistration: true,
+                initialStep: 1,
+              ),
+            );
           } else {
             _replaceWith(const CustomerMainScreen());
           }
