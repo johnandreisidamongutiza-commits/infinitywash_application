@@ -13,8 +13,18 @@ class CustomerRegistrationService {
   }
 
   /// Returns `true` if the given phone number is already registered
-  /// by another user in `profiles` or `customers`.
+  /// by another user in `profiles`, `customers`, or `employees`.
   Future<bool> isPhoneTaken(String normalizedPhone, {String? excludeUserId}) async {
+    try {
+      final res = await _client.rpc('is_phone_taken', params: {
+        'p_phone': normalizedPhone,
+        if (excludeUserId != null) 'p_exclude_user_id': excludeUserId,
+      });
+      if (res is bool) return res;
+    } catch (_) {
+      // If RPC is not available, proceed to fallback query
+    }
+
     try {
       final digits = normalizedPhone.replaceAll(RegExp(r'[^0-9]'), '');
       final variants = <String>{normalizedPhone};

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../services/profile_service.dart';
@@ -35,6 +36,11 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   bool _isEditingPersonal = false;
   bool _isSavingPersonal = false;
 
+  // Phone uniqueness validation
+  bool? _phoneChecking;
+  bool _phoneTaken = false;
+  Timer? _phoneDebounce;
+
   // Baseline values to detect unsaved changes
   String _initialFirstName = '';
   String _initialLastName = '';
@@ -64,6 +70,7 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
 
   @override
   void dispose() {
+    _phoneDebounce?.cancel();
     _firstNameController.removeListener(_onFieldChanged);
     _lastNameController.removeListener(_onFieldChanged);
     _phoneController.removeListener(_onFieldChanged);
@@ -73,6 +80,45 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
     _emailController.dispose();
     _employeeCodeController.dispose();
     super.dispose();
+  }
+
+  void _onPhoneChanged(String value) {
+    _phoneDebounce?.cancel();
+    final trimmed = value.trim();
+    final normalized = Validators.normalizePhone(trimmed);
+
+    if (trimmed == _initialPhone || normalized == _initialPhone) {
+      if (_phoneTaken || _phoneChecking != null) {
+        setState(() {
+          _phoneTaken = false;
+          _phoneChecking = null;
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _phoneChecking = null;
+      _phoneTaken = false;
+    });
+
+    if (Validators.phone(trimmed) != null) return;
+
+    _phoneDebounce = Timer(const Duration(milliseconds: 600), () async {
+      if (!mounted) return;
+      setState(() => _phoneChecking = true);
+      try {
+        final taken = await _profileService.isPhoneTaken(normalized);
+        if (!mounted) return;
+        setState(() {
+          _phoneChecking = false;
+          _phoneTaken = taken;
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _phoneChecking = null);
+      }
+    });
   }
 
   Future<void> _loadProfile() async {
@@ -178,6 +224,32 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
           Validators.normalizePhone(_phoneController.text.trim());
       _phoneController.text = normalizedPhone;
 
+      // Pre-save uniqueness check: ensure the phone number is not used by another user
+      if (normalizedPhone != _initialPhone &&
+          _phoneController.text.trim() != _initialPhone) {
+        final isTaken = await _profileService.isPhoneTaken(normalizedPhone);
+        if (isTaken) {
+          if (!mounted) return;
+          setState(() {
+            _phoneTaken = true;
+            _isSavingPersonal = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'This mobile number is already in use by another account.',
+                style: GoogleFonts.lexend(color: Colors.white),
+              ),
+              backgroundColor: AppTheme.errorRed,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+          return;
+        }
+      }
+
       await _profileService.updateProfile(
         firstName: firstName,
         lastName: lastName,
@@ -248,6 +320,9 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   }
 
   void _cancelPersonalEdit() {
+    _phoneDebounce?.cancel();
+    _phoneTaken = false;
+    _phoneChecking = null;
     _personalFormKey.currentState?.reset();
     _firstNameController.text = _initialFirstName;
     _lastNameController.text = _initialLastName;
@@ -793,7 +868,13 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
               controller: _phoneController,
               keyboardType: TextInputType.phone,
               inputFormatters: InputFormatters.phone(),
-              validator: Validators.phone,
+              onChanged: _onPhoneChanged,
+              validator: (v) {
+                final base = Validators.phone(v);
+                if (base != null) return base;
+                if (_phoneTaken) return 'This mobile number is already registered.';
+                return null;
+              },
             ),
             const SizedBox(height: 16),
             CustomTextField(
@@ -816,7 +897,7 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
               onCancel: _cancelPersonalEdit,
               onSave: _savePersonalInfo,
               isSaving: _isSavingPersonal,
-              canSave: _hasPersonalChanges,
+              canSave: _hasPersonalChanges && !_phoneTaken && _phoneChecking != true,
             ),
           ],
         ),

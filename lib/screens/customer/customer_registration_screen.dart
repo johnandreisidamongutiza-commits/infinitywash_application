@@ -381,10 +381,25 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     if (_step == 0 || _step == 1 || _step == 2 || _step == 3) {
       if (_formKey.currentState?.validate() != true) return;
       if (_step == 2) {
-        // Block if phone is still being checked or already taken.
-        if (_phoneChecking == true) {
-          _showMessage('Please wait while we check your mobile number.');
-          return;
+        _phoneDebounce?.cancel();
+        // If not yet verified or check still in progress, check immediately before advancing
+        if (_phoneChecking != false) {
+          final normalized = Validators.normalizePhone(_phoneController.text.trim());
+          setState(() => _phoneChecking = true);
+          try {
+            final taken = await _registrationService.isPhoneTaken(
+              normalized,
+              excludeUserId: SupabaseService.client.auth.currentUser?.id,
+            );
+            if (!mounted) return;
+            setState(() {
+              _phoneChecking = false;
+              _phoneTaken = taken;
+            });
+          } catch (_) {
+            if (!mounted) return;
+            setState(() => _phoneChecking = false);
+          }
         }
         if (_phoneTaken) {
           _showMessage('This mobile number is already registered. Please use a different number.');

@@ -49,6 +49,81 @@ class ProfileService {
         .single();
   }
 
+  /// Returns `true` if the given phone number is already registered
+  /// by another user in `profiles`, `customers`, or `employees`.
+  Future<bool> isPhoneTaken(String phone, {String? excludeUserId}) async {
+    final currentAuthId = excludeUserId ?? _client.auth.currentUser?.id;
+    final normalizedPhone = Validators.normalizePhone(phone.trim());
+
+    try {
+      final res = await _client.rpc('is_phone_taken', params: {
+        'p_phone': normalizedPhone.isNotEmpty ? normalizedPhone : phone.trim(),
+        if (currentAuthId != null && currentAuthId.isNotEmpty)
+          'p_exclude_user_id': currentAuthId,
+      });
+      if (res is bool) return res;
+    } catch (_) {
+      // If RPC is not available yet, proceed with fallback query
+    }
+
+    try {
+      final digits = normalizedPhone.replaceAll(RegExp(r'[^0-9]'), '');
+      if (digits.isEmpty) return false;
+
+      final variants = <String>{normalizedPhone, phone.trim()};
+      if (digits.startsWith('09') && digits.length == 11) {
+        variants.add('+63${digits.substring(1)}');
+        variants.add('63${digits.substring(1)}');
+        variants.add(digits.substring(1));
+      } else if (digits.startsWith('639') && digits.length == 12) {
+        variants.add('0${digits.substring(2)}');
+        variants.add('+63${digits.substring(2)}');
+        variants.add(digits.substring(2));
+      } else if (digits.startsWith('9') && digits.length == 10) {
+        variants.add('0$digits');
+        variants.add('+63$digits');
+        variants.add('63$digits');
+      }
+
+      var profileQuery = _client
+          .from('profiles')
+          .select('id, supabase_user_id')
+          .inFilter('phone', variants.toList());
+      if (currentAuthId != null && currentAuthId.isNotEmpty) {
+        profileQuery = profileQuery.neq('supabase_user_id', currentAuthId);
+      }
+      final profileResult = await profileQuery.limit(1);
+      if ((profileResult as List).isNotEmpty) return true;
+
+      final customerResult = await _client
+          .from('customers')
+          .select('id, profile_id')
+          .inFilter('phone', variants.toList())
+          .limit(1);
+
+      if ((customerResult as List).isNotEmpty) {
+        if (currentAuthId != null) {
+          final myProfile = await _client
+              .from('profiles')
+              .select('id')
+              .eq('supabase_user_id', currentAuthId)
+              .maybeSingle();
+          final myProfileId = myProfile?['id']?.toString();
+          final takenProfileId = customerResult.first['profile_id']?.toString();
+          if (myProfileId != null && takenProfileId == myProfileId) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      print('⚠️ Notice: isPhoneTaken check error: $e');
+      return false;
+    }
+  }
+
   Future<void> updateProfile({
     required String firstName,
     required String lastName,
