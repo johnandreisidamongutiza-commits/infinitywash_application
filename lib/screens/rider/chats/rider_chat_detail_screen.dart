@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -59,6 +60,8 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
   String _currentRiderName = 'Rider';
   bool _isLoading = true;
   bool _isUploadingImage = false;
+  ChatConversation? _liveConversation;
+  StreamSubscription<ChatConversation?>? _conversationSub;
 
   // Hybrid pagination state (Free tier optimization)
   final List<ChatMessage> _olderMessages = [];
@@ -217,6 +220,14 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
       }
 
       if (_resolvedChatId != null) {
+        _conversationSub?.cancel();
+        _conversationSub = _chatService
+            .streamConversation(_resolvedChatId!)
+            .listen((updated) {
+          if (updated != null && mounted) {
+            setState(() => _liveConversation = updated);
+          }
+        });
         _chatService.markAsRead(
           chatId: _resolvedChatId!,
           currentUserId: _currentRiderId,
@@ -445,8 +456,9 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.conversation != null
-        ? widget.conversation!.getOtherParticipantName(_currentRiderId, 'rider')
+    final activeConv = _liveConversation ?? widget.conversation;
+    final title = activeConv != null
+        ? activeConv.getOtherParticipantName(_currentRiderId, 'rider')
         : widget.customerName;
 
     final bool isPickup = widget.jobType == 'pickup';
@@ -988,6 +1000,7 @@ class _RiderChatDetailScreenState extends State<RiderChatDetailScreen> {
 
   @override
   void dispose() {
+    _conversationSub?.cancel();
     _rateLimiter.dispose();
     _scrollController.removeListener(_onScroll);
     _messageController.dispose();

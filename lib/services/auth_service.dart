@@ -8,6 +8,7 @@ import 'customer_service.dart';
 import 'push_notification_service.dart';
 import '../models/saved_account.dart';
 import 'legal_service.dart';
+import 'firebase_chat_service.dart';
 
 class AuthService {
   final _auth = SupabaseService.client.auth;
@@ -147,6 +148,28 @@ class AuthService {
         .eq('supabase_user_id', updatedUser.id)
         .single();
     await _syncCustomerRecord(profile, updatedUser.email ?? '');
+
+    // Sync newly completed customer profile name to active chat conversations
+    try {
+      final profileId = profile['id']?.toString();
+      final fullName = '$firstName $lastName'.trim();
+      if (profileId != null && profileId.isNotEmpty && fullName.isNotEmpty) {
+        await FirebaseChatService.instance.updateParticipantInfoInChats(
+          userId: profileId,
+          newName: fullName,
+          newPhone: phone,
+        );
+      }
+    } catch (_) {}
+
+    // Sync to local Saved Accounts database
+    try {
+      await _savedAccountsDb.updateAccountName(
+        updatedUser.id,
+        firstName,
+        lastName,
+      );
+    } catch (_) {}
   }
 
   Future<bool> isCustomerProfileComplete() async {

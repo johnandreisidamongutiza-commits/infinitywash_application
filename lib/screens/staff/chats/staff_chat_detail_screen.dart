@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +32,9 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
 
+  late ChatConversation _conversation;
+  StreamSubscription<ChatConversation?>? _conversationSub;
+
   String _currentStaffId = '';
   String _currentStaffName = 'Staff Member';
   bool _isUploadingImage = false;
@@ -52,6 +56,14 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _conversation = widget.conversation;
+    _conversationSub = _chatService
+        .streamConversation(widget.conversation.id)
+        .listen((updated) {
+      if (updated != null && mounted) {
+        setState(() => _conversation = updated);
+      }
+    });
     _scrollController.addListener(_onScroll);
     _rateLimiter.setTickListener(() {
       if (mounted) setState(() {});
@@ -148,12 +160,12 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
 
     try {
       await _chatService.sendMessage(
-        chatId: widget.conversation.id,
+        chatId: _conversation.id,
         senderId: _currentStaffId.isNotEmpty ? _currentStaffId : 'staff',
         senderName: _currentStaffName,
         senderRole: 'staff',
         text: text,
-        participants: widget.conversation.participants,
+        participants: _conversation.participants,
       );
       _scrollToBottom();
     } catch (e) {
@@ -181,18 +193,18 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
       final file = File(picked.path);
       final downloadUrl = await _chatService.uploadChatImage(
         file,
-        widget.conversation.id,
+        _conversation.id,
       );
 
       await _chatService.sendMessage(
-        chatId: widget.conversation.id,
+        chatId: _conversation.id,
         senderId: _currentStaffId.isNotEmpty ? _currentStaffId : 'staff',
         senderName: _currentStaffName,
         senderRole: 'staff',
         text: '',
         attachmentUrl: downloadUrl,
         attachmentType: 'image',
-        participants: widget.conversation.participants,
+        participants: _conversation.participants,
       );
 
       _scrollToBottom();
@@ -224,7 +236,7 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
 
   List<String> get _quickReplyTemplates {
     final isCustomer =
-        widget.conversation.chatType == ChatType.customerSupport;
+        _conversation.chatType == ChatType.customerSupport;
 
     if (isCustomer) {
       return [
@@ -245,11 +257,11 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final otherName = widget.conversation.getOtherParticipantName('', 'staff');
-    final otherRole = widget.conversation.getOtherParticipantRole('', 'staff');
-    final otherPhone = widget.conversation.getOtherParticipantPhone('', 'staff');
+    final otherName = _conversation.getOtherParticipantName('', 'staff');
+    final otherRole = _conversation.getOtherParticipantRole('', 'staff');
+    final otherPhone = _conversation.getOtherParticipantPhone('', 'staff');
     final isCustomer =
-        widget.conversation.chatType == ChatType.customerSupport;
+        _conversation.chatType == ChatType.customerSupport;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -319,12 +331,12 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            if (widget.conversation.orderId != null &&
-                widget.conversation.orderId!.isNotEmpty)
+            if (_conversation.orderId != null &&
+                _conversation.orderId!.isNotEmpty)
               _buildOrderContextBanner(),
             Expanded(
               child: StreamBuilder<List<ChatMessage>>(
-                stream: _chatService.streamMessages(widget.conversation.id),
+                stream: _chatService.streamMessages(_conversation.id),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting &&
                       !snapshot.hasData &&
@@ -492,7 +504,7 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
-                    'Linked Order: ${LaundryOrder.formatDisplayNumber(id: widget.conversation.orderId!)}',
+                    'Linked Order: ${LaundryOrder.formatDisplayNumber(id: _conversation.orderId!)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -524,12 +536,12 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
           if (!isStaff) ...[
             CircleAvatar(
               radius: 14,
-              backgroundColor: widget.conversation.chatType ==
+              backgroundColor: _conversation.chatType ==
                       ChatType.customerSupport
                   ? AppTheme.accentBlue.withValues(alpha: 0.1)
                   : AppTheme.lightBlue,
               child: Icon(
-                widget.conversation.chatType == ChatType.customerSupport
+                _conversation.chatType == ChatType.customerSupport
                     ? Icons.person
                     : Icons.delivery_dining,
                 size: 16,
@@ -786,6 +798,7 @@ class _StaffChatDetailScreenState extends State<StaffChatDetailScreen> {
 
   @override
   void dispose() {
+    _conversationSub?.cancel();
     _rateLimiter.dispose();
     _scrollController.removeListener(_onScroll);
     _textController.dispose();

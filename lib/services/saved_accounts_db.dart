@@ -189,6 +189,20 @@ class SavedAccountsDatabase {
     );
   }
 
+  // Update account first and last name
+  Future<void> updateAccountName(String id, String? firstName, String? lastName) async {
+    final db = await database;
+    await db.update(
+      'saved_accounts',
+      {
+        'first_name': firstName,
+        'last_name': lastName,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   // Delete an account
   Future<void> deleteAccount(String id) async {
     final db = await database;

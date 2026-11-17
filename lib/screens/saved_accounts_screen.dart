@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/saved_account.dart';
 import '../services/auth_service.dart';
+import '../services/saved_accounts_db.dart';
 import '../services/google_sign_in_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
@@ -85,10 +86,63 @@ class _SavedAccountsScreenState extends State<SavedAccountsScreen> with SingleTi
         _accounts = accounts;
         _loading = false;
       });
+      // In background, refresh names from backend if any changed
+      if (accounts.isNotEmpty) {
+        _syncSavedAccountsWithBackend(accounts);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
       _message('Could not load saved accounts. Please try again.');
+    }
+  }
+
+  Future<void> _syncSavedAccountsWithBackend(List<SavedAccount> localAccounts) async {
+    try {
+      final ids = localAccounts.map((a) => a.id).toList();
+      if (ids.isEmpty) return;
+
+      final response = await SupabaseService.client
+          .from('profiles')
+          .select('supabase_user_id, first_name, last_name, avatar_url')
+          .filter('supabase_user_id', 'in', ids);
+
+      if (response.isEmpty) return;
+
+      bool anyChanged = false;
+      for (final profile in response) {
+        final userId = profile['supabase_user_id']?.toString();
+        if (userId == null) continue;
+
+        final newFirst = profile['first_name'] as String?;
+        final newLast = profile['last_name'] as String?;
+        final newAvatar = profile['avatar_url'] as String?;
+
+        final matchingIndex = localAccounts.indexWhere((a) => a.id == userId);
+        if (matchingIndex != -1) {
+          final current = localAccounts[matchingIndex];
+          if (current.firstName != newFirst ||
+              current.lastName != newLast ||
+              current.profilePictureUrl != newAvatar) {
+            await SavedAccountsDatabase.instance.updateAccountName(userId, newFirst, newLast);
+            if (newAvatar != null) {
+              await SavedAccountsDatabase.instance.updateProfilePicture(userId, newAvatar);
+            }
+            anyChanged = true;
+          }
+        }
+      }
+
+      if (anyChanged && mounted) {
+        final refreshed = await _authService.getSavedAccounts();
+        if (mounted) {
+          setState(() {
+            _accounts = refreshed;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Saved accounts background sync notice: $e');
     }
   }
 

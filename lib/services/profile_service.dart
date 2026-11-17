@@ -6,6 +6,7 @@ import '../utils/validators.dart';
 import 'profile_local_db.dart';
 import 'saved_accounts_db.dart';
 import 'supabase_service.dart';
+import 'firebase_chat_service.dart';
 
 class ProfileService {
   final SupabaseClient _client = SupabaseService.client;
@@ -131,7 +132,7 @@ class ProfileService {
       throw mapError(e, stackTrace: StackTrace.current);
     }
 
-    // Also update customers table if customer record exists
+    // Also update customers table if customer record exists and sync updated name to chats
     try {
       // Get profile ID
       final profile = await _client
@@ -173,8 +174,33 @@ class ProfileService {
           }
         }
       }
+
+      // Sync updated customer name and phone to all active chat conversations
+      final fullName = '$cleanFirst $cleanLast'.trim();
+      if (profileId.isNotEmpty && fullName.isNotEmpty) {
+        try {
+          await FirebaseChatService.instance.updateParticipantInfoInChats(
+            userId: profileId,
+            newName: fullName,
+            newPhone: cleanPhone.isNotEmpty ? cleanPhone : phone,
+          );
+        } catch (chatSyncErr) {
+          print('⚠️ Could not sync updated name to chat conversations: $chatSyncErr');
+        }
+      }
+
+      // Sync updated name to local Saved Accounts database
+      try {
+        await SavedAccountsDatabase.instance.updateAccountName(
+          user.id,
+          cleanFirst.isNotEmpty ? cleanFirst : firstName,
+          cleanLast.isNotEmpty ? cleanLast : lastName,
+        );
+      } catch (savedAccErr) {
+        print('⚠️ Could not update name in local saved_accounts: $savedAccErr');
+      }
     } catch (e) {
-      print('⚠️ Could not update customer record: $e');
+      print('⚠️ Could not update customer record or sync chats: $e');
       // Don't throw - profile was already updated successfully
     }
   }
@@ -200,6 +226,17 @@ class ProfileService {
           'updated_at': DateTime.now().toIso8601String(),
         })
         .eq('profile_id', profileId);
+
+    // Sync updated employee name and phone to active chat conversations
+    try {
+      if (profileId.isNotEmpty && name.trim().isNotEmpty) {
+        await FirebaseChatService.instance.updateParticipantInfoInChats(
+          userId: profileId,
+          newName: name.trim(),
+          newPhone: cleanPhone.isNotEmpty ? cleanPhone : phone,
+        );
+      }
+    } catch (_) {}
   }
 
   /// Saves the avatar locally in SQLite FIRST, then attempts to upload to Firebase Storage.
@@ -262,6 +299,23 @@ class ProfileService {
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('supabase_user_id', user.id);
+
+      // Step 6: Sync avatar to active chat conversations
+      try {
+        final profile = await _client
+            .from('profiles')
+            .select('id')
+            .eq('supabase_user_id', user.id)
+            .maybeSingle();
+        if (profile != null && profile['id'] != null) {
+          await FirebaseChatService.instance.updateParticipantInfoInChats(
+            userId: profile['id'].toString(),
+            newAvatar: publicUrl,
+          );
+        }
+      } catch (e) {
+        print('⚠️ Could not sync new avatar to chats: $e');
+      }
 
       return publicUrl;
     } catch (firebaseError) {
@@ -346,6 +400,19 @@ class ProfileService {
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('supabase_user_id', user.id);
+
+      // 3. Clear avatar in active chat conversations
+      final profile = await _client
+          .from('profiles')
+          .select('id')
+          .eq('supabase_user_id', user.id)
+          .maybeSingle();
+      if (profile != null && profile['id'] != null) {
+        await FirebaseChatService.instance.updateParticipantInfoInChats(
+          userId: profile['id'].toString(),
+          newAvatar: '',
+        );
+      }
     } catch (e) {
       throw mapError(e, stackTrace: StackTrace.current);
     }

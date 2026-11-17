@@ -119,7 +119,32 @@ class FirebaseChatService {
         return ChatConversation.fromFirestore(createdDoc);
       }
 
-      return ChatConversation.fromFirestore(snapshot);
+      final existing = ChatConversation.fromFirestore(snapshot);
+
+      // Lazy self-heal: if customer updated name, phone, or avatar, sync it back to this chat
+      final currentName = existing.participantNames[customerId];
+      final currentPhone = existing.participantPhones[customerId];
+      final currentAvatar = existing.participantAvatars[customerId];
+      final Map<String, dynamic> healingUpdates = {};
+
+      if (customerName.trim().isNotEmpty && currentName != customerName.trim()) {
+        healingUpdates['participant_names.$customerId'] = customerName.trim();
+      }
+      if (customerPhone != null && customerPhone.trim().isNotEmpty && currentPhone != customerPhone.trim()) {
+        healingUpdates['participant_phones.$customerId'] = customerPhone.trim();
+      }
+      if (customerAvatar != null && currentAvatar != customerAvatar) {
+        healingUpdates['participant_avatars.$customerId'] = customerAvatar;
+      }
+
+      if (healingUpdates.isNotEmpty) {
+        healingUpdates['updated_at'] = FieldValue.serverTimestamp();
+        docRef.update(healingUpdates).catchError((e) {
+          debugPrint('⚠️ Notice: support chat self-healing update notice: $e');
+        });
+      }
+
+      return existing;
     } catch (e) {
       debugPrint('⚠️ Notice: getOrCreateSupportChat ($chatId): $e');
       return ChatConversation(
@@ -194,7 +219,32 @@ class FirebaseChatService {
         return ChatConversation.fromFirestore(createdDoc);
       }
 
-      return ChatConversation.fromFirestore(snapshot);
+      final existing = ChatConversation.fromFirestore(snapshot);
+
+      // Lazy self-heal: if rider updated name, phone, or avatar, sync it back to this dispatch chat
+      final currentName = existing.participantNames[riderId];
+      final currentPhone = existing.participantPhones[riderId];
+      final currentAvatar = existing.participantAvatars[riderId];
+      final Map<String, dynamic> healingUpdates = {};
+
+      if (riderName.trim().isNotEmpty && currentName != riderName.trim()) {
+        healingUpdates['participant_names.$riderId'] = riderName.trim();
+      }
+      if (riderPhone != null && riderPhone.trim().isNotEmpty && currentPhone != riderPhone.trim()) {
+        healingUpdates['participant_phones.$riderId'] = riderPhone.trim();
+      }
+      if (riderAvatar != null && currentAvatar != riderAvatar) {
+        healingUpdates['participant_avatars.$riderId'] = riderAvatar;
+      }
+
+      if (healingUpdates.isNotEmpty) {
+        healingUpdates['updated_at'] = FieldValue.serverTimestamp();
+        docRef.update(healingUpdates).catchError((e) {
+          debugPrint('⚠️ Notice: rider dispatch chat self-healing update notice: $e');
+        });
+      }
+
+      return existing;
     } catch (e) {
       debugPrint('⚠️ Notice: getOrCreateRiderStaffChat ($chatId): $e');
       return ChatConversation(
@@ -287,7 +337,44 @@ class FirebaseChatService {
         return ChatConversation.fromFirestore(createdDoc);
       }
 
-      return ChatConversation.fromFirestore(snapshot);
+      final existing = ChatConversation.fromFirestore(snapshot);
+
+      // Lazy self-heal: if customer or rider updated name, phone, or avatar, sync it back to this order chat
+      final currentCustName = existing.participantNames[customerId];
+      final currentRiderName = existing.participantNames[riderId];
+      final currentCustPhone = existing.participantPhones[customerId];
+      final currentRiderPhone = existing.participantPhones[riderId];
+      final currentCustAvatar = existing.participantAvatars[customerId];
+      final currentRiderAvatar = existing.participantAvatars[riderId];
+      final Map<String, dynamic> healingUpdates = {};
+
+      if (customerName.trim().isNotEmpty && currentCustName != customerName.trim()) {
+        healingUpdates['participant_names.$customerId'] = customerName.trim();
+      }
+      if (riderName.trim().isNotEmpty && currentRiderName != riderName.trim()) {
+        healingUpdates['participant_names.$riderId'] = riderName.trim();
+      }
+      if (customerPhone != null && customerPhone.trim().isNotEmpty && currentCustPhone != customerPhone.trim()) {
+        healingUpdates['participant_phones.$customerId'] = customerPhone.trim();
+      }
+      if (riderPhone != null && riderPhone.trim().isNotEmpty && currentRiderPhone != riderPhone.trim()) {
+        healingUpdates['participant_phones.$riderId'] = riderPhone.trim();
+      }
+      if (customerAvatar != null && currentCustAvatar != customerAvatar) {
+        healingUpdates['participant_avatars.$customerId'] = customerAvatar;
+      }
+      if (riderAvatar != null && currentRiderAvatar != riderAvatar) {
+        healingUpdates['participant_avatars.$riderId'] = riderAvatar;
+      }
+
+      if (healingUpdates.isNotEmpty) {
+        healingUpdates['updated_at'] = FieldValue.serverTimestamp();
+        docRef.update(healingUpdates).catchError((e) {
+          debugPrint('⚠️ Notice: order chat self-healing update notice: $e');
+        });
+      }
+
+      return existing;
     } catch (e) {
       debugPrint('⚠️ Notice: getOrCreateOrderChat ($chatId): $e');
       final fallbackNumber = orderNumber ??
@@ -599,6 +686,93 @@ class FirebaseChatService {
     } catch (e) {
       debugPrint('Error searching chat recipients: $e');
       return [];
+    }
+  }
+
+  /// Real-time stream of a single conversation document (for live title/metadata updates)
+  Stream<ChatConversation?> streamConversation(String chatId) {
+    return _chatsCollection.doc(chatId).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      return ChatConversation.fromFirestore(doc);
+    }).handleError((error) {
+      debugPrint('⚠️ Chat conversation stream notice: $error');
+      return null;
+    });
+  }
+
+  /// Updates a participant's name, phone, or avatar across their recent active conversations in Firestore.
+  /// Uses a batch update capped at [limit] (default 30) conversations to protect Firebase Spark (free tier) quota.
+  Future<void> updateParticipantInfoInChats({
+    required String userId,
+    String? newName,
+    String? newPhone,
+    String? newAvatar,
+    int limit = 30,
+  }) async {
+    if (userId.isEmpty) return;
+    final trimmedName = newName?.trim();
+    final trimmedPhone = newPhone?.trim();
+    final trimmedAvatar = newAvatar?.trim();
+
+    if ((trimmedName == null || trimmedName.isEmpty) &&
+        (trimmedPhone == null || trimmedPhone.isEmpty) &&
+        trimmedAvatar == null) {
+      return;
+    }
+
+    try {
+      final snapshot = await _chatsCollection
+          .where('participants', arrayContains: userId)
+          .limit(limit)
+          .get();
+
+      if (snapshot.docs.isEmpty) return;
+
+      final batch = _firestore.batch();
+      bool hasUpdates = false;
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        final Map<String, dynamic> docUpdates = {};
+
+        if (trimmedName != null && trimmedName.isNotEmpty) {
+          final names = data['participant_names'] as Map<String, dynamic>? ?? {};
+          if (names[userId] != trimmedName) {
+            docUpdates['participant_names.$userId'] = trimmedName;
+          }
+          if (data['last_sender_id'] == userId && data['last_sender_name'] != trimmedName) {
+            docUpdates['last_sender_name'] = trimmedName;
+          }
+        }
+
+        if (trimmedPhone != null && trimmedPhone.isNotEmpty) {
+          final phones = data['participant_phones'] as Map<String, dynamic>? ?? {};
+          if (phones[userId] != trimmedPhone) {
+            docUpdates['participant_phones.$userId'] = trimmedPhone;
+          }
+        }
+
+        if (trimmedAvatar != null) {
+          final avatars = data['participant_avatars'] as Map<String, dynamic>? ?? {};
+          if (avatars[userId] != trimmedAvatar) {
+            docUpdates['participant_avatars.$userId'] = trimmedAvatar;
+          }
+        }
+
+        if (docUpdates.isNotEmpty) {
+          docUpdates['updated_at'] = FieldValue.serverTimestamp();
+          batch.update(doc.reference, docUpdates);
+          hasUpdates = true;
+        }
+      }
+
+      if (hasUpdates) {
+        await batch.commit();
+        debugPrint(
+            '✅ Synced participant metadata for $userId across ${snapshot.docs.length} chat conversations');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Notice: Could not sync participant metadata to Firestore chats: $e');
     }
   }
 }
