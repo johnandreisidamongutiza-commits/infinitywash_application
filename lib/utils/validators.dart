@@ -1,12 +1,41 @@
-/// Shared input validation used by every form in the app.
+﻿/// Shared input validation used by every form in the app.
 ///
 /// Each validator returns `null` when the value is valid, otherwise a
 /// user-ready error message (no raw exception text).
 class Validators {
   Validators._();
 
-  static final RegExp _emailRe = RegExp(r'^[\w\.\-\+]+@([\w\-]+\.)+[a-zA-Z]{2,}$');
+  static final RegExp _emailRe = RegExp(r'^[\w\.\-\+]+@([\w\-]+\.)+com$', caseSensitive: false);
   static final RegExp _phoneRe = RegExp(r'^[0-9\+\-\s\(\)]{7,20}$');
+
+  /// Known disposable / temporary e-mail domains.
+  /// Add more entries here as new services appear.
+  static const Set<String> _disposableDomains = {
+    // --- Mailinator family ---
+    'mailinator.com', 'mailinator.net', 'mailinator.org',
+    'trashmail.com', 'trashmail.net', 'trashmail.me', 'trashmail.at', 'trashmail.io',
+    // --- Guerrilla Mail family ---
+    'guerrillamail.com', 'guerrillamail.net', 'guerrillamail.org',
+    'guerrillamail.info', 'guerrillamail.biz', 'guerrillamail.de',
+    'sharklasers.com', 'guerrillamailblock.com', 'grr.la', 'spam4.me',
+    // --- YOPmail ---
+    'yopmail.com', 'yopmail.fr', 'cool.fr.nf', 'jetable.fr.nf',
+    'nospam.ze.tc', 'nomail.xl.cx',
+    // --- Temp-mail / Throwaway ---
+    'temp-mail.org', 'temp-mail.com', 'tempmail.com', 'tempmail.net',
+    'throwam.com', 'throwaway.email', 'discard.email',
+    'dispostable.com', 'maildrop.cc',
+    // --- Fake inbox / misc ---
+    'fakeinbox.com', 'fakeinbox.net', 'spambox.us', 'spambox.info',
+    'spamgourmet.com', 'spamgourmet.net', 'spamgourmet.org',
+    'binkmail.com', 'bobmail.info', 'devnullmail.com',
+    'letthemeatspam.com', 'mailnull.com', 'spamoff.de',
+    'spamthisplease.com', 'trbvm.com', 'nwytg.com',
+    // --- Mailnesia ---
+    'mailnesia.com',
+    // --- GetNada / others ---
+    'getnada.com',
+  };
 
   /// Email: required + basic format (delegates to [emailField]).
   static String? email(String? value) => emailField(value);
@@ -327,7 +356,7 @@ class Validators {
     }
 
     if (!domainPart.contains('.')) {
-      return 'Domain must include an extension (e.g. .com, .ph).';
+      return 'Domain must end in .com (e.g. name@gmail.com).';
     }
 
     final domainParts = domainPart.split('.');
@@ -335,9 +364,14 @@ class Validators {
       return 'Please enter a valid domain (e.g. name@example.com).';
     }
 
-    final tld = domainParts.last;
-    if (tld.length < 2 || !RegExp(r'^[a-zA-Z]+$').hasMatch(tld)) {
-      return 'Please enter a valid domain ending (e.g. .com, .ph).';
+    final tld = domainParts.last.toLowerCase();
+    if (tld != 'com') {
+      return 'Only .com email addresses are accepted (e.g. name@gmail.com).';
+    }
+
+    // Reject known disposable / temporary email providers.
+    if (_disposableDomains.contains(domainPart.toLowerCase())) {
+      return 'Temporary email addresses are not allowed. Please use a real email (e.g. name@gmail.com).';
     }
 
     if (!_emailRe.hasMatch(v)) {

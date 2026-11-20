@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -82,7 +82,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     try {
       final email = action == _CaptchaAction.send
-          ? _emailController.text.trim()
+          ? _emailController.text.trim().toLowerCase()
           : _userEmail!;
       final result = action == _CaptchaAction.send
           ? await _passwordResetService.requestPasswordReset(
@@ -251,7 +251,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
 
     // Basic email validation
-    final emailError = Validators.email(_emailController.text.trim());
+    final emailError = Validators.email(_emailController.text.trim().toLowerCase());
     if (emailError != null) {
       _showError(emailError);
       return;

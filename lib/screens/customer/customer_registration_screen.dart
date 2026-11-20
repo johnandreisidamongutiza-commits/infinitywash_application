@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -214,7 +214,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
         _isGoogleRegistration = true;
         _firstNameController.text = (profile?['first_name'] ?? metadata['given_name'] ?? metadata['first_name'] ?? (nameParts.isNotEmpty ? nameParts.first : '')).toString();
         _lastNameController.text = (profile?['last_name'] ?? metadata['family_name'] ?? metadata['last_name'] ?? (nameParts.length > 1 ? nameParts.skip(1).join(' ') : '')).toString();
-        _emailController.text = (user.email ?? '').trim();
+        _emailController.text = (user.email ?? '').trim().toLowerCase();
         if (profile != null) {
           _phoneController.text = (profile['phone'] ?? '').toString();
           _houseStreetController.text = (profile['address'] ?? '').toString();
@@ -258,7 +258,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
       return;
     }
 
-    final email = _emailController.text.trim();
+    final email = _emailController.text.trim().toLowerCase();
 
     // If currently signed in user matches this email and profile is incomplete,
     // immediately transition to profile completion without blocking.
@@ -472,7 +472,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     setState(() => _isLoading = true);
     try {
       await _registrationService.requestCode(
-        email: _emailController.text.trim(),
+        email: _emailController.text.trim().toLowerCase(),
         registrationData: await _registrationData(),
       );
       if (mounted) setState(() => _step = 6);
@@ -495,7 +495,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     setState(() => _isLoading = true);
     try {
       await _registrationService.requestCode(
-        email: _emailController.text.trim(),
+        email: _emailController.text.trim().toLowerCase(),
         resend: true,
       );
       if (mounted) _showMessage('A new code has been sent.', isError: false);
@@ -516,7 +516,7 @@ class _CustomerRegistrationScreenState extends State<CustomerRegistrationScreen>
     setState(() => _isLoading = true);
     try {
       await _registrationService.verifyAndCreate(
-        email: _emailController.text.trim(),
+        email: _emailController.text.trim().toLowerCase(),
         code: _otpController.text.trim(),
         password: _passwordController.text,
       );
