@@ -1250,6 +1250,35 @@ class OrderService {
           .eq('id', orderId);
 
       print('✅ Order $orderId cancelled with reason: $reason');
+
+      // If the order had free loads redeemed, refund the points back to customer's loyalty card
+      try {
+        final orderRow = await _client
+            .from('orders')
+            .select('customer_id, free_loads_redeemed, order_number')
+            .eq('id', orderId)
+            .maybeSingle();
+
+        final freeLoads = (orderRow?['free_loads_redeemed'] as num?)?.toInt() ?? 0;
+        final customerId = orderRow?['customer_id'] as String?;
+        final orderNumber = orderRow?['order_number'] as String?;
+
+        if (freeLoads > 0 && customerId != null) {
+          final card = await _loyaltyService.getLinkedCard(customerId);
+          if (card != null) {
+            await _loyaltyService.refundPoints(
+              cardId: card.cardId,
+              customerId: card.customerId,
+              freeLoadsToRefund: freeLoads,
+              orderId: orderId,
+              orderNumber: orderNumber,
+            );
+            print('✅ Refunded $freeLoads free load(s) for cancelled order $orderNumber');
+          }
+        }
+      } catch (refundError) {
+        print('⚠️ Failed to refund loyalty points on cancel: $refundError');
+      }
     } catch (e) {
       print('❌ Error cancelling order: $e');
       rethrow;

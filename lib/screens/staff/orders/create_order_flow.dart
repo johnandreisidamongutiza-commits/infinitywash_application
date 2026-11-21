@@ -264,7 +264,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       _initialFreeLoadsRedeemed = existingFreeLoads;
 
       // Auto-load the customer's loyalty card to show card info & enable adjustment
-      if (existingFreeLoads > 0 && o.customerId != null) {
+      if (o.customerId != null) {
         _loadLoyaltyCardForEdit(o.customerId!);
       }
     } else {
@@ -1931,7 +1931,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Use Free Load (${_loyaltyCardInfo!.freeLoadsAvailable} available)',
+                              'Use Free Load (${_isEditing ? _maxRedeemableFreeLoads : _loyaltyCardInfo!.freeLoadsAvailable} available)',
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
                             ),
                             const SizedBox(height: 2),
@@ -2137,7 +2137,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                         );
                       } else {
                         Navigator.pop(ctx);
-                        _submitOrder(isPaidImmediately: true, paymentMethod: method);
+                        final effectiveMethod = (_finalTotal <= 0 && _freeLoadsToRedeem > 0)
+                            ? 'Loyalty Free Load'
+                            : method;
+                        _submitOrder(isPaidImmediately: true, paymentMethod: effectiveMethod);
                       }
                     },
                     style: ElevatedButton.styleFrom(
