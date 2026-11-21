@@ -742,6 +742,8 @@ class OrderService {
             landmark,
             subtotal,
             delivery_fee,
+            discount_amount,
+            free_loads_redeemed,
             total_amount,
             payment_status,
             status,
@@ -881,6 +883,8 @@ class OrderService {
           expiresAt: order.expiresAt,
           underReviewBy: null,
           dismissedAt: order.dismissedAt,
+          discountAmount: (orderData['discount_amount'] as num?)?.toDouble() ?? order.discountAmount,
+          freeLoadsRedeemed: (orderData['free_loads_redeemed'] as num?)?.toInt() ?? order.freeLoadsRedeemed,
           totalAmount: order.totalAmount ?? (orderData['total_amount'] as num?)?.toDouble(),
         );
 
@@ -1720,6 +1724,8 @@ class OrderService {
         reviewedBy: order.reviewedBy,
         expiresAt: order.expiresAt,
         underReviewBy: null,
+        discountAmount: (response['discount_amount'] as num?)?.toDouble() ?? order.discountAmount,
+        freeLoadsRedeemed: (response['free_loads_redeemed'] as num?)?.toInt() ?? order.freeLoadsRedeemed,
         totalAmount: order.totalAmount ?? (response['total_amount'] as num?)?.toDouble(),
       );
     } catch (e) {

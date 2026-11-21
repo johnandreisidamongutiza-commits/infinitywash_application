@@ -4109,17 +4109,32 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    _selectedCollection == CollectionMethod.riderPickup
-                        ? 'TBD'
-                        : '₱${((_basePricePerLoad * _loads.length) + _addOnsTotal).toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: 16, 
-                      fontWeight: FontWeight.bold, 
-                      color: _selectedCollection == CollectionMethod.riderPickup 
-                          ? Colors.blue 
-                          : Colors.green
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _selectedCollection == CollectionMethod.riderPickup
+                            ? 'TBD'
+                            : '₱${_finalTotal.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 16, 
+                          fontWeight: FontWeight.bold, 
+                          color: _selectedCollection == CollectionMethod.riderPickup 
+                              ? Colors.blue 
+                              : Colors.green
+                        ),
+                      ),
+                      if (_freeLoadsToRedeem > 0 && _selectedCollection != CollectionMethod.riderPickup)
+                        Text(
+                          '($_freeLoadsToRedeem Free Load${_freeLoadsToRedeem > 1 ? "s" : ""} applied)',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.green,
+                          ),
+                        ),
+                    ],
                   ),
                 ],
               ),

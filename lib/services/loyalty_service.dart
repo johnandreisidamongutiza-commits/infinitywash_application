@@ -510,17 +510,28 @@ class LoyaltyService {
     }
   }
 
-  /// Get all loyalty cards for a specific customer (by profile_id).
+  /// Get all loyalty cards for a specific customer (supports both customer_id and profile_id).
   Future<List<LoyaltyCardInfo>> getCardsForCustomer(
       String customerId) async {
     try {
-      final response = await _client
+      var response = await _client
           .from('vw_rfid_loyalty_cards')
           .select()
           .eq('customer_id', customerId);
 
-      return response
-          .map((row) => LoyaltyCardInfo.fromJson(row))
+      // Fallback: If not found, check if customerId is profile id vs customer id
+      if (response.isEmpty) {
+        final profileId = await _resolveProfileId(customerId);
+        if (profileId != null && profileId != customerId) {
+          response = await _client
+              .from('vw_rfid_loyalty_cards')
+              .select()
+              .eq('customer_id', profileId);
+        }
+      }
+
+      return (response as List<dynamic>)
+          .map((row) => LoyaltyCardInfo.fromJson(row as Map<String, dynamic>))
           .toList();
     } catch (e) {
       print('❌ Error fetching cards for customer: $e');
