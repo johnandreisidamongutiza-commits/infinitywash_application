@@ -7,6 +7,7 @@ import '../../../utils/app_error.dart';
 import '../../../utils/input_formatters.dart';
 import '../../../services/loyalty_service.dart';
 import '../../../services/customer_service.dart';
+import 'create_order_flow.dart';
 
 class RfidCheckerScreen extends StatefulWidget {
   final String? initialTag;
@@ -1268,18 +1269,60 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen>
 
         // Action buttons
         if (hasFreeLoas) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.amber.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.loyalty_outlined, color: Colors.amber.shade700, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Eligible for ${card.freeLoadsAvailable} Free Load${card.freeLoadsAvailable > 1 ? 's' : ''}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Free loads can be applied during order creation or payment settlement.',
+                        style: TextStyle(fontSize: 11, color: Colors.amber.shade800),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => _showRedeemDialog(card),
-              icon: const Icon(Icons.card_giftcard, color: Colors.white),
-              label: Text(
-                'Redeem ${card.freeLoadsAvailable} Free Load${card.freeLoadsAvailable > 1 ? 's' : ''}',
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold),
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const CreateOrderFlow()),
+                );
+                if (result == true && mounted) {
+                  _scanCard(card.uid);
+                }
+              },
+              icon: const Icon(Icons.add_circle_outline, color: Colors.white),
+              label: const Text(
+                'Create Order',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber.shade700,
+                backgroundColor: AppTheme.accentBlue,
                 minimumSize: const Size(double.infinity, 50),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
@@ -1396,124 +1439,6 @@ class _RfidCheckerScreenState extends State<RfidCheckerScreen>
     );
   }
 
-  void _showRedeemDialog(LoyaltyCardInfo card) {
-    int loadsToRedeem = 1;
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
-            children: [
-              Icon(Icons.card_giftcard, color: Colors.amber),
-              SizedBox(width: 8),
-              Text('Redeem Free Loads', style: TextStyle(fontSize: 17)),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Available: ${card.freeLoadsAvailable} free load${card.freeLoadsAvailable > 1 ? 's' : ''}',
-                style: const TextStyle(color: AppTheme.textLight),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    onPressed: loadsToRedeem > 1
-                        ? () => setDialogState(() => loadsToRedeem--)
-                        : null,
-                    icon: const Icon(Icons.remove_circle_outline),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accentBlue.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '$loadsToRedeem',
-                      style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.accentBlue),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: loadsToRedeem < card.freeLoadsAvailable
-                        ? () => setDialogState(() => loadsToRedeem++)
-                        : null,
-                    icon: const Icon(Icons.add_circle_outline),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Cost: ${loadsToRedeem * 10} pts  •  Save ₱${(loadsToRedeem * 170).toStringAsFixed(0)}',
-                style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.amber),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child:
-                  const Text('Cancel', style: TextStyle(color: AppTheme.textLight)),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                try {
-                  final discount = await _loyaltyService.redeemPoints(
-                    cardId: card.cardId,
-                    customerId: card.customerId,
-                    freeLoadsToRedeem: loadsToRedeem,
-                  );
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                            'Successfully redeemed $loadsToRedeem free load(s) for ${card.ownerName}! ₱${discount.toStringAsFixed(0)} saved.'),
-                        backgroundColor: Colors.green,
-                        duration: const Duration(seconds: 4),
-                      ),
-                    );
-                    _scanCard(card.uid);
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Redemption failed: $e'),
-                        backgroundColor: AppTheme.errorRed,
-                        duration: const Duration(seconds: 4),
-                      ),
-                    );
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber.shade700,
-                minimumSize: const Size(90, 36),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('Confirm Redemption',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   // ─── Unassigned Inventory Card Result ────────────────────────────────────────
 
