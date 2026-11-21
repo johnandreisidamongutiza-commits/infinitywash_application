@@ -1,12 +1,13 @@
 {
-  "latestVersion": "1.0.3",
-  "latestBuildNumber": 4,
+  "latestVersion": "1.0.4",
+  "latestBuildNumber": 5,
   "minSupportedBuildNumber": 1,
   "apkUrl": "https://raw.githubusercontent.com/johnandreisidamongutiza-commits/infinitywash_application/master/infinitywash.apk",
   "releaseNotes": [
-    "Added customer service request flow screen and ordering logic",
-    "Enhanced service request form validation and user experience",
-    "General stability updates and bug fixes"
+    "Added rider and staff real-time chat detail screens",
+    "Enhanced customer registration and profile management options",
+    "Improved phone number, email, and input validation",
+    "General bug fixes and stability improvements"
   ],
   "forceUpdate": false
 }
