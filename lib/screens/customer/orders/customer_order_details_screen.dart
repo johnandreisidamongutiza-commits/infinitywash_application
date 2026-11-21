@@ -736,6 +736,46 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
             ),
           ),
           const SizedBox(height: 16),
+          if (order.discountAmount != null && order.discountAmount! > 0) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Subtotal', style: TextStyle(fontSize: 14, color: AppTheme.textLight)),
+                Text(
+                  '₱${((order.totalAmount ?? 0.0) + order.discountAmount!).toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 14, color: AppTheme.textDark),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.loyalty_outlined, size: 14, color: Colors.green),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Loyalty Free Load${(order.freeLoadsRedeemed ?? 0) > 1 ? " (${order.freeLoadsRedeemed})" : ""}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 14, color: Colors.green, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '-₱${order.discountAmount!.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green),
+                ),
+              ],
+            ),
+            const Divider(height: 16),
+          ],
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

@@ -27,8 +27,13 @@ abstract final class CompleteOrderGuards {
     return CompleteOrderAction.completeAndAward;
   }
 
-  /// Loads-to-points mapping used for the award (minimum of 1 point).
-  static int loyaltyPointsFor(int? loadsCount) => loadsCount == null || loadsCount < 1 ? 1 : loadsCount;
+  /// Loads-to-points mapping used for the award (minimum of 1 point for paid loads).
+  /// Free loads redeemed with loyalty points are excluded from earning new points.
+  static int loyaltyPointsFor(int? loadsCount, {int freeLoadsRedeemed = 0}) {
+    final raw = loadsCount == null || loadsCount < 1 ? 1 : loadsCount;
+    final net = raw - freeLoadsRedeemed;
+    return net < 0 ? 0 : net;
+  }
 }
 
 /// Holds accurate order counts for Today's Queue in staff dashboard.
@@ -151,6 +156,8 @@ class OrderService {
     List<Map<String, dynamic>> addons = const [],
     bool isPaid = false,
     String? paymentMethod,
+    double discountAmount = 0.0,
+    int freeLoadsRedeemed = 0,
   }) async {
     try {
       // Validations
@@ -241,6 +248,8 @@ class OrderService {
         'landmark': deliveryLandmark,
         'subtotal': subtotal,
         'delivery_fee': 0.0, // Always free delivery
+        'discount_amount': discountAmount,
+        'free_loads_redeemed': freeLoadsRedeemed,
         'total_amount': totalAmount,
         'payment_status': isPaid ? 'paid' : 'pending',
         'status': initialStatus, // Use computed status
@@ -271,8 +280,15 @@ class OrderService {
               .single();
           break;
         } catch (e) {
-          final isUniqueViolation = e.toString().contains('duplicate key') ||
-              e.toString().contains('orders_order_number_key');
+          final errStr = e.toString();
+          // Fallback if migration hasn't been executed on Supabase yet
+          if (errStr.contains('discount_amount') || errStr.contains('free_loads_redeemed')) {
+            orderData.remove('discount_amount');
+            orderData.remove('free_loads_redeemed');
+            continue;
+          }
+          final isUniqueViolation = errStr.contains('duplicate key') ||
+              errStr.contains('orders_order_number_key');
           attempt++;
           if (!isUniqueViolation || attempt >= maxAttempts) rethrow;
 
@@ -349,8 +365,11 @@ class OrderService {
         }
       }
 
-      // Step 4: Create payment record (if paid immediately)
-      if (isPaid && paymentMethod != null) {
+      // Step 4: Create payment record (if paid immediately and amount > 0)
+      // Note: If the entire order is covered by a Free Load discount (totalAmount == 0.0),
+      // the order.payment_status is 'paid', but no row is inserted into payments table
+      // because of the check constraint payments_amount_check (amount > 0).
+      if (isPaid && paymentMethod != null && totalAmount > 0) {
         final transactionNumber = await generateTransactionNumber();
         
         final paymentData = {
@@ -374,6 +393,8 @@ class OrderService {
         print('📦 Payment data being inserted: $paymentData');
         await _client.from('payments').insert(paymentData);
         print('✅ Payment recorded: $transactionNumber ($paymentMethod)');
+      } else if (isPaid && totalAmount <= 0) {
+        print('ℹ️ Order fully covered by free load discount (₱0.00), skipping payments table row.');
       }
 
       print('🎉 Order creation complete: $orderNumber');
@@ -1121,24 +1142,29 @@ class OrderService {
   }) async {
     try {
       final now = DateTime.now().toUtc().toIso8601String();
-      final transactionNumber = await generateTransactionNumber();
+      String? transactionNumber;
+      if (amount > 0) {
+        transactionNumber = await generateTransactionNumber();
 
-      final paymentData = {
-        'transaction_number': transactionNumber,
-        'order_id': orderId,
-        'amount': amount,
-        'payment_method': paymentMethod.toLowerCase(),
-        'status': 'paid',
-        'paid_at': now,
-        'created_at': now,
-      };
+        final paymentData = {
+          'transaction_number': transactionNumber,
+          'order_id': orderId,
+          'amount': amount,
+          'payment_method': paymentMethod.toLowerCase(),
+          'status': 'paid',
+          'paid_at': now,
+          'created_at': now,
+        };
 
-      if (assignedStaffId != null) {
-        paymentData['processed_by'] = assignedStaffId;
+        if (assignedStaffId != null) {
+          paymentData['processed_by'] = assignedStaffId;
+        }
+
+        print('📦 Recording payment: $paymentData');
+        await _client.from('payments').insert(paymentData);
+      } else {
+        transactionNumber = 'LOYALTY-FREE-LOAD';
       }
-
-      print('📦 Recording payment: $paymentData');
-      await _client.from('payments').insert(paymentData);
 
       // Update orders table — mirror payment_method and paid_at so both the
       // payments row and the orders row stay in sync (the GCash flow in
@@ -1424,15 +1450,24 @@ class OrderService {
     try {
       final orderRow = await _client
           .from('orders')
-          .select('customer_id, loads_count, order_number')
+          .select('customer_id, loads_count, order_number, free_loads_redeemed')
           .eq('id', orderId)
           .maybeSingle();
 
       if (orderRow == null) return;
 
-      final loadsCount = CompleteOrderGuards.loyaltyPointsFor((orderRow['loads_count'] as num?)?.toInt());
+      final freeLoadsRedeemed = (orderRow['free_loads_redeemed'] as num?)?.toInt() ?? 0;
+      final loadsCount = CompleteOrderGuards.loyaltyPointsFor(
+        (orderRow['loads_count'] as num?)?.toInt(),
+        freeLoadsRedeemed: freeLoadsRedeemed,
+      );
       final orderNumber = orderRow['order_number'] as String?;
       final customerId = orderRow['customer_id'] as String?;
+
+      if (loadsCount <= 0) {
+        print('Loyalty: Order $orderNumber was fully covered by free load redemption; no new points awarded.');
+        return;
+      }
 
       // Check if customer has linked loyalty card
       if (customerId != null) {
@@ -1445,7 +1480,7 @@ class OrderService {
             loadsCompleted: loadsCount,
             orderNumber: orderNumber,
           );
-          print('⭐ Awarded $loadsCount points to loyalty card ${card.uid} for order $orderNumber');
+          print('Awarded $loadsCount loyalty point(s) to card ${card.uid} for order $orderNumber');
         } else {
           print('ℹ️ No loyalty card linked for customer on order $orderNumber');
         }
@@ -1804,28 +1839,30 @@ class OrderService {
           .maybeSingle();
 
       if (isPaid && paymentMethod != null) {
-        if (existingPayment != null) {
-          await _client.from('payments').update({
-            'amount': totalAmount,
-            'payment_method': paymentMethod.toLowerCase(),
-            'status': 'paid',
-            'paid_at': now,
-          }).eq('id', existingPayment['id']);
-        } else {
-          final txNumber = await generateTransactionNumber();
-          final paymentData = <String, dynamic>{
-            'transaction_number': txNumber,
-            'order_id': orderId,
-            'amount': totalAmount,
-            'payment_method': paymentMethod.toLowerCase(),
-            'status': 'paid',
-            'paid_at': now,
-            'created_at': now,
-          };
-          if (assignedStaffId != null) {
-            paymentData['processed_by'] = assignedStaffId;
+        if (totalAmount > 0) {
+          if (existingPayment != null) {
+            await _client.from('payments').update({
+              'amount': totalAmount,
+              'payment_method': paymentMethod.toLowerCase(),
+              'status': 'paid',
+              'paid_at': now,
+            }).eq('id', existingPayment['id']);
+          } else {
+            final txNumber = await generateTransactionNumber();
+            final paymentData = <String, dynamic>{
+              'transaction_number': txNumber,
+              'order_id': orderId,
+              'amount': totalAmount,
+              'payment_method': paymentMethod.toLowerCase(),
+              'status': 'paid',
+              'paid_at': now,
+              'created_at': now,
+            };
+            if (assignedStaffId != null) {
+              paymentData['processed_by'] = assignedStaffId;
+            }
+            await _client.from('payments').insert(paymentData);
           }
-          await _client.from('payments').insert(paymentData);
         }
       } else if (!isPaid && existingPayment != null) {
         // Updated to unpaid

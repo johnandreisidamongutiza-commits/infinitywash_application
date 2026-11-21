@@ -140,6 +140,8 @@ class LaundryOrder {
   final String? underReviewBy; // Staff member currently reviewing (lock)
   final DateTime? dismissedAt; // When staff dismissed this rejected request
   final double? totalAmount; // Total order price from DB
+  final double? discountAmount; // Discount applied from loyalty / promotions
+  final int? freeLoadsRedeemed; // Number of free loads redeemed via loyalty points
 
   LaundryOrder({
     required this.id,
@@ -173,6 +175,8 @@ class LaundryOrder {
     this.underReviewBy,
     this.dismissedAt,
     this.totalAmount,
+    this.discountAmount,
+    this.freeLoadsRedeemed,
   });
 
   // Computed properties
@@ -293,6 +297,8 @@ class LaundryOrder {
       'under_review_by': underReviewBy,
       'dismissed_at': dismissedAt?.toIso8601String(),
       'total_amount': totalAmount,
+      'discount_amount': discountAmount,
+      'free_loads_redeemed': freeLoadsRedeemed,
     };
   }
 
@@ -336,6 +342,8 @@ class LaundryOrder {
       underReviewBy: json['under_review_by'] as String?,
       dismissedAt: _parseLocalDateTime(json['dismissed_at']),
       totalAmount: (json['total_amount'] as num?)?.toDouble(),
+      discountAmount: (json['discount_amount'] as num?)?.toDouble() ?? 0.0,
+      freeLoadsRedeemed: (json['free_loads_redeemed'] as num?)?.toInt() ?? 0,
     );
   }
 

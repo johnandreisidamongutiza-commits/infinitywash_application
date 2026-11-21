@@ -170,6 +170,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   // Loyalty card state (optional — customer may not have a card yet)
   String? _loyaltyCardUid;       // Raw UID from scan / manual entry
   LoyaltyCardInfo? _loyaltyCardInfo; // Looked-up card data (null if not found / not scanned)
+  int _freeLoadsToRedeem = 0;    // Number of free loads to redeem for this order
   bool _lookingUpCard = false;
   int _loyaltyLookupRequest = 0;
   String? _lastRealtimeUid;
@@ -408,6 +409,17 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
         if (card.isActive && card.customerId != null) {
           _applyLoyaltyCardOwner(card, owner);
+          if (card.freeLoadsAvailable > 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Loyalty card linked: ${card.ownerName} has ${card.freeLoadsAvailable} Free Load${card.freeLoadsAvailable > 1 ? "s" : ""} available (${card.pointsBalance} pts).',
+                ),
+                backgroundColor: AppTheme.primaryBlue,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
         }
       });
 
@@ -487,6 +499,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     setState(() {
       _loyaltyCardUid = null;
       _loyaltyCardInfo = null;
+      _freeLoadsToRedeem = 0;
       _lookingUpCard = false;
       _loyaltyCardController.clear();
     });
@@ -498,7 +511,20 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   double get _addOnsTotal =>
       (_addExtraFabCon ? LaundryIntake.addonPrice : 0.0) +
           (_addExtraDetergent ? LaundryIntake.addonPrice : 0.0);
-  double get _finalTotal => (_basePricePerLoad * _loads.length) + _addOnsTotal;
+
+  int get _maxRedeemableFreeLoads {
+    final available = _loyaltyCardInfo?.freeLoadsAvailable ?? 0;
+    final totalLoads = _loads.length;
+    return available < totalLoads ? available : totalLoads;
+  }
+
+  double get _freeLoadDiscount => _freeLoadsToRedeem * _basePricePerLoad;
+
+  double get _finalTotal {
+    final sub = (_basePricePerLoad * _loads.length) + _addOnsTotal;
+    final net = sub - _freeLoadDiscount;
+    return net < 0.0 ? 0.0 : net;
+  }
 
   String get _customerFullName {
     final first = _firstNameController.text.trim();
@@ -514,16 +540,6 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   bool _isLoadOverLimit(int index) => _getLoadWeight(index) > _getLoadLimit(index);
 
   double get _totalWeight => _loads.fold(0.0, (sum, load) => sum + _getLoadWeight(_loads.indexOf(load)));
-
-  double _calculateTotalPrice() {
-    double basePrice = 170.0 * _loads.length;
-    double addOnsPrice = 0.0;
-
-    if (_addExtraFabCon) addOnsPrice += 20.0;
-    if (_addExtraDetergent) addOnsPrice += 20.0;
-
-    return basePrice + addOnsPrice;
-  }
 
   // Step completion validation
   bool get _isStep1Complete {
@@ -1317,7 +1333,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       final subtotal = _selectedCollection == CollectionMethod.dropOff 
           ? (basePrice * _loads.length) + addonsTotal 
           : 0.0;
-      final totalAmount = subtotal; // delivery_fee is always 0
+      final discountAmount = _selectedCollection == CollectionMethod.dropOff
+          ? _freeLoadDiscount
+          : 0.0;
+      final totalAmount = _selectedCollection == CollectionMethod.dropOff
+          ? (subtotal - discountAmount).clamp(0.0, double.infinity)
+          : 0.0;
 
       // Step 6: Build customer notes
       final String? customerNotes = _instructionsController.text.trim().isNotEmpty
@@ -1341,6 +1362,8 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             _loyaltyCardInfo?.hasOwner == true &&
             _acceptedCustomerId == _loyaltyCardInfo?.customerId)
           'Loyalty Card: $_loyaltyCardUid',
+        if (_freeLoadsToRedeem > 0)
+          'Free Load Redeemed: $_freeLoadsToRedeem (-₱${_freeLoadDiscount.toStringAsFixed(0)})',
         if (_selectedReturn == ReturnMethod.delivery && _selectedCollection != CollectionMethod.riderPickup && _fullDeliveryAddress.isNotEmpty)
           'Delivery Address: $_fullDeliveryAddress${_landmarkController.text.trim().isNotEmpty ? ' (Landmark: ${_landmarkController.text.trim()})' : ''}',
         if (_selectedReturn == ReturnMethod.delivery && _selectedCollection == CollectionMethod.riderPickup)
@@ -1435,6 +1458,8 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
         loads: orderLoads,
         subtotal: subtotal,
         totalAmount: totalAmount,
+        discountAmount: discountAmount,
+        freeLoadsRedeemed: _freeLoadsToRedeem,
         assignedStaffId: assignedStaffId,
         pickupRequested: _selectedCollection == CollectionMethod.riderPickup,
         deliveryRequested: _selectedReturn == ReturnMethod.delivery,
@@ -1453,6 +1478,21 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       );
 
       print('✅ Order created: $orderId');
+
+      // Deduct loyalty points for redeemed free loads
+      if (_freeLoadsToRedeem > 0 && _loyaltyCardInfo != null) {
+        try {
+          await _loyaltyService.redeemPoints(
+            cardId: _loyaltyCardInfo!.cardId,
+            customerId: _loyaltyCardInfo!.customerId,
+            freeLoadsToRedeem: _freeLoadsToRedeem,
+            orderId: orderId,
+            orderNumber: orderNumber,
+          );
+        } catch (loyaltyError) {
+          debugPrint('Error deducting loyalty points: $loyaltyError');
+        }
+      }
 
       // GCash Pay Now: upload the receipt and record the payment as
       // 'pending' (for review on the admin website). The order is marked
@@ -1566,9 +1606,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -1623,6 +1664,26 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                         overflow: TextOverflow.ellipsis)),
                     ],
                   ),
+                  if (_freeLoadsToRedeem > 0) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.loyalty_outlined, size: 16, color: Colors.green),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '$_freeLoadsToRedeem Free Load applied (-₱${_freeLoadDiscount.toStringAsFixed(0)})',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.green,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1634,7 +1695,8 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
             ),
           ],
         ),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
         actions: [
           Row(
             children: [
@@ -1710,15 +1772,21 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     String method = 'Cash';
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        builder: (context, setModalState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1727,6 +1795,98 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 ],
               ),
               const SizedBox(height: 12),
+              // Loyalty Free Load Redemption Box
+              if (_loyaltyCardInfo != null && _loyaltyCardInfo!.isActive && _maxRedeemableFreeLoads > 0) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _freeLoadsToRedeem > 0
+                        ? Colors.green.withValues(alpha: 0.08)
+                        : AppTheme.softGray,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _freeLoadsToRedeem > 0 ? Colors.green : AppTheme.borderGray,
+                      width: _freeLoadsToRedeem > 0 ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.loyalty_outlined,
+                        size: 20,
+                        color: _freeLoadsToRedeem > 0 ? Colors.green : AppTheme.actionBlue,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Use Free Load (${_loyaltyCardInfo!.freeLoadsAvailable} available)',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${_loyaltyCardInfo!.pointsBalance} pts • Saves ₱${_basePricePerLoad.toStringAsFixed(0)} per load',
+                              style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                            icon: const Icon(Icons.remove_circle_outline, size: 22),
+                            color: _freeLoadsToRedeem > 0 ? AppTheme.actionBlue : AppTheme.borderGray,
+                            onPressed: _freeLoadsToRedeem > 0
+                                ? () {
+                                    setModalState(() => _freeLoadsToRedeem--);
+                                    setState(() {});
+                                  }
+                                : null,
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _freeLoadsToRedeem > 0 ? AppTheme.actionBlue.withValues(alpha: 0.1) : Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: _freeLoadsToRedeem > 0 ? AppTheme.actionBlue : AppTheme.borderGray,
+                              ),
+                            ),
+                            child: Text(
+                              '$_freeLoadsToRedeem',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: _freeLoadsToRedeem > 0 ? AppTheme.actionBlue : AppTheme.textDark,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                            icon: const Icon(Icons.add_circle_outline, size: 22),
+                            color: _freeLoadsToRedeem < _maxRedeemableFreeLoads ? AppTheme.actionBlue : AppTheme.borderGray,
+                            onPressed: _freeLoadsToRedeem < _maxRedeemableFreeLoads
+                                ? () {
+                                    setModalState(() => _freeLoadsToRedeem++);
+                                    setState(() {});
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
@@ -1734,143 +1894,195 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   color: Colors.green.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
                   children: [
-                    const Text('Total Amount:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                    Text('₱${_finalTotal.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green)),
+                    if (_freeLoadsToRedeem > 0) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Subtotal:', style: TextStyle(fontSize: 13, color: AppTheme.textLight)),
+                          Text('₱${((_basePricePerLoad * _loads.length) + _addOnsTotal).toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 13, color: AppTheme.textDark)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Free Load Discount ($_freeLoadsToRedeem):',
+                              style: TextStyle(fontSize: 13, color: Colors.green.shade700)),
+                          Text('-₱${_freeLoadDiscount.toStringAsFixed(2)}',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green.shade700)),
+                        ],
+                      ),
+                      const Divider(height: 12),
+                    ],
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total Amount:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        Text('₱${_finalTotal.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green)),
+                      ],
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 20),
-              const Text('Payment Method', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setModalState(() => method = 'Cash'),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        decoration: BoxDecoration(
-                          color: method == 'Cash' ? Colors.green.withValues(alpha: 0.1) : AppTheme.softGray,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: method == 'Cash' ? Colors.green : AppTheme.borderGray,
-                            width: method == 'Cash' ? 2 : 1,
+              if (_finalTotal > 0.0) ...[
+                const Text('Payment Method', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setModalState(() => method = 'Cash'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            color: method == 'Cash' ? Colors.green.withValues(alpha: 0.1) : AppTheme.softGray,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: method == 'Cash' ? Colors.green : AppTheme.borderGray,
+                              width: method == 'Cash' ? 2 : 1,
+                            ),
                           ),
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.money,
-                              size: 32,
-                              color: method == 'Cash' ? Colors.green : AppTheme.textLight,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Cash',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: method == 'Cash' ? Colors.green : AppTheme.textDark,
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.money,
+                                size: 32,
+                                color: method == 'Cash' ? Colors.green : AppTheme.textLight,
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 8),
+                              Text(
+                                'Cash',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: method == 'Cash' ? Colors.green : AppTheme.textDark,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setModalState(() => method = 'GCash'),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        decoration: BoxDecoration(
-                          color: method == 'GCash' ? Colors.green.withValues(alpha: 0.1) : AppTheme.softGray,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: method == 'GCash' ? Colors.green : AppTheme.borderGray,
-                            width: method == 'GCash' ? 2 : 1,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setModalState(() => method = 'GCash'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            color: method == 'GCash' ? Colors.green.withValues(alpha: 0.1) : AppTheme.softGray,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: method == 'GCash' ? Colors.green : AppTheme.borderGray,
+                              width: method == 'GCash' ? 2 : 1,
+                            ),
                           ),
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.account_balance_wallet,
-                              size: 32,
-                              color: method == 'GCash' ? Colors.green : AppTheme.textLight,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'GCash',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: method == 'GCash' ? Colors.green : AppTheme.textDark,
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.account_balance_wallet,
+                                size: 32,
+                                color: method == 'GCash' ? Colors.green : AppTheme.textLight,
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 8),
+                              Text(
+                                'GCash',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: method == 'GCash' ? Colors.green : AppTheme.textDark,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : () async {
-                    if (method == 'GCash') {
-                      // GCash: show the admin-uploaded QR, then capture/upload
-                      // the receipt BEFORE creating the order + payment.
-                      Navigator.pop(ctx);
-                      final receipt = await Navigator.push<File>(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => GcashQrPaymentScreen(
-                            title: 'Pay Now with GCash',
-                            orderLabel: 'New Walk-in Order',
-                            amount: _finalTotal,
-                            customerName: _customerFullName,
+                  ],
+                ),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isSubmitting ? null : () async {
+                      if (method == 'GCash') {
+                        Navigator.pop(ctx);
+                        final receipt = await Navigator.push<File>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => GcashQrPaymentScreen(
+                              title: 'Pay Now with GCash',
+                              orderLabel: 'New Walk-in Order',
+                              amount: _finalTotal,
+                              customerName: _customerFullName,
+                            ),
                           ),
-                        ),
-                      );
-                      if (receipt == null || !mounted) return;
-                      _submitOrder(
-                        isPaidImmediately: true,
-                        paymentMethod: 'GCash',
-                        gcashReceiptFile: receipt,
-                      );
-                    } else {
-                      Navigator.pop(ctx);
-                      _submitOrder(isPaidImmediately: true, paymentMethod: method);
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.accentBlue,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(50),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
-                  ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
+                        );
+                        if (receipt == null || !mounted) return;
+                        _submitOrder(
+                          isPaidImmediately: true,
+                          paymentMethod: 'GCash',
+                          gcashReceiptFile: receipt,
+                        );
+                      } else {
+                        Navigator.pop(ctx);
+                        _submitOrder(isPaidImmediately: true, paymentMethod: method);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accentBlue,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(50),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
                     ),
-                  )
-                      : Text(
-                    'Confirm Payment',
-                    style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.bold),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Text(
+                            'Confirm Payment (₱${_finalTotal.toStringAsFixed(2)})',
+                            style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.bold),
+                          ),
                   ),
                 ),
-              ),
+              ] else ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _isSubmitting ? null : () {
+                      Navigator.pop(ctx);
+                      _submitOrder(
+                        isPaidImmediately: true,
+                        paymentMethod: 'Loyalty Free Load',
+                      );
+                    },
+                    icon: const Icon(Icons.check_circle_outline, color: Colors.white),
+                    label: Text(
+                      'Confirm Free Load Order (₱0.00)',
+                      style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(50),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
@@ -1883,7 +2095,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 
   @override
@@ -1930,15 +2144,19 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   _lookingUpCard
                       ? 'Looking up...'
                       : _loyaltyCardInfo != null
-                      ? '${_loyaltyCardInfo!.pointsBalance} pts'
+                      ? (_loyaltyCardInfo!.freeLoadsAvailable > 0
+                          ? '${_loyaltyCardInfo!.freeLoadsAvailable} Free Load'
+                          : '${_loyaltyCardInfo!.pointsBalance} pts')
                       : 'No Card Scanned',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                     color: _lookingUpCard
                         ? Colors.orange
                         : _loyaltyCardInfo != null
-                        ? Colors.green
+                        ? (_loyaltyCardInfo!.freeLoadsAvailable > 0 ? Colors.green : AppTheme.accentBlue)
                         : AppTheme.accentBlue,
                   ),
                 ),
@@ -2041,7 +2259,11 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                                     ? ' • ${_phoneController.text.trim()}'
                                     : '') +
                                 (_loyaltyCardUid != null
-                                    ? ' • Card: $_loyaltyCardUid'
+                                    ? ' • Card: $_loyaltyCardUid' +
+                                        (_loyaltyCardInfo != null &&
+                                                _loyaltyCardInfo!.freeLoadsAvailable > 0
+                                            ? ' (${_loyaltyCardInfo!.freeLoadsAvailable} Free Load${_loyaltyCardInfo!.freeLoadsAvailable > 1 ? "s" : ""})'
+                                            : '')
                                     : ''),
                             style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
                             overflow: TextOverflow.ellipsis,
@@ -2871,9 +3093,12 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        'Card: $_loyaltyCardUid',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                      Flexible(
+                        child: Text(
+                          'Card: $_loyaltyCardUid',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       const SizedBox(width: 6),
                       Container(
@@ -2895,7 +3120,54 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                         ? '${card.ownerName} • ${card.pointsBalance} pts'
                         : 'Card details unavailable',
                     style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
+                    overflow: TextOverflow.ellipsis,
                   ),
+                  if (card != null && card.isActive) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: card.freeLoadsAvailable > 0
+                            ? Colors.green.withValues(alpha: 0.12)
+                            : AppTheme.accentBlue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: card.freeLoadsAvailable > 0
+                              ? Colors.green.withValues(alpha: 0.4)
+                              : AppTheme.accentBlue.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.loyalty_outlined,
+                            size: 13,
+                            color: card.freeLoadsAvailable > 0
+                                ? Colors.green
+                                : AppTheme.accentBlue,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              card.freeLoadsAvailable > 0
+                                  ? '${card.freeLoadsAvailable} Free Load${card.freeLoadsAvailable > 1 ? "s" : ""} Available (${card.pointsBalance} pts)'
+                                  : '${card.pointsBalance} pts • ${10 - (card.pointsBalance % 10)} to Free Load',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: card.freeLoadsAvailable > 0
+                                    ? Colors.green
+                                    : AppTheme.accentBlue,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -3610,7 +3882,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                                 children: [
                                   const Text('Total Amount:',
                                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
-                                  Text('₱${_calculateTotalPrice().toStringAsFixed(2)}',
+                                  Text('₱${((_basePricePerLoad * _loads.length) + _addOnsTotal).toStringAsFixed(2)}',
                                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)),
                                 ],
                               ),
@@ -3693,36 +3965,43 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        _selectedCollection == CollectionMethod.riderPickup 
-                            ? Icons.two_wheeler 
-                            : Icons.credit_card, 
-                        size: 12, 
-                        color: _selectedCollection == CollectionMethod.riderPickup 
-                            ? Colors.blue 
-                            : Colors.green
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _selectedCollection == CollectionMethod.riderPickup
-                            ? 'Rider pickup order${_loyaltyCardUid != null ? " • Card: $_loyaltyCardUid" : ""}'
-                            : '${_loyaltyCardUid != null ? "Card: $_loyaltyCardUid • " : ""}${_loads.length} load(s) • ${_totalWeight.toStringAsFixed(1)}kg',
-                        style: TextStyle(
-                          fontSize: 11, 
-                          fontWeight: FontWeight.bold, 
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Icon(
+                          _selectedCollection == CollectionMethod.riderPickup 
+                              ? Icons.two_wheeler 
+                              : Icons.credit_card, 
+                          size: 12, 
                           color: _selectedCollection == CollectionMethod.riderPickup 
                               ? Colors.blue 
                               : Colors.green
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            _selectedCollection == CollectionMethod.riderPickup
+                                ? 'Rider pickup order${_loyaltyCardUid != null ? " • Card: $_loyaltyCardUid" : ""}'
+                                : '${_loyaltyCardUid != null ? "Card: $_loyaltyCardUid • " : ""}${_loads.length} load(s) • ${_totalWeight.toStringAsFixed(1)}kg',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11, 
+                              fontWeight: FontWeight.bold, 
+                              color: _selectedCollection == CollectionMethod.riderPickup 
+                                  ? Colors.blue 
+                                  : Colors.green
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   Text(
                     _selectedCollection == CollectionMethod.riderPickup
                         ? 'TBD'
-                        : '₱${_calculateTotalPrice().toStringAsFixed(2)}',
+                        : '₱${((_basePricePerLoad * _loads.length) + _addOnsTotal).toStringAsFixed(2)}',
                     style: TextStyle(
                       fontSize: 16, 
                       fontWeight: FontWeight.bold, 
@@ -3867,7 +4146,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
                   // Pay Later Button
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: _isSubmitting ? null : () => _submitOrder(isPaidImmediately: false, paymentMethod: null),
+                      onPressed: _isSubmitting ? null : () {
+                        setState(() => _freeLoadsToRedeem = 0);
+                        _submitOrder(isPaidImmediately: false, paymentMethod: null);
+                      },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.accentBlue,
                         side: const BorderSide(color: AppTheme.accentBlue, width: 1.5),

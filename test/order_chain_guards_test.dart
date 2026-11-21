@@ -211,6 +211,17 @@ void main() {
       expect(CompleteOrderGuards.loyaltyPointsFor(1), 1);
       expect(CompleteOrderGuards.loyaltyPointsFor(7), 7);
     });
+
+    test('loads count deducts redeemed free loads before awarding points', () {
+      // 2 loads total, 1 redeemed free -> 1 point awarded
+      expect(CompleteOrderGuards.loyaltyPointsFor(2, freeLoadsRedeemed: 1), 1);
+      // 1 load total, 1 redeemed free -> 0 points awarded (fully free load)
+      expect(CompleteOrderGuards.loyaltyPointsFor(1, freeLoadsRedeemed: 1), 0);
+      // 3 loads total, 2 redeemed free -> 1 point awarded
+      expect(CompleteOrderGuards.loyaltyPointsFor(3, freeLoadsRedeemed: 2), 1);
+      // 0 or null loads with 0 redeemed -> defaults to 1 minimum
+      expect(CompleteOrderGuards.loyaltyPointsFor(null, freeLoadsRedeemed: 0), 1);
+    });
   });
 
   // =========================================================================

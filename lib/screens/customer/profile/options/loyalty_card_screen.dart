@@ -20,6 +20,7 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
   final TextEditingController _cardCodeController = TextEditingController();
   
   LoyaltyCardInfo? _linkedCard;
+  List<LoyaltyHistoryEntry> _history = [];
   bool _isLoading = true;
   bool _isLinking = false;
 
@@ -41,10 +42,15 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
     try {
       final customerId = await _customerService.getCurrentAuthenticatedCustomerId();
       final card = await _loyaltyService.getLinkedCard(customerId);
+      List<LoyaltyHistoryEntry> history = [];
+      if (card != null) {
+        history = await _loyaltyService.getPointsHistory(card.cardId, limit: 10);
+      }
       
       if (mounted) {
         setState(() {
           _linkedCard = card;
+          _history = history;
           _isLoading = false;
         });
       }
@@ -242,6 +248,24 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
       ),
     );
   }
+
+  Widget _buildHowItWorksRow(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('• ', style: TextStyle(color: AppTheme.accentBlue, fontWeight: FontWeight.bold)),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 12, color: AppTheme.textDark),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
   Widget _buildLinkedCardSection() {
     return Column(
       children: [
@@ -296,21 +320,83 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
                 ],
               ),
               const SizedBox(height: 24),
-              const Text(
-                'POINTS BALANCE',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'POINTS BALANCE',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_linkedCard!.currentPoints}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_linkedCard!.freeLoadsAvailable > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.loyalty_outlined, size: 16, color: Colors.green.shade700),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${_linkedCard!.freeLoadsAvailable} Free Load${_linkedCard!.freeLoadsAvailable > 1 ? "s" : ""}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              // Progress toward next free load
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: (_linkedCard!.currentPoints % 10) / 10.0,
+                  minHeight: 6,
+                  backgroundColor: Colors.white.withValues(alpha: 0.25),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               Text(
-                '${_linkedCard!.currentPoints}',
+                _linkedCard!.freeLoadsAvailable > 0
+                    ? '${_linkedCard!.pointsToNextRedemption == 0 ? 10 : _linkedCard!.pointsToNextRedemption} more load${(_linkedCard!.pointsToNextRedemption == 0 ? 10 : _linkedCard!.pointsToNextRedemption) > 1 ? "s" : ""} to earn another Free Load'
+                    : '${_linkedCard!.pointsToNextRedemption} more load${_linkedCard!.pointsToNextRedemption > 1 ? "s" : ""} to earn your 1st Free Load (10 pts = 1 Free Load)',
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 36,
-                  fontWeight: FontWeight.bold,
+                  color: Colors.white70,
+                  fontSize: 11,
                 ),
               ),
               const SizedBox(height: 20),
@@ -364,28 +450,149 @@ class _CustomerLoyaltyCardScreenState extends State<CustomerLoyaltyCardScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
         
-        // Info Section
+        // How to Redeem Section
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.green.shade50,
+            color: AppTheme.softGray,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.green.shade200),
+            border: Border.all(color: AppTheme.borderGray),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.check_circle, color: Colors.green.shade700, size: 24),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Your loyalty card is linked! Points will be automatically added when you complete orders.',
-                  style: TextStyle(fontSize: 12),
-                ),
+              Row(
+                children: [
+                  const Icon(Icons.info_outline, color: AppTheme.accentBlue, size: 20),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'How Free Loads Work',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 12),
+              _buildHowItWorksRow('1 completed load = 1 loyalty point'),
+              _buildHowItWorksRow('10 points = 1 Free Load (worth ₱170.00 off your wash)'),
+              _buildHowItWorksRow('In-Store: Present this card or give your phone number at the counter to redeem'),
+              _buildHowItWorksRow('Pickup: Points are automatically added once your laundry order is completed'),
             ],
           ),
+        ),
+        const SizedBox(height: 24),
+
+        // Points Activity Ledger
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Points Activity',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_history.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: AppTheme.softGray.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.borderGray),
+                ),
+                child: const Column(
+                  children: [
+                    Icon(Icons.history, color: AppTheme.textLight, size: 32),
+                    SizedBox(height: 8),
+                    Text(
+                      'No points activity yet',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textLight,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Complete orders to start earning points!',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ...List.generate(_history.length, (index) {
+                final entry = _history[index];
+                final isEarned = entry.transactionType == 'earned';
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.borderGray),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isEarned
+                              ? Colors.green.withValues(alpha: 0.12)
+                              : Colors.orange.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isEarned ? Icons.add : Icons.card_giftcard,
+                          size: 16,
+                          color: isEarned ? Colors.green : Colors.orange.shade800,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              entry.description.isNotEmpty
+                                  ? entry.description
+                                  : (isEarned ? 'Points Earned' : 'Points Redeemed'),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textDark,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${entry.createdAt.month}/${entry.createdAt.day}/${entry.createdAt.year}',
+                              style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        isEarned ? '+${entry.points} pt${entry.points > 1 ? "s" : ""}' : '${entry.points} pts',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: isEarned ? Colors.green : Colors.orange.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+          ],
         ),
       ],
     );
