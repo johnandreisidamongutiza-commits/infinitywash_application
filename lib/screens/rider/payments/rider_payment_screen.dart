@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
@@ -73,6 +72,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
   String _jobTypeFilter = 'all'; // 'all', 'pickup', 'delivery'
   int _unpaidPickupCount = 0;
   int _unpaidDeliveryCount = 0;
+  DateTime? _lastWarningAt;
   int _paidPickupCount = 0;
   int _paidDeliveryCount = 0;
   bool _dataDirty = false;
@@ -939,6 +939,7 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
   Widget _buildOrderCard(LaundryOrder order) {
     final isDelivery = _isDelivery(order);
     final isPaid = order.paymentStatus == PaymentStatus.paid;
+    final isUnweighed = (order.needsCheckIn || order.loads.isEmpty) && !isDelivery;
     final total = order.totalAmount ?? (order.basePrice > 0 ? order.basePrice : 170.0);
     final jobStatusLabel = _getJobStatusLabel(order);
 
@@ -950,7 +951,21 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          if (!isPaid) {
+          if (isUnweighed) {
+            final now = DateTime.now();
+            if (_lastWarningAt != null && now.difference(_lastWarningAt!) < const Duration(seconds: 3)) {
+              return; // Rate limit: suppress spam taps
+            }
+            _lastWarningAt = now;
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('This order has not been weighed by store staff yet. Payment cannot be collected until laundry is checked in.'),
+                backgroundColor: Colors.amber,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          } else if (!isPaid) {
             _openPaymentProcess(order, isDelivery);
           } else {
             _showReceiptSheet(order, total);
@@ -1032,11 +1047,13 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        '₱${total.toStringAsFixed(2)}',
+                        isUnweighed ? 'Pending Weighing' : '₱${total.toStringAsFixed(2)}',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: isPaid ? Colors.green[700] : AppTheme.accentBlue,
+                          fontSize: isUnweighed ? 13 : 18,
+                          color: isPaid
+                              ? Colors.green[700]
+                              : (isUnweighed ? Colors.amber.shade900 : AppTheme.accentBlue),
                         ),
                       ),
                       const SizedBox(width: 2),
@@ -1143,7 +1160,31 @@ class RiderPaymentScreenState extends State<RiderPaymentScreen> {
                       ],
                     ),
                   ),
-                  if (!isPaid)
+                  if (isUnweighed)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.shade300),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.scale_outlined, size: 13, color: Colors.amber.shade900),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Awaiting Intake',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (!isPaid)
                     // Flexible + minimumSize/tapTargetSize overrides cancel the global
                     // theme's Size(double.infinity, 56) which forces w=Infinity when
                     // the button is a direct Row child (unconstrained width pass).

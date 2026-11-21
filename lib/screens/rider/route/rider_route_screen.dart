@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/phone_helper.dart';
 import '../../../utils/app_error.dart';
@@ -155,6 +156,74 @@ class _RiderRouteScreenState extends State<RiderRouteScreen> {
       }
       return;
     }
+
+    final confirmComplete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(
+              _isPickup ? Icons.inventory_2_outlined : Icons.check_circle_outline,
+              color: _isPickup ? AppTheme.accentBlue : Colors.green,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _isPickup ? 'Complete Pickup?' : 'Complete Delivery?',
+              style: GoogleFonts.lexend(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+            ),
+          ],
+        ),
+        content: Text(
+          _isPickup
+              ? 'Are you sure you want to mark this laundry pickup as complete?'
+              : 'Are you sure you want to mark this delivery as complete and handed over to the customer?',
+          style: GoogleFonts.lexend(fontSize: 13, color: AppTheme.textLight),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF475569),
+                    backgroundColor: const Color(0xFFF8FAFC),
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF475569)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isPickup ? AppTheme.primaryBlue : Colors.green.shade700,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    _isPickup ? 'Confirm Pickup' : 'Confirm Delivery',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (confirmComplete != true || !mounted) return;
 
     try {
       // Set to completing state to show animation

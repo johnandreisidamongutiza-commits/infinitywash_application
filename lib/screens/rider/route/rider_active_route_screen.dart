@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../theme/app_theme.dart';
@@ -1144,6 +1145,108 @@ class _RiderActiveRouteScreenState extends State<RiderActiveRouteScreen> {
         debugPrint('⚠️ Non-critical payment check error: $e');
       }
     }
+
+    // Confirm completion with rider before updating database
+    final isDelivery = job.jobType == 'delivery';
+    final confirmComplete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(
+              isDelivery ? Icons.check_circle_outline : Icons.inventory_2_outlined,
+              color: isDelivery ? Colors.green : AppTheme.accentBlue,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              isDelivery ? 'Complete Delivery?' : 'Complete Pickup?',
+              style: GoogleFonts.lexend(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isDelivery
+                  ? 'Are you sure you want to mark this delivery as complete and delivered to the customer?'
+                  : 'Are you sure you want to mark this laundry pickup as complete?',
+              style: GoogleFonts.lexend(fontSize: 13, color: AppTheme.textLight),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.softGray,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Customer: ${job.customerName}',
+                    style: GoogleFonts.lexend(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                  ),
+                  if ((job.address ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Address: ${job.address}',
+                      style: GoogleFonts.lexend(fontWeight: FontWeight.w500, fontSize: 12, color: AppTheme.textLight),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF475569),
+                    backgroundColor: const Color(0xFFF8FAFC),
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF475569)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isDelivery ? Colors.green.shade700 : AppTheme.primaryBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(
+                    isDelivery ? 'Confirm Delivery' : 'Confirm Pickup',
+                    style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (confirmComplete != true || !mounted) return;
 
     setState(() => _isCompleting = true);
 

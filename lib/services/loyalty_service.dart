@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/laundry_intake.dart';
 import '../utils/app_error.dart';
 import 'supabase_service.dart';
 
@@ -337,7 +338,7 @@ class LoyaltyService {
     String? orderNumber,
   }) async {
     const int pointsPerLoad = 10;
-    const double discountPerLoad = 170.0;
+    final double discountPerLoad = LaundryIntake.basePricePerLoad;
 
     final pointsToDeduct = freeLoadsToRedeem * pointsPerLoad;
     final discountAmount = freeLoadsToRedeem * discountPerLoad;
@@ -404,7 +405,7 @@ class LoyaltyService {
     String? orderNumber,
   }) async {
     const int pointsPerLoad = 10;
-    const double discountPerLoad = 170.0;
+    final double discountPerLoad = LaundryIntake.basePricePerLoad;
 
     final pointsToRefund = freeLoadsToRefund * pointsPerLoad;
     final discountRefunded = freeLoadsToRefund * discountPerLoad;

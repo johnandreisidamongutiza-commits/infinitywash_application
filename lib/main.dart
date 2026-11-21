@@ -13,12 +13,12 @@ import 'theme/app_theme.dart';
 import 'utils/app_error.dart';
 import 'services/connectivity_service.dart';
 import 'services/lifecycle_service.dart';
-import 'services/auth_service.dart';
 import 'services/push_notification_service.dart';
 import 'widgets/offline_banner.dart';
 import 'services/cache/route_cache_service.dart';
 import 'services/cache/job_cache_service.dart';
 import 'services/api/api_gate.dart';
+import 'services/service_catalog_service.dart';
 import 'screens/splash_screen.dart';
 
 void main() {
@@ -108,6 +108,9 @@ Future<void> _bootstrap() async {
     _initializeSupabase(),
     _initializeFirebase(),
   ]);
+
+  // Warm up service catalog cache & fetch live load / addon prices in background
+  unawaited(ServiceCatalogService().preloadCatalog());
 
   runApp(const InfinityWashApp());
 }

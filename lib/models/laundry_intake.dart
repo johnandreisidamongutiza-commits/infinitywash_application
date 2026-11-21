@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/service_catalog_service.dart';
 import 'order.dart';
 
 class LoadDraft {
@@ -40,8 +41,8 @@ class CheckInFormResult {
 
 class LaundryIntake {
   static const int maxLoadsLimit = 25;
-  static const double basePricePerLoad = 170.0;
-  static const double addonPrice = 20.0;
+  static double get basePricePerLoad => ServiceCatalogService.currentBasePrice;
+  static double get addonPrice => ServiceCatalogService.currentAddonPrice;
 
   static const Map<String, Map<String, dynamic>> categories = {
     'Regular Clothing': {

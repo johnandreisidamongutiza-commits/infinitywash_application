@@ -74,6 +74,10 @@ class _RiderPaymentProcessScreenState extends State<RiderPaymentProcessScreen> {
     return 170.0; // Standard base minimum if no load price set yet
   }
 
+  bool get _needsCheckIn =>
+      (widget.order?.needsCheckIn == true || (widget.order != null && widget.order!.loads.isEmpty)) &&
+      widget.jobType != 'delivery';
+
   String get _effectiveWeightDisplay =>
       widget.order?.weightDisplay ?? widget.weightDisplay ?? 'Standard Load';
 
@@ -368,6 +372,25 @@ class _RiderPaymentProcessScreenState extends State<RiderPaymentProcessScreen> {
   }
 
   Widget _buildActionButton() {
+    if (_needsCheckIn) {
+      return SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.grey.shade400,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+          onPressed: null,
+          icon: const Icon(Icons.scale_outlined, color: Colors.white),
+          label: const Text(
+            'Check In & Weigh Laundry First',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+        ),
+      );
+    }
+
     return SizedBox(
       width: double.infinity,
       height: 52,

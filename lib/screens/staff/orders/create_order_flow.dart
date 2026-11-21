@@ -562,7 +562,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
   Map<String, Map<String, dynamic>> get _categories => LaundryIntake.categories;
 
-  static const double _basePricePerLoad = LaundryIntake.basePricePerLoad;
+  double get _basePricePerLoad => LaundryIntake.basePricePerLoad;
   double get _addOnsTotal =>
       (_addExtraFabCon ? LaundryIntake.addonPrice : 0.0) +
           (_addExtraDetergent ? LaundryIntake.addonPrice : 0.0);

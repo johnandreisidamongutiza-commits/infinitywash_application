@@ -6,6 +6,10 @@ import '../config/cache_config.dart';
 class ServiceCatalogService {
   final SupabaseClient _client = SupabaseService.client;
 
+  /// Globally accessible cached prices (defaults to standard prices while fetching)
+  static double currentBasePrice = 170.0;
+  static double currentAddonPrice = 20.0;
+
   // In-memory lookups backed by ApiGate (Hive-persisted, 24h TTL)
   final Map<String, Map<String, dynamic>> _cachedAddonsByName = {};
   final Map<String, Map<String, dynamic>> _cachedAddonsByCode = {};
@@ -48,6 +52,10 @@ class ServiceCatalogService {
       );
       if (result.fromCache) {
         print('✅ Returning cached service (age: ${result.hiveAge?.inMinutes ?? 0} min): ${result.value['service_name']}');
+      }
+      final base = (result.value['base_price'] as num?)?.toDouble();
+      if (base != null && base > 0) {
+        currentBasePrice = base;
       }
       return result.value;
     } catch (e) {
@@ -195,6 +203,10 @@ class ServiceCatalogService {
       for (var addon in result.value) {
         final name = addon['addon_name'] as String?;
         final code = addon['addon_code'] as String?;
+        final price = (addon['price'] as num?)?.toDouble();
+        if (price != null && price > 0) {
+          currentAddonPrice = price;
+        }
         if (name != null) _cachedAddonsByName[name] = addon;
         if (code != null) _cachedAddonsByCode[code] = addon;
       }
@@ -246,6 +258,18 @@ class ServiceCatalogService {
     }
 
     return resolved;
+  }
+
+  /// Preload service and addon catalog in background to warm up cache and live prices
+  Future<void> preloadCatalog() async {
+    try {
+      await Future.wait([
+        getFullService(),
+        getAllAddons(),
+      ]);
+    } catch (e) {
+      print('ℹ️ Preloading catalog deferred or offline: $e');
+    }
   }
 
   /// Clear cache (useful for testing or when data changes)

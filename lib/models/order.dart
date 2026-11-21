@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:meta/meta.dart';
+import 'laundry_intake.dart';
 
 enum OrderStatus { pending_approval, rejected, cancelled, pending_pickup, processing, ready, out_for_delivery, completed }
 enum CollectionMethod { dropOff, riderPickup }
@@ -203,7 +204,7 @@ class LaundryOrder {
   
   int get totalLoads => loads.length;
   
-  double get basePrice => 170.0 * totalLoads;
+  double get basePrice => LaundryIntake.basePricePerLoad * totalLoads;
   
   bool get allLoadsReady => true; // Order-level status only, no per-load status
   
