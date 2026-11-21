@@ -1020,9 +1020,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   ] else ...[
                     Row(
                       children: [
-                        if (order.paymentMethod != null)
+                        if (order.paymentMethod != null || (order.freeLoadsRedeemed ?? 0) > 0)
                           Text(
-                            'Via ${order.paymentMethod}',
+                            (order.freeLoadsRedeemed ?? 0) > 0
+                                ? ((order.totalAmount ?? 0.0) <= 0 || order.paymentMethod == 'Loyalty Free Load'
+                                    ? 'Via Free Load'
+                                    : 'Via Free Load + ${order.paymentMethod ?? "Cash"}')
+                                : 'Via ${order.paymentMethod}',
                             style: const TextStyle(fontSize: 12, color: AppTheme.textLight),
                           ),
                         const SizedBox(width: 4),
@@ -1193,6 +1197,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
               child: Column(
                 children: [
                   _receiptSheetRow('Customer', order.customerName),
+                  if (order.discountAmount != null && order.discountAmount! > 0) ...[
+                    _receiptSheetRow(
+                      'Subtotal',
+                      '₱${(total + order.discountAmount!).toStringAsFixed(2)}',
+                    ),
+                    _receiptSheetRow(
+                      'Loyalty Free Load${(order.freeLoadsRedeemed ?? 0) > 1 ? " (${order.freeLoadsRedeemed})" : ""}',
+                      '-₱${order.discountAmount!.toStringAsFixed(2)}',
+                    ),
+                  ],
                   _receiptSheetRow(
                     'Amount Paid',
                     '₱${total.toStringAsFixed(2)}',
@@ -1200,7 +1214,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   ),
                   _receiptSheetRow(
                     'Payment Method',
-                    order.paymentMethod ?? 'Cash / GCash',
+                    ((order.freeLoadsRedeemed ?? 0) > 0)
+                        ? ((total <= 0 || order.paymentMethod == 'Loyalty Free Load')
+                            ? 'Loyalty Free Load'
+                            : 'Free Load + ${order.paymentMethod ?? "Cash"}')
+                        : (order.paymentMethod ?? 'Cash / GCash'),
                   ),
                   if (order.paidAt != null)
                     _receiptSheetRow('Paid Date', _formatDateTime(order.paidAt!)),

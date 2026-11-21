@@ -15,6 +15,7 @@ import '../../../widgets/order_timeline_view.dart';
 import '../chats/staff_chat_detail_screen.dart';
 import 'check_in_request_screen.dart';
 import 'create_order_flow.dart';
+import '../payment/payment_process_screen.dart';
 
 class OrderStatusScreen extends StatefulWidget {
   final LaundryOrder order;
@@ -1162,7 +1163,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           const SizedBox(width: 8),
           _buildTag(
             icon: isPaid ? Icons.check_circle_outline : Icons.schedule,
-            label: isPaid ? 'Paid' : 'Unpaid',
+            label: isPaid
+                ? ((_currentOrder.freeLoadsRedeemed ?? 0) > 0
+                    ? ((_currentOrder.totalAmount ?? 0.0) <= 0 || _currentOrder.paymentMethod == 'Loyalty Free Load'
+                        ? 'Paid (Free Load)'
+                        : 'Paid (Free Load + ${_currentOrder.paymentMethod ?? "Cash"})')
+                    : 'Paid')
+                : 'Unpaid',
             color: isPaid ? AppTheme.statusCompleted : const Color(0xFF64748B),
             bgColor: isPaid ? AppTheme.statusCompletedBg : const Color(0xFFF1F5F9),
           ),
@@ -1562,6 +1569,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final isPaid = _currentOrder.paymentStatus == PaymentStatus.paid;
     final total = _currentOrder.totalAmount ?? _currentOrder.basePrice;
     final preference = _getDisplayPaymentPreference() ?? 'Cash';
+    final hasFreeLoad = (_currentOrder.freeLoadsRedeemed ?? 0) > 0;
+    final discount = _currentOrder.discountAmount ?? 0.0;
+    final subtotal = total + discount;
+
+    final String methodLabel;
+    if (hasFreeLoad) {
+      if (total <= 0 || _currentOrder.paymentMethod == 'Loyalty Free Load') {
+        methodLabel = 'Loyalty Free Load';
+      } else if (isPaid) {
+        methodLabel = 'Free Load + ${_currentOrder.paymentMethod ?? preference}';
+      } else {
+        methodLabel = preference;
+      }
+    } else {
+      methodLabel = preference;
+    }
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1622,20 +1645,78 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
+                  color: hasFreeLoad ? Colors.green.shade50 : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(8),
+                  border: hasFreeLoad ? Border.all(color: Colors.green.shade200) : null,
                 ),
                 child: Text(
-                  preference,
-                  style: const TextStyle(
+                  methodLabel,
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF334155),
+                    color: hasFreeLoad ? Colors.green.shade800 : const Color(0xFF334155),
                   ),
                 ),
               ),
             ],
           ),
+          if (discount > 0) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Subtotal', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
+                Text('₱${subtotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, color: AppTheme.textDark)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.loyalty_outlined, size: 14, color: Colors.green),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Loyalty Free Load${(_currentOrder.freeLoadsRedeemed ?? 0) > 1 ? " (${_currentOrder.freeLoadsRedeemed})" : ""}',
+                      style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+                Text(
+                  '-₱${discount.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
+                ),
+              ],
+            ),
+          ],
+          if (!isPaid) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 40,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentBlue,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 0,
+                ),
+                icon: const Icon(Icons.payment, size: 16, color: Colors.white),
+                label: const Text('Collect Payment', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                onPressed: () async {
+                  final success = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(builder: (context) => PaymentProcessScreen(order: _currentOrder)),
+                  );
+                  if (success == true) {
+                    _refreshOrderData();
+                  }
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );

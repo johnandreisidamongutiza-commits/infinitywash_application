@@ -13,7 +13,6 @@ import '../../../widgets/gcash_unavailable_dialog.dart';
 import '../../../widgets/star_rating.dart';
 import '../../../widgets/order_timeline_view.dart';
 import '../../shared/gcash_qr_payment_screen.dart';
-import 'request_service_flow.dart';
 import '../chats/customer_chat_detail_screen.dart';
 import '../delivery/order_delivery_tracking_screen.dart';
 import '../../../config/location_constants.dart';
@@ -843,16 +842,24 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                       : AppTheme.statusActive,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  order.paymentStatus == PaymentStatus.paid
-                      ? 'Paid via ${order.paymentMethod ?? "N/A"}'
-                      : 'Payment Pending',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: order.paymentStatus == PaymentStatus.paid
-                        ? AppTheme.statusCompleted
-                        : AppTheme.statusActive,
+                Expanded(
+                  child: Text(
+                    order.paymentStatus == PaymentStatus.paid
+                        ? ((order.freeLoadsRedeemed ?? 0) > 0
+                            ? ((order.totalAmount ?? 0.0) <= 0 || order.paymentMethod == 'Loyalty Free Load'
+                                ? 'Paid via Loyalty Free Load${(order.freeLoadsRedeemed ?? 0) > 1 ? " (${order.freeLoadsRedeemed} Loads)" : ""}'
+                                : 'Paid via Free Load + ${order.paymentMethod ?? "Cash"}')
+                            : 'Paid via ${order.paymentMethod ?? "N/A"}')
+                        : 'Payment Pending',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: order.paymentStatus == PaymentStatus.paid
+                          ? AppTheme.statusCompleted
+                          : AppTheme.statusActive,
+                    ),
                   ),
                 ),
               ],

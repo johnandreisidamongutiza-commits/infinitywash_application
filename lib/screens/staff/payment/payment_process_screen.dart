@@ -1,11 +1,14 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_error.dart';
 import '../../../models/order.dart';
 import '../../../services/order_service.dart';
 import '../../../services/payment_service.dart';
+import '../../../services/loyalty_service.dart';
 import '../../../services/supabase_service.dart';
 import '../../shared/gcash_qr_payment_screen.dart';
 
@@ -20,16 +23,175 @@ class PaymentProcessScreen extends StatefulWidget {
 class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   final OrderService _orderService = OrderService();
   final PaymentService _paymentService = PaymentService();
+  final LoyaltyService _loyaltyService = LoyaltyService();
+
   String? _selectedMethod;
   bool _isSuccess = false;
   bool _isProcessing = false;
   String? _transactionNumber;
 
-  double get _totalAmount => widget.order.totalAmount ?? (widget.order.basePrice > 0 ? widget.order.basePrice : 170.0);
+  // Loyalty & RFID
+  RealtimeChannel? _rfidScanChannel;
+  LoyaltyCardInfo? _loyaltyCardInfo;
+  bool _loadingLoyalty = false;
+  int _freeLoadsToRedeem = 0;
+  String? _lastRealtimeUid;
+  DateTime? _lastRealtimeScanAt;
+
+  double get _subtotal => widget.order.totalAmount ?? (widget.order.basePrice > 0 ? widget.order.basePrice : 170.0);
+  int get _totalLoads => widget.order.loads.isNotEmpty ? widget.order.loads.length : (_subtotal / 170.0).round().clamp(1, 99);
+  int get _maxFreeLoads => _loyaltyCardInfo == null ? 0 : math.min(_loyaltyCardInfo!.freeLoadsAvailable, _totalLoads);
+  double get _freeLoadDiscount => _freeLoadsToRedeem * 170.0;
+  double get _netAmount => (_subtotal - _freeLoadDiscount).clamp(0.0, double.infinity);
 
   bool get _isDelivery => widget.order.returnMethod == ReturnMethod.delivery;
   bool get _isPickup => widget.order.collectionMethod == CollectionMethod.riderPickup;
   bool get _isRiderOrder => _isDelivery || _isPickup;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribeToLiveRfidScans();
+    _loadInitialCustomerLoyaltyCard();
+  }
+
+  @override
+  void dispose() {
+    _rfidScanChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  void _subscribeToLiveRfidScans() {
+    try {
+      _rfidScanChannel = SupabaseService.client
+          .channel('payment_process_rfid_scans')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'scanned_rfid_events',
+            callback: (payload) {
+              final uid = payload.newRecord['uid'];
+              if (uid is! String || uid.trim().isEmpty || !mounted) return;
+
+              final cleanUid = uid.trim().toUpperCase();
+              final now = DateTime.now();
+              if (_lastRealtimeUid == cleanUid &&
+                  _lastRealtimeScanAt != null &&
+                  now.difference(_lastRealtimeScanAt!) <
+                      const Duration(milliseconds: 1500)) {
+                return;
+              }
+              _lastRealtimeUid = cleanUid;
+              _lastRealtimeScanAt = now;
+              _lookupLoyaltyCard(cleanUid);
+            },
+          )
+          .subscribe();
+    } catch (e) {
+      debugPrint('Could not listen for RFID scans in payment process: $e');
+    }
+  }
+
+  Future<void> _loadInitialCustomerLoyaltyCard() async {
+    final customerId = widget.order.customerId;
+    if (customerId == null || customerId.isEmpty) return;
+    setState(() => _loadingLoyalty = true);
+    try {
+      final card = await _loyaltyService.getLinkedCard(customerId);
+      if (mounted && card != null) {
+        setState(() {
+          _loyaltyCardInfo = card;
+          _loadingLoyalty = false;
+        });
+      } else if (mounted) {
+        setState(() => _loadingLoyalty = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loadingLoyalty = false);
+    }
+  }
+
+  Future<void> _lookupLoyaltyCard(String uid) async {
+    final cleanUid = uid.trim().toUpperCase();
+    if (cleanUid.isEmpty) return;
+
+    setState(() => _loadingLoyalty = true);
+    try {
+      final card = await _loyaltyService.lookupCardByUid(cleanUid);
+      if (!mounted) return;
+      if (card == null) {
+        setState(() => _loadingLoyalty = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Card "$cleanUid" is not registered in the system.'),
+            backgroundColor: Colors.orange[800],
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _loyaltyCardInfo = card;
+        _freeLoadsToRedeem = 0;
+        _loadingLoyalty = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Loyalty Card detected: ${card.ownerName} (${card.pointsBalance} pts)'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loadingLoyalty = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error looking up card: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showManualUidDialog() {
+    final controller = TextEditingController(text: _loyaltyCardInfo?.uid ?? '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enter Loyalty Card UID', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: InputDecoration(
+            hintText: 'e.g. 5A92B3C1',
+            prefixIcon: const Icon(Icons.credit_card),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentBlue),
+            onPressed: () {
+              final uid = controller.text.trim();
+              Navigator.pop(ctx);
+              if (uid.isNotEmpty) {
+                _lookupLoyaltyCard(uid);
+              }
+            },
+            child: const Text('Lookup', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,43 +213,91 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
         ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildOrderSummary(),
-              const SizedBox(height: 24),
-              const Text(
-                'Select Payment Method',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildOrderSummary(),
+                    const SizedBox(height: 16),
+                    _buildLoyaltyCardSection(),
+                    const SizedBox(height: 20),
+                    if (_netAmount > 0.0) ...[
+                      const Text(
+                        'Select Payment Method',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildMethodCard(
+                        method: 'Cash',
+                        title: 'Cash',
+                        subtitle: 'Collect exact amount from customer',
+                        icon: Icons.payments_outlined,
+                        badgeText: 'Instant',
+                        color: Colors.green[700]!,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildMethodCard(
+                        method: 'GCash',
+                        title: 'GCash QR',
+                        subtitle: 'Customer scans QR & uploads receipt',
+                        icon: Icons.qr_code_scanner,
+                        badgeText: 'QR Code',
+                        color: AppTheme.accentBlue,
+                      ),
+                    ] else ...[
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.green.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle_outline, color: Colors.green.shade700, size: 24),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Order is 100% covered by $_freeLoadsToRedeem Free Load(s). No cash or GCash payment required.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green.shade900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                  ],
                 ),
               ),
-              const SizedBox(height: 12),
-              _buildMethodCard(
-                method: 'Cash',
-                title: 'Cash',
-                subtitle: 'Collect exact amount from customer',
-                icon: Icons.payments_outlined,
-                badgeText: 'Instant',
-                color: Colors.green[700]!,
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    offset: const Offset(0, -3),
+                    blurRadius: 8,
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              _buildMethodCard(
-                method: 'GCash',
-                title: 'GCash QR',
-                subtitle: 'Customer scans QR & uploads receipt',
-                icon: Icons.qr_code_scanner,
-                badgeText: 'QR Code',
-                color: AppTheme.accentBlue,
-              ),
-              const Spacer(),
-              _buildActionButton(),
-            ],
-          ),
+              child: _buildActionButton(),
+            ),
+          ],
         ),
       ),
     );
@@ -128,13 +338,27 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
                   ),
                 ],
               ),
-              Text(
-                '₱${_totalAmount.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 24,
-                  color: AppTheme.accentBlue,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (_freeLoadsToRedeem > 0)
+                    Text(
+                      '₱${_subtotal.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        decoration: TextDecoration.lineThrough,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  Text(
+                    '₱${_netAmount.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 24,
+                      color: AppTheme.accentBlue,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -187,6 +411,195 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
               ],
             ),
           ),
+          if (_freeLoadsToRedeem > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.loyalty_outlined, size: 15, color: Colors.green.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Loyalty Free Load ($_freeLoadsToRedeem)',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '-₱${_freeLoadDiscount.toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoyaltyCardSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _loyaltyCardInfo != null ? Colors.green.shade200 : Colors.grey.shade200,
+          width: _loyaltyCardInfo != null ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _loyaltyCardInfo != null ? Colors.green.shade50 : Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.credit_card,
+                  size: 20,
+                  color: _loyaltyCardInfo != null ? Colors.green.shade700 : AppTheme.accentBlue,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _loyaltyCardInfo != null ? 'Loyalty Card Connected' : 'Loyalty Card (Tap RFID to Redeem)',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    Text(
+                      _loyaltyCardInfo != null
+                          ? 'UID: ${_loyaltyCardInfo!.uid} • ${_loyaltyCardInfo!.pointsBalance} pts'
+                          : 'Tap card on scanner or enter UID',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: _showManualUidDialog,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  _loyaltyCardInfo != null ? 'Change' : 'Enter UID',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          if (_loadingLoyalty) ...[
+            const SizedBox(height: 12),
+            const Center(
+              child: SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ] else if (_loyaltyCardInfo != null) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            if (_loyaltyCardInfo!.freeLoadsAvailable <= 0) ...[
+              Row(
+                children: [
+                  Icon(Icons.info_outline, size: 14, color: Colors.grey.shade600),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Needs ${_loyaltyCardInfo!.pointsToNextRedemption} more pts for next free load (has ${_loyaltyCardInfo!.pointsBalance} pts).',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Redeem Free Load',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade800,
+                        ),
+                      ),
+                      Text(
+                        '${_loyaltyCardInfo!.freeLoadsAvailable} free load(s) available',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppTheme.softGray,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove, size: 16),
+                          padding: const EdgeInsets.all(4),
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          onPressed: _freeLoadsToRedeem > 0
+                              ? () => setState(() => _freeLoadsToRedeem--)
+                              : null,
+                        ),
+                        Text(
+                          '$_freeLoadsToRedeem',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add, size: 16),
+                          padding: const EdgeInsets.all(4),
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          onPressed: _freeLoadsToRedeem < _maxFreeLoads
+                              ? () => setState(() => _freeLoadsToRedeem++)
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ],
       ),
     );
@@ -342,18 +755,39 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   }
 
   Widget _buildActionButton() {
+    final isFullFreeLoad = _netAmount == 0.0 && _freeLoadsToRedeem > 0;
+    final canSubmit = isFullFreeLoad || (_selectedMethod != null && !_isProcessing);
+
+    final String buttonLabel;
+    if (isFullFreeLoad) {
+      buttonLabel = 'Redeem Free Load & Settle (₱0.00)';
+    } else if (_selectedMethod == 'GCash') {
+      buttonLabel = 'Next: Show GCash QR (₱${_netAmount.toStringAsFixed(2)})';
+    } else {
+      buttonLabel = 'Complete Payment (₱${_netAmount.toStringAsFixed(2)})';
+    }
+
+    final IconData buttonIcon;
+    if (isFullFreeLoad) {
+      buttonIcon = Icons.loyalty_outlined;
+    } else if (_selectedMethod == 'GCash') {
+      buttonIcon = Icons.qr_code;
+    } else {
+      buttonIcon = Icons.check;
+    }
+
     return SizedBox(
       width: double.infinity,
       height: 52,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.accentBlue,
+          backgroundColor: isFullFreeLoad ? Colors.green.shade700 : AppTheme.accentBlue,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           elevation: 2,
         ),
-        onPressed: (_selectedMethod == null || _isProcessing)
+        onPressed: (!canSubmit || _isProcessing)
             ? null
-            : (_selectedMethod == 'GCash' ? _startGcashPayment : _processPayment),
+            : (_selectedMethod == 'GCash' && !isFullFreeLoad ? _startGcashPayment : () => _processPayment()),
         child: _isProcessing
             ? const SizedBox(
                 height: 22,
@@ -363,19 +797,18 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    _selectedMethod == 'GCash' ? Icons.qr_code : Icons.check,
-                    color: Colors.white,
-                  ),
+                  Icon(buttonIcon, color: Colors.white),
                   const SizedBox(width: 8),
-                  Text(
-                    _selectedMethod == 'GCash'
-                        ? 'Next: Show GCash QR'
-                        : 'Complete Payment (₱${_totalAmount.toStringAsFixed(2)})',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  Flexible(
+                    child: Text(
+                      buttonLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ],
@@ -393,7 +826,7 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
         builder: (context) => GcashQrPaymentScreen(
           title: 'Pay with GCash',
           orderLabel: widget.order.displayNumber,
-          amount: _totalAmount,
+          amount: _netAmount,
           customerName: widget.order.customerName,
         ),
       ),
@@ -403,7 +836,8 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   }
 
   Future<void> _processPayment({File? gcashReceiptFile}) async {
-    if (_selectedMethod == null) return;
+    final isFullFreeLoad = _netAmount == 0.0 && _freeLoadsToRedeem > 0;
+    if (!isFullFreeLoad && _selectedMethod == null) return;
 
     setState(() {
       _isProcessing = true;
@@ -433,22 +867,45 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
         }
       }
 
+      // 1. Redeem points if free loads used
+      if (_freeLoadsToRedeem > 0 && _loyaltyCardInfo != null) {
+        await _loyaltyService.redeemPoints(
+          cardId: _loyaltyCardInfo!.cardId,
+          customerId: widget.order.customerId,
+          freeLoadsToRedeem: _freeLoadsToRedeem,
+          orderId: widget.order.id,
+          orderNumber: widget.order.orderNumber,
+        );
+
+        // Update order discount and free loads
+        await SupabaseService.client.from('orders').update({
+          'discount_amount': _freeLoadDiscount,
+          'free_loads_redeemed': _freeLoadsToRedeem,
+          'total_amount': _netAmount,
+        }).eq('id', widget.order.id);
+      }
+
+      // 2. Record payment
       final String txNumber;
-      if (_selectedMethod == 'GCash' && gcashReceiptFile != null) {
-        // GCash receipt flow: uploads the receipt and records the payment
-        // as 'pending' (for review on the admin website) while marking the
-        // order paid immediately.
+      if (isFullFreeLoad) {
+        txNumber = await _orderService.recordPayment(
+          orderId: widget.order.id,
+          amount: 0.0,
+          paymentMethod: 'Loyalty Free Load',
+          assignedStaffId: assignedStaffId,
+        );
+      } else if (_selectedMethod == 'GCash' && gcashReceiptFile != null) {
         txNumber = await _paymentService.submitGcashPayment(
           orderId: widget.order.id,
-          amount: _totalAmount,
+          amount: _netAmount,
           receiptFile: gcashReceiptFile,
           assignedStaffId: assignedStaffId,
         );
       } else {
         txNumber = await _orderService.recordPayment(
           orderId: widget.order.id,
-          amount: _totalAmount,
-          paymentMethod: _selectedMethod!,
+          amount: _netAmount,
+          paymentMethod: _selectedMethod ?? 'Cash',
           assignedStaffId: assignedStaffId,
         );
       }
@@ -476,6 +933,8 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   }
 
   Widget _buildSuccessView() {
+    final isFullFreeLoad = _netAmount == 0.0 && _freeLoadsToRedeem > 0;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -500,9 +959,11 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  _selectedMethod == 'GCash'
-                      ? 'GCash receipt uploaded. Payment is marked as paid and pending admin verification.'
-                      : 'Cash payment recorded successfully.',
+                  isFullFreeLoad
+                      ? 'Order fully redeemed via Loyalty Free Load.'
+                      : (_selectedMethod == 'GCash'
+                          ? 'GCash receipt uploaded. Payment is marked as paid and pending admin verification.'
+                          : 'Cash payment recorded successfully.'),
                   style: const TextStyle(fontSize: 13, color: AppTheme.textLight),
                   textAlign: TextAlign.center,
                 ),
@@ -546,6 +1007,17 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
       orderType = 'Walk-in';
     }
 
+    final String paymentMethodDisplay;
+    if (_freeLoadsToRedeem > 0) {
+      if (_netAmount == 0.0) {
+        paymentMethodDisplay = 'Loyalty Free Load ($_freeLoadsToRedeem Load${_freeLoadsToRedeem > 1 ? "s" : ""})';
+      } else {
+        paymentMethodDisplay = 'Free Load ($_freeLoadsToRedeem) + ${_selectedMethod ?? "Cash"}';
+      }
+    } else {
+      paymentMethodDisplay = _selectedMethod ?? 'Cash';
+    }
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -571,9 +1043,14 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
           _receiptRow('Detergent & Fab Con', 'INCLUDED (FREE)'),
           _receiptRow('Pick-up & Delivery', _isRiderOrder ? 'INCLUDED (FREE)' : 'N/A'),
           _receiptRow('Date', nowStr),
-          _receiptRow('Payment Method', _selectedMethod ?? 'Cash'),
+          _receiptRow('Payment Method', paymentMethodDisplay),
+          if (_freeLoadsToRedeem > 0) ...[
+            const Divider(height: 20),
+            _receiptRow('Subtotal', '₱${_subtotal.toStringAsFixed(2)}'),
+            _receiptRow('Loyalty Free Load', '-₱${_freeLoadDiscount.toStringAsFixed(2)}'),
+          ],
           const Divider(height: 20),
-          _receiptRow('Total Amount Paid', '₱${_totalAmount.toStringAsFixed(2)}', isBold: true),
+          _receiptRow('Total Amount Paid', '₱${_netAmount.toStringAsFixed(2)}', isBold: true),
         ],
       ),
     );
