@@ -634,6 +634,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
 
 
   Widget _buildServiceDetails(LaundryOrder order) {
+    final isUnweighed = order.needsCheckIn || order.loads.isEmpty;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration,
@@ -687,11 +688,11 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                 style: TextStyle(fontSize: 13, color: AppTheme.textLight),
               ),
               Text(
-                '${order.totalWeight.toStringAsFixed(1)} kg',
-                style: const TextStyle(
+                isUnweighed ? 'Pending Weighing' : '${order.totalWeight.toStringAsFixed(1)} kg',
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
+                  color: isUnweighed ? Colors.amber.shade900 : AppTheme.textDark,
                 ),
               ),
             ],
@@ -705,11 +706,11 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                 style: TextStyle(fontSize: 13, color: AppTheme.textLight),
               ),
               Text(
-                '${order.loads.length}',
-                style: const TextStyle(
+                isUnweighed ? 'Pending Check-in' : '${order.loads.length}',
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
+                  color: isUnweighed ? AppTheme.textLight : AppTheme.textDark,
                 ),
               ),
             ],
@@ -720,6 +721,7 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
   }
 
   Widget _buildPaymentInfo(LaundryOrder order) {
+    final isUnweighed = order.needsCheckIn || order.loads.isEmpty;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppStyles.cardDecoration,
@@ -782,38 +784,66 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                 'Total Amount',
                 style: TextStyle(fontSize: 14, color: AppTheme.textLight),
               ),
-              Row(
-                children: [
-                  Text(
-                    '₱${(order.totalAmount ?? 0.0).toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: _wasUpdated ? Colors.lightBlueAccent : AppTheme.accentBlue,
-                    ),
-                  ),
-                  if (_wasUpdated) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.lightBlueAccent.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.lightBlueAccent),
-                      ),
-                      child: const Text(
-                        'NEW',
+              if (isUnweighed) ...[
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'Pending Weighing',
                         style: TextStyle(
-                          color: Colors.lightBlueAccent,
-                          fontSize: 9,
+                          fontSize: 15,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
+                          color: Colors.amber.shade900,
                         ),
                       ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Est. from ₱${(order.totalAmount ?? order.basePrice).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.textLight,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                Row(
+                  children: [
+                    Text(
+                      '₱${(order.totalAmount ?? 0.0).toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _wasUpdated ? Colors.lightBlueAccent : AppTheme.accentBlue,
+                      ),
                     ),
+                    if (_wasUpdated) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.lightBlueAccent.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.lightBlueAccent),
+                        ),
+                        child: const Text(
+                          'NEW',
+                          style: TextStyle(
+                            color: Colors.lightBlueAccent,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
-              ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -850,8 +880,12 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
                                 ? 'Paid via Loyalty Free Load${(order.freeLoadsRedeemed ?? 0) > 1 ? " (${order.freeLoadsRedeemed} Loads)" : ""}'
                                 : 'Paid via Free Load + ${order.paymentMethod ?? "Cash"}')
                             : 'Paid via ${order.paymentMethod ?? "N/A"}')
-                        : 'Payment Pending',
-                    maxLines: 1,
+                        : (isUnweighed
+                            ? 'Final total will be calculated once staff weighs your laundry at the shop.'
+                            : (order.paymentMethod != null
+                                ? 'Unpaid • ${order.paymentMethod}'
+                                : 'Payment Pending')),
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 13,
@@ -865,7 +899,8 @@ class _CustomerOrderDetailsScreenState extends State<CustomerOrderDetailsScreen>
               ],
             ),
           ),
-          if (order.status == OrderStatus.processing &&
+          if (!isUnweighed &&
+              order.status == OrderStatus.processing &&
               order.paymentStatus == PaymentStatus.unpaid) ...[
             const SizedBox(height: 14),
             SizedBox(

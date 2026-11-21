@@ -1568,6 +1568,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Widget _buildPaymentCard() {
     final isPaid = _currentOrder.paymentStatus == PaymentStatus.paid;
+    final isUnweighed = _currentOrder.needsCheckIn || _currentOrder.loads.isEmpty;
     final total = _currentOrder.totalAmount ?? _currentOrder.basePrice;
     final preference = _getDisplayPaymentPreference() ?? 'Cash';
     final hasFreeLoad = (_currentOrder.freeLoadsRedeemed ?? 0) > 0;
@@ -1632,17 +1633,43 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '₱${total.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
-                ),
+              Expanded(
+                child: isUnweighed
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Pending Weighing',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber.shade900,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Est. from ₱${total.toStringAsFixed(2)} (final total upon check-in)',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.textLight,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      )
+                    : Text(
+                        '₱${total.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -1652,6 +1679,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
                 child: Text(
                   methodLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -1676,16 +1705,23 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.loyalty_outlined, size: 14, color: Colors.green),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Loyalty Free Load${(_currentOrder.freeLoadsRedeemed ?? 0) > 1 ? " (${_currentOrder.freeLoadsRedeemed})" : ""}',
-                      style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600),
-                    ),
-                  ],
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.loyalty_outlined, size: 14, color: Colors.green),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Loyalty Free Load${(_currentOrder.freeLoadsRedeemed ?? 0) > 1 ? " (${_currentOrder.freeLoadsRedeemed})" : ""}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Text(
                   '-₱${discount.toStringAsFixed(2)}',
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
@@ -1695,28 +1731,54 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
           ],
           if (!isPaid) ...[
             const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              height: 40,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accentBlue,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  elevation: 0,
+            if (_currentOrder.needsCheckIn || _currentOrder.loads.isEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade200),
                 ),
-                icon: const Icon(Icons.payment, size: 16, color: Colors.white),
-                label: const Text('Collect Payment', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
-                onPressed: () async {
-                  final success = await Navigator.push<bool>(
-                    context,
-                    MaterialPageRoute(builder: (context) => PaymentProcessScreen(order: _currentOrder)),
-                  );
-                  if (success == true) {
-                    _refreshOrderData();
-                  }
-                },
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: Colors.amber.shade800),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Check-in & weighing required before collecting payment.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.amber.shade900,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                height: 40,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.accentBlue,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    elevation: 0,
+                  ),
+                  icon: const Icon(Icons.payment, size: 16, color: Colors.white),
+                  label: const Text('Collect Payment', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                  onPressed: () async {
+                    final success = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(builder: (context) => PaymentProcessScreen(order: _currentOrder)),
+                    );
+                    if (success == true) {
+                      _refreshOrderData();
+                    }
+                  },
+                ),
               ),
-            ),
           ],
         ],
       ),

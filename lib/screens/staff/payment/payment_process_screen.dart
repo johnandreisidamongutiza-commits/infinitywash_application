@@ -48,6 +48,7 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   bool get _isPickup => widget.order.collectionMethod == CollectionMethod.riderPickup;
   bool get _isRiderOrder => _isDelivery || _isPickup;
   bool get _isWalkIn => widget.order.channel == OrderChannel.walkIn && !_isRiderOrder;
+  bool get _needsCheckIn => widget.order.needsCheckIn || widget.order.loads.isEmpty;
 
   @override
   void initState() {
@@ -224,6 +225,42 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (_needsCheckIn)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.amber.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.scale_outlined, color: Colors.amber.shade900, size: 24),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Check-In & Weighing Required',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.amber.shade900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'This laundry has not been checked in and weighed yet. Final price and load count are pending.',
+                                    style: TextStyle(fontSize: 11, color: Colors.amber.shade900),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     _buildOrderSummary(),
                     if (_isWalkIn) ...[
                       const SizedBox(height: 16),
@@ -760,6 +797,25 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   }
 
   Widget _buildActionButton() {
+    if (_needsCheckIn) {
+      return SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.grey.shade400,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+          onPressed: null,
+          icon: const Icon(Icons.scale_outlined, color: Colors.white),
+          label: const Text(
+            'Check In & Weigh Laundry First',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+        ),
+      );
+    }
+
     final isFullFreeLoad = _netAmount == 0.0 && _freeLoadsToRedeem > 0;
     final canSubmit = isFullFreeLoad || (_selectedMethod != null && !_isProcessing);
 
@@ -841,6 +897,16 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   }
 
   Future<void> _processPayment({File? gcashReceiptFile}) async {
+    if (_needsCheckIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot collect payment before laundry is checked in and weighed.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     final isFullFreeLoad = _netAmount == 0.0 && _freeLoadsToRedeem > 0;
     if (!isFullFreeLoad && _selectedMethod == null) return;
 

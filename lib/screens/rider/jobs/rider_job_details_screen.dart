@@ -64,6 +64,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
   String? _customerNotes;
   String? _paymentStatus;
   double? _totalAmount;
+  bool _needsCheckIn = false;
 
   @override
   void initState() {
@@ -96,7 +97,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     try {
       final orderRes = await SupabaseService.client
           .from('orders')
-          .select('customer_id, customers(pin_latitude, pin_longitude, phone), customer_notes, payment_status, total_amount, subtotal, delivery_fee')
+          .select('customer_id, customers(pin_latitude, pin_longitude, phone), customer_notes, payment_status, total_amount, subtotal, delivery_fee, needs_check_in')
           .eq('id', widget.job.orderId)
           .maybeSingle();
 
@@ -125,6 +126,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
           _customerNotes = (orderRes['customer_notes'] as String?) ?? _customerNotes;
           _paymentStatus = (orderRes['payment_status'] as String?) ?? _paymentStatus;
           _totalAmount = resolvedTotal ?? _totalAmount;
+          _needsCheckIn = (orderRes['needs_check_in'] as bool?) ?? false;
           _isLoadingDetails = false;
         });
       } else if (mounted) {
@@ -944,7 +946,7 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
           ] else ...[
             if (_paymentStatus != null) ...[
               const Divider(height: 18, color: AppTheme.borderGray),
-              _buildPaymentStatusRow(_paymentStatus!, _totalAmount),
+              _buildPaymentStatusRow(_paymentStatus!, _totalAmount, isPickup: isPickup),
             ],
             if (_customerNotes != null && _customerNotes!.isNotEmpty) ...[
               const Divider(height: 18, color: AppTheme.borderGray),
@@ -1032,8 +1034,9 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
     );
   }
 
-  Widget _buildPaymentStatusRow(String status, double? total) {
+  Widget _buildPaymentStatusRow(String status, double? total, {bool isPickup = false}) {
     final isPaid = status.toLowerCase() == 'paid';
+    final isUnweighed = isPickup || _needsCheckIn;
     final hasAmount = total != null && total > 0;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1045,37 +1048,48 @@ class _RiderJobDetailsScreenState extends State<RiderJobDetailsScreen> {
             color: AppTheme.textLight,
           ),
         ),
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: isPaid ? Colors.green.shade50 : Colors.amber.shade50,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: isPaid ? Colors.green.shade200 : Colors.amber.shade300,
+        Flexible(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isPaid ? Colors.green.shade50 : Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isPaid ? Colors.green.shade200 : Colors.amber.shade300,
+                  ),
+                ),
+                child: Text(
+                  isPaid ? 'PAID' : 'PENDING',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: isPaid ? Colors.green.shade700 : Colors.amber.shade900,
+                  ),
                 ),
               ),
-              child: Text(
-                isPaid ? 'PAID' : 'PENDING',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: isPaid ? Colors.green.shade700 : Colors.amber.shade900,
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  isPaid
+                      ? (hasAmount ? '₱${total.toStringAsFixed(2)}' : '')
+                      : (isUnweighed
+                          ? 'Pending Weighing'
+                          : (hasAmount ? '₱${total.toStringAsFixed(2)}' : 'Not set')),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: (hasAmount || isUnweighed) ? FontWeight.bold : FontWeight.w500,
+                    color: isUnweighed && !isPaid ? Colors.amber.shade900 : (hasAmount ? AppTheme.textDark : AppTheme.textLight),
+                    fontStyle: hasAmount || isUnweighed ? FontStyle.normal : FontStyle.italic,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              hasAmount ? '₱${total.toStringAsFixed(2)}' : 'Not set',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: hasAmount ? FontWeight.bold : FontWeight.w500,
-                color: hasAmount ? AppTheme.textDark : AppTheme.textLight,
-                fontStyle: hasAmount ? FontStyle.normal : FontStyle.italic,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
