@@ -394,6 +394,65 @@ class LoyaltyService {
     }
   }
 
+  /// Refund points back to the card when free loads are removed during order edit.
+  /// 10 points = 1 free load refunded.
+  Future<void> refundPoints({
+    required String cardId,
+    required String? customerId,
+    required int freeLoadsToRefund,
+    String? orderId,
+    String? orderNumber,
+  }) async {
+    const int pointsPerLoad = 10;
+    const double discountPerLoad = 170.0;
+
+    final pointsToRefund = freeLoadsToRefund * pointsPerLoad;
+    final discountRefunded = freeLoadsToRefund * discountPerLoad;
+
+    try {
+      // 1. Get current balance
+      final cardRow = await _client
+          .from('rfid_loyalty_cards')
+          .select('points_balance')
+          .eq('id', cardId)
+          .single();
+
+      final currentBalance = (cardRow['points_balance'] as num).toInt();
+      final newBalance = currentBalance + pointsToRefund;
+
+      // 2. Update card balance
+      await _client
+          .from('rfid_loyalty_cards')
+          .update({
+            'points_balance': newBalance,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', cardId);
+
+      // 3. Log history entry
+      final profileId = await _resolveProfileId(customerId);
+
+      await _client.from('loyalty_points_history').insert({
+        'card_id': cardId,
+        'customer_id': profileId,
+        'order_id': orderId,
+        'transaction_type': 'refund',
+        'points': pointsToRefund,
+        'loads_count': freeLoadsToRefund,
+        'discount_amount': -discountRefunded,
+        'description':
+            'Refunded $pointsToRefund pts ($freeLoadsToRefund free load${freeLoadsToRefund > 1 ? 's' : ''} removed, +₱${discountRefunded.toStringAsFixed(0)}) on ${orderNumber ?? 'order edit'}',
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      print(
+          '✅ Refunded $pointsToRefund pts — new balance: $newBalance');
+    } catch (e) {
+      print('❌ Error refunding points: $e');
+      rethrow;
+    }
+  }
+
   // ─── Points History ───────────────────────────────────────────────────────────
 
   /// Fetch the points transaction history for a card.
@@ -515,12 +574,25 @@ class LoyaltyService {
   /// Used in mobile app to auto-detect customer's loyalty card.
   Future<LoyaltyCardInfo?> getLinkedCard(String customerId) async {
     try {
-      final response = await _client
+      var response = await _client
           .from('vw_rfid_loyalty_cards')
           .select()
           .eq('customer_id', customerId)
           .eq('card_status', 'active')
           .maybeSingle();
+
+      // Fallback: If not found, check if customerId is customer id vs profile id
+      if (response == null) {
+        final profileId = await _resolveProfileId(customerId);
+        if (profileId != null && profileId != customerId) {
+          response = await _client
+              .from('vw_rfid_loyalty_cards')
+              .select()
+              .eq('customer_id', profileId)
+              .eq('card_status', 'active')
+              .maybeSingle();
+        }
+      }
 
       if (response == null) {
         print('ℹ️ No linked card found for customer $customerId');

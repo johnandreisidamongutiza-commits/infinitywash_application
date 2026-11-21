@@ -1450,22 +1450,31 @@ class OrderService {
     try {
       final orderRow = await _client
           .from('orders')
-          .select('customer_id, loads_count, order_number, free_loads_redeemed, channel')
+          .select('customer_id, loads_count, order_number, free_loads_redeemed')
           .eq('id', orderId)
           .maybeSingle();
 
       if (orderRow == null) return;
 
       final orderNumber = orderRow['order_number'] as String?;
-      final channel = orderRow['channel'] as String?;
-      if (channel != null && channel != 'walk_in') {
-        print('Loyalty: Order $orderNumber is $channel; points apply only to in-store walk-in orders.');
-        return;
+      final freeLoadsRedeemed = (orderRow['free_loads_redeemed'] as num?)?.toInt() ?? 0;
+      int? rawLoadsCount = (orderRow['loads_count'] as num?)?.toInt();
+
+      // If loads_count in orders is null or 0, fallback to counting actual rows in order_loads
+      if (rawLoadsCount == null || rawLoadsCount <= 0) {
+        try {
+          final loadsRows = await _client
+              .from('order_loads')
+              .select('id')
+              .eq('order_id', orderId);
+          if (loadsRows.isNotEmpty) {
+            rawLoadsCount = loadsRows.length;
+          }
+        } catch (_) {}
       }
 
-      final freeLoadsRedeemed = (orderRow['free_loads_redeemed'] as num?)?.toInt() ?? 0;
       final loadsCount = CompleteOrderGuards.loyaltyPointsFor(
-        (orderRow['loads_count'] as num?)?.toInt(),
+        rawLoadsCount,
         freeLoadsRedeemed: freeLoadsRedeemed,
       );
       final customerId = orderRow['customer_id'] as String?;
@@ -1486,7 +1495,7 @@ class OrderService {
             loadsCompleted: loadsCount,
             orderNumber: orderNumber,
           );
-          print('Awarded $loadsCount loyalty point(s) to card ${card.uid} for order $orderNumber');
+          print('⭐ Awarded $loadsCount points to loyalty card ${card.uid} for order $orderNumber');
         } else {
           print('ℹ️ No loyalty card linked for customer on order $orderNumber');
         }
@@ -1715,6 +1724,8 @@ class OrderService {
     required List<OrderLoad> loads,
     required double subtotal,
     required double totalAmount,
+    double discountAmount = 0.0,
+    int freeLoadsRedeemed = 0,
     List<Map<String, dynamic>> addons = const [],
     String? customerNotes,
     String? staffNotes,
@@ -1758,6 +1769,8 @@ class OrderService {
         'loads_count': loads.length,
         'subtotal': subtotal,
         'total_amount': totalAmount,
+        'discount_amount': discountAmount,
+        'free_loads_redeemed': freeLoadsRedeemed,
         'payment_status': isPaid ? 'paid' : 'pending',
         'customer_notes': customerNotes,
         'staff_notes': staffNotes,

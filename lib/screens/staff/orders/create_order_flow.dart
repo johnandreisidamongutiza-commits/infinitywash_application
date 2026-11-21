@@ -171,6 +171,7 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   String? _loyaltyCardUid;       // Raw UID from scan / manual entry
   LoyaltyCardInfo? _loyaltyCardInfo; // Looked-up card data (null if not found / not scanned)
   int _freeLoadsToRedeem = 0;    // Number of free loads to redeem for this order
+  int _initialFreeLoadsRedeemed = 0; // Snapshot of free loads at edit start (for delta calc)
   bool _lookingUpCard = false;
   int _loyaltyLookupRequest = 0;
   String? _lastRealtimeUid;
@@ -256,6 +257,16 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
       // Addons
       _loadOrderAddonsForEdit(o.id);
+
+      // Free Load state — restore from the existing order
+      final existingFreeLoads = o.freeLoadsRedeemed ?? 0;
+      _freeLoadsToRedeem = existingFreeLoads;
+      _initialFreeLoadsRedeemed = existingFreeLoads;
+
+      // Auto-load the customer's loyalty card to show card info & enable adjustment
+      if (existingFreeLoads > 0 && o.customerId != null) {
+        _loadLoyaltyCardForEdit(o.customerId!);
+      }
     } else {
       // Initialize with one load only if drop-off is selected (default)
       // For rider pickup, loads will be empty until staff checks in the order
@@ -505,6 +516,50 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
     });
   }
 
+  Future<void> _loadLoyaltyCardForEdit(String customerId) async {
+    try {
+      // 1. Try to find the card used from loyalty_points_history for this order
+      if (widget.orderToEdit != null) {
+        final history = await SupabaseService.client
+            .from('loyalty_points_history')
+            .select('card_id, rfid_loyalty_cards(id, uid, points_balance, status)')
+            .eq('order_id', widget.orderToEdit!.id)
+            .order('created_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+
+        if (history != null && history['rfid_loyalty_cards'] != null) {
+          final cardData = history['rfid_loyalty_cards'] as Map<String, dynamic>;
+          final uid = cardData['uid'] as String?;
+          if (uid != null && uid.isNotEmpty) {
+            final card = await _loyaltyService.lookupCardByUid(uid);
+            if (card != null && mounted) {
+              setState(() {
+                _loyaltyCardInfo = card;
+                _loyaltyCardUid = card.uid;
+                _loyaltyCardController.text = card.uid;
+              });
+              return;
+            }
+          }
+        }
+      }
+
+      // 2. Fallback: check cards assigned to customer
+      final cards = await _loyaltyService.getCardsForCustomer(customerId);
+      if (cards.isNotEmpty && mounted) {
+        final card = cards.firstWhere((c) => c.isActive, orElse: () => cards.first);
+        setState(() {
+          _loyaltyCardInfo = card;
+          _loyaltyCardUid = card.uid;
+          _loyaltyCardController.text = card.uid;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error loading loyalty card for edit: $e');
+    }
+  }
+
   Map<String, Map<String, dynamic>> get _categories => LaundryIntake.categories;
 
   static const double _basePricePerLoad = LaundryIntake.basePricePerLoad;
@@ -515,7 +570,10 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
   int get _maxRedeemableFreeLoads {
     final available = _loyaltyCardInfo?.freeLoadsAvailable ?? 0;
     final totalLoads = _loads.length;
-    return available < totalLoads ? available : totalLoads;
+    final effectiveAvailable = _isEditing
+        ? available + _initialFreeLoadsRedeemed
+        : available;
+    return effectiveAvailable < totalLoads ? effectiveAvailable : totalLoads;
   }
 
   double get _freeLoadDiscount => _freeLoadsToRedeem * _basePricePerLoad;
@@ -603,6 +661,9 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       setState(() {
         _loads[index].dispose();
         _loads.removeAt(index);
+        if (_freeLoadsToRedeem > _loads.length) {
+          _freeLoadsToRedeem = _loads.length;
+        }
       });
     }
   }
@@ -1406,6 +1467,51 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
       if (_isEditing) {
         final editOrder = widget.orderToEdit!;
         print('🔄 Updating walk-in order in database: ${editOrder.id}');
+
+        // Reconcile loyalty points delta
+        final delta = _freeLoadsToRedeem - _initialFreeLoadsRedeemed;
+        if (delta != 0 && _loyaltyCardInfo != null) {
+          try {
+            if (delta > 0) {
+              await _loyaltyService.redeemPoints(
+                cardId: _loyaltyCardInfo!.cardId,
+                customerId: _loyaltyCardInfo!.customerId,
+                freeLoadsToRedeem: delta,
+                orderId: editOrder.id,
+                orderNumber: editOrder.displayNumber,
+              );
+            } else {
+              await _loyaltyService.refundPoints(
+                cardId: _loyaltyCardInfo!.cardId,
+                customerId: _loyaltyCardInfo!.customerId,
+                freeLoadsToRefund: -delta,
+                orderId: editOrder.id,
+                orderNumber: editOrder.displayNumber,
+              );
+            }
+          } catch (loyaltyError) {
+            debugPrint('⚠️ Error reconciling loyalty points on edit: $loyaltyError');
+          }
+        }
+
+        // Determine payment status on edit
+        bool finalIsPaid = isPaidImmediately;
+        String? finalPaymentMethod = paymentMethod;
+
+        if (editOrder.paymentStatus == PaymentStatus.paid) {
+          final oldTotal = editOrder.totalAmount ?? 0.0;
+          if (totalAmount > oldTotal && !isPaidImmediately) {
+            // Order has an unpaid balance because loads or addons were added
+            finalIsPaid = false;
+            finalPaymentMethod = null;
+          } else if (totalAmount <= oldTotal) {
+            finalIsPaid = true;
+            finalPaymentMethod = totalAmount <= 0
+                ? 'Loyalty Free Load'
+                : (editOrder.paymentMethod ?? 'Cash');
+          }
+        }
+
         await _orderService.updateWalkInOrder(
           orderId: editOrder.id,
           customerId: customerId,
@@ -1418,6 +1524,8 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           loads: orderLoads,
           subtotal: subtotal,
           totalAmount: totalAmount,
+          discountAmount: discountAmount,
+          freeLoadsRedeemed: _freeLoadsToRedeem,
           addons: addons,
           customerNotes: customerNotes,
           staffNotes: staffNotes.isNotEmpty ? staffNotes : null,
@@ -1427,8 +1535,8 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
           deliveryLandmark: (_selectedCollection == CollectionMethod.riderPickup || _selectedReturn == ReturnMethod.delivery)
               ? _landmarkController.text.trim()
               : null,
-          isPaid: isPaidImmediately,
-          paymentMethod: paymentMethod,
+          isPaid: finalIsPaid,
+          paymentMethod: finalPaymentMethod,
           assignedStaffId: assignedStaffId,
         );
 
@@ -4016,59 +4124,77 @@ class _CreateOrderFlowState extends State<CreateOrderFlow> {
 
             // Payment Buttons Row - Different for edit mode, rider pickup, and drop-off
             if (_isEditing) ...[
-              if (widget.orderToEdit!.paymentStatus == PaymentStatus.paid)
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _isSubmitting ? null : _showPaymentMethodModal,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.accentBlue,
-                          side: const BorderSide(color: AppTheme.accentBlue, width: 1.5),
-                          minimumSize: const Size.fromHeight(50),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: Text(
-                          'Payment Options',
-                          style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.bold),
+              if (widget.orderToEdit!.paymentStatus == PaymentStatus.paid) ...[
+                () {
+                  final oldTotal = widget.orderToEdit!.totalAmount ?? 0.0;
+                  final newTotal = _finalTotal;
+                  final hasUnpaidDiff = newTotal > oldTotal;
+                  final hasRefund = newTotal < oldTotal;
+
+                  final String buttonLabel;
+                  if (hasUnpaidDiff) {
+                    buttonLabel = 'Save (Unpaid: ₱${(newTotal - oldTotal).toStringAsFixed(0)})';
+                  } else if (hasRefund) {
+                    buttonLabel = 'Save (Refund: ₱${(oldTotal - newTotal).toStringAsFixed(0)})';
+                  } else {
+                    buttonLabel = 'Save Changes';
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isSubmitting ? null : _showPaymentMethodModal,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.accentBlue,
+                            side: const BorderSide(color: AppTheme.accentBlue, width: 1.5),
+                            minimumSize: const Size.fromHeight(50),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: Text(
+                            hasUnpaidDiff ? 'Pay Difference' : 'Payment Options',
+                            style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _isSubmitting
-                            ? null
-                            : () => _submitOrder(
-                                  isPaidImmediately: true,
-                                  paymentMethod: widget.orderToEdit!.paymentMethod ?? 'Cash',
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _isSubmitting
+                              ? null
+                              : () => _submitOrder(
+                                    isPaidImmediately: !hasUnpaidDiff,
+                                    paymentMethod: hasUnpaidDiff ? null : (widget.orderToEdit!.paymentMethod ?? 'Cash'),
+                                  ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.accentBlue,
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size.fromHeight(50),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          child: _isSubmitting
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(
+                                  buttonLabel,
+                                  style: GoogleFonts.lexend(fontSize: 14, fontWeight: FontWeight.bold),
+                                  textAlign: TextAlign.center,
                                 ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.accentBlue,
-                          foregroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(50),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 0,
                         ),
-                        child: _isSubmitting
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(
-                                'Save Changes',
-                                style: GoogleFonts.lexend(fontSize: 15, fontWeight: FontWeight.bold),
-                              ),
                       ),
-                    ),
-                  ],
-                )
+                    ],
+                  );
+                }(),
+              ]
               else
                 Row(
                   children: [
