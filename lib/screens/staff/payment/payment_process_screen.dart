@@ -47,12 +47,15 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
   bool get _isDelivery => widget.order.returnMethod == ReturnMethod.delivery;
   bool get _isPickup => widget.order.collectionMethod == CollectionMethod.riderPickup;
   bool get _isRiderOrder => _isDelivery || _isPickup;
+  bool get _isWalkIn => widget.order.channel == OrderChannel.walkIn && !_isRiderOrder;
 
   @override
   void initState() {
     super.initState();
-    _subscribeToLiveRfidScans();
-    _loadInitialCustomerLoyaltyCard();
+    if (_isWalkIn) {
+      _subscribeToLiveRfidScans();
+      _loadInitialCustomerLoyaltyCard();
+    }
   }
 
   @override
@@ -222,8 +225,10 @@ class _PaymentProcessScreenState extends State<PaymentProcessScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildOrderSummary(),
-                    const SizedBox(height: 16),
-                    _buildLoyaltyCardSection(),
+                    if (_isWalkIn) ...[
+                      const SizedBox(height: 16),
+                      _buildLoyaltyCardSection(),
+                    ],
                     const SizedBox(height: 20),
                     if (_netAmount > 0.0) ...[
                       const Text(

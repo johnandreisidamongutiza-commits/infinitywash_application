@@ -1019,7 +1019,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
               if (_currentOrder.channel == OrderChannel.walkIn &&
                   _currentOrder.status != OrderStatus.cancelled &&
-                  _currentOrder.status != OrderStatus.rejected)
+                  _currentOrder.status != OrderStatus.rejected &&
+                  _currentOrder.status != OrderStatus.completed)
                 const PopupMenuItem<String>(
                   value: 'edit',
                   child: Row(
@@ -1229,7 +1230,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       color = AppTheme.statusActive;
       bgColor = AppTheme.statusActiveBg;
       title = 'Check-In & Weighing Required';
-      subtitle = 'Laundry has arrived at the shop. Please weigh and assign RFID tags.';
+      subtitle = 'Laundry has arrived at the shop. Please weigh the laundry.';
     } else if (_currentStatus == OrderStatus.processing) {
       icon = Icons.local_laundry_service;
       color = AppTheme.statusActive;
@@ -1729,7 +1730,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
             ? 'Waiting for Pickup'
             : _currentOrder.weightDisplay;
     final loadsCount = _currentOrder.totalLoads;
-    final rfid = _currentOrder.rfidTag;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1746,7 +1746,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               ),
               if (_currentOrder.channel == OrderChannel.walkIn &&
                   _currentStatus != OrderStatus.cancelled &&
-                  _currentStatus != OrderStatus.rejected)
+                  _currentStatus != OrderStatus.rejected &&
+                  _currentStatus != OrderStatus.completed)
                 InkWell(
                   onTap: () async {
                     final result = await Navigator.push<bool>(
@@ -1802,36 +1803,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.nfc, size: 17, color: Color(0xFF64748B)),
-                const SizedBox(width: 8),
-                const Text(
-                  'RFID Tag:',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    (rfid != null && rfid.isNotEmpty) ? rfid : 'Not Assigned',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.bold,
-                      color: (rfid != null && rfid.isNotEmpty) ? AppTheme.textDark : const Color(0xFF64748B),
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ),
           if (_currentOrder.loads.isNotEmpty) ...[
             const SizedBox(height: 16),

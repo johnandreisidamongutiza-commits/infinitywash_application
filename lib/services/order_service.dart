@@ -1450,18 +1450,24 @@ class OrderService {
     try {
       final orderRow = await _client
           .from('orders')
-          .select('customer_id, loads_count, order_number, free_loads_redeemed')
+          .select('customer_id, loads_count, order_number, free_loads_redeemed, channel')
           .eq('id', orderId)
           .maybeSingle();
 
       if (orderRow == null) return;
+
+      final orderNumber = orderRow['order_number'] as String?;
+      final channel = orderRow['channel'] as String?;
+      if (channel != null && channel != 'walk_in') {
+        print('Loyalty: Order $orderNumber is $channel; points apply only to in-store walk-in orders.');
+        return;
+      }
 
       final freeLoadsRedeemed = (orderRow['free_loads_redeemed'] as num?)?.toInt() ?? 0;
       final loadsCount = CompleteOrderGuards.loyaltyPointsFor(
         (orderRow['loads_count'] as num?)?.toInt(),
         freeLoadsRedeemed: freeLoadsRedeemed,
       );
-      final orderNumber = orderRow['order_number'] as String?;
       final customerId = orderRow['customer_id'] as String?;
 
       if (loadsCount <= 0) {

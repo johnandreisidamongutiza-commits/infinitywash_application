@@ -14,7 +14,6 @@ import '../../../widgets/address_input_widget.dart';
 import '../../../models/order.dart';
 import '../../../services/service_request_service.dart';
 import '../../../services/customer_service.dart';
-import '../../../services/loyalty_service.dart';
 import '../../../services/photo_file_service.dart';
 import '../../../services/payment_service.dart';
 import '../../../widgets/gcash_unavailable_dialog.dart';
@@ -49,8 +48,6 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
   String _pickupAddress = '';
   String _landmark = '';
   Map<String, dynamic>? _currentCustomer;
-  LoyaltyCardInfo? _loyaltyCard;
-  bool _useFreeLoad = false;
   bool _isLoadingAddress = true;
   String? _loadError;
 
@@ -118,13 +115,8 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
       if (customer != null) {
         final addr = customer['address'] as String? ?? '';
         final lmark = customer['landmark'] as String? ?? '';
-        LoyaltyCardInfo? card;
-        try {
-          card = await LoyaltyService().getLinkedCard(customer['id'] as String);
-        } catch (_) {}
         setState(() {
           _currentCustomer = customer;
-          _loyaltyCard = card;
           _pickupAddress = addr;
           _landmark = lmark;
           _isLoadingAddress = false;
@@ -1960,73 +1952,6 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
 
             const SizedBox(height: 16),
 
-            // Loyalty Free Load Redemption Option
-            if (_loyaltyCard != null && _loyaltyCard!.isActive) ...[
-              if (_loyaltyCard!.freeLoadsAvailable > 0) ...[
-                Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: _useFreeLoad ? Colors.green.withValues(alpha: 0.08) : Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: _useFreeLoad ? Colors.green : AppTheme.borderGray,
-                      width: _useFreeLoad ? 1.5 : 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.loyalty_outlined, color: _useFreeLoad ? Colors.green : AppTheme.actionBlue, size: 22),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Apply 1 Free Load',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${_loyaltyCard!.freeLoadsAvailable} Free Load available (${_loyaltyCard!.pointsBalance} pts) • Saves ₱170',
-                              style: const TextStyle(fontSize: 11, color: AppTheme.textLight),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Switch.adaptive(
-                        value: _useFreeLoad,
-                        activeTrackColor: Colors.green,
-                        onChanged: (val) => setState(() => _useFreeLoad = val),
-                      ),
-                    ],
-                  ),
-                ),
-              ] else ...[
-                Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: AppTheme.softGray.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.6)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.loyalty_outlined, color: AppTheme.textLight, size: 18),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Loyalty Points: ${_loyaltyCard!.pointsBalance} pts • ${_loyaltyCard!.pointsToNextRedemption} more load(s) to earn 1 Free Load',
-                          style: const TextStyle(fontSize: 11, color: AppTheme.textLight, fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-
             // Official Pricing Card (₱170 Full Service)
             Container(
               padding: const EdgeInsets.all(16),
@@ -2203,7 +2128,7 @@ class _RequestServiceFlowState extends State<RequestServiceFlow> {
                     returnMethod: _selectedReturn,
                     pickupAddress: _pickupAddress,
                     landmark: _landmark.isNotEmpty ? _landmark : null,
-                    instructions: 'Pickup Address: $_pickupAddress${fullNote.isNotEmpty ? ' ($fullNote)' : ''}${_useFreeLoad ? ' [Loyalty Free Load Requested]' : ''}',
+                    instructions: 'Pickup Address: $_pickupAddress${fullNote.isNotEmpty ? ' ($fullNote)' : ''}',
                     paymentPreference: _selectedPaymentPreference,
                     photoUrls: photoDataUrls,
                     customerDescription: _descriptionController.text.trim().isNotEmpty 
