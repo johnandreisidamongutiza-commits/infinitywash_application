@@ -102,6 +102,11 @@ class DataChangeMonitor {
     _scheduleChangeFlush();
   }
 
+  /// Manually notify that dispatch jobs have been created, claimed, or completed
+  void notifyDispatchJobsChanged() {
+    _notifyDispatchJobsChanged();
+  }
+
   void _scheduleChangeFlush() {
     _changeDebounce ??= Timer(const Duration(milliseconds: 200), () {
       _changeDebounce = null;

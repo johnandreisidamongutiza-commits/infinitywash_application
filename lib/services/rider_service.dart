@@ -128,6 +128,14 @@ class RiderService {
   static String? _jobOverviewRequestDateKey;
   static int? _jobOverviewRequestVersion;
 
+  /// Invalidate cached job overview so the next fetch queries Supabase fresh.
+  static void invalidateJobOverviewCache() {
+    _jobOverviewCache = null;
+    _jobOverviewUserId = null;
+    _jobOverviewDateKey = null;
+    _jobOverviewVersion = null;
+  }
+
   /// Shares the four job lists used by Rider Home, Route, and Chats.
   /// Realtime changes advance the version and invalidate this snapshot.
   Future<RiderJobOverview> fetchRiderJobOverview({bool force = false}) async {
@@ -772,6 +780,10 @@ class RiderService {
       );
 
       print('✅ Job started: $jobId (type: $jobType, order: $orderId)');
+
+      invalidateJobOverviewCache();
+      DataChangeMonitor.instance.notifyDispatchJobsChanged();
+      DataChangeMonitor.instance.notifyOrdersChanged();
     } on JobClaimedException {
       rethrow;
     } on AppError {
@@ -842,6 +854,10 @@ class RiderService {
       print('   Final status: ${verifyResponse['status']}');
       print('   Final rider_id: ${verifyResponse['rider_id']}');
       print('   Completed at: ${verifyResponse['completed_at']}');
+
+      invalidateJobOverviewCache();
+      DataChangeMonitor.instance.notifyDispatchJobsChanged();
+      DataChangeMonitor.instance.notifyOrdersChanged();
     } on AppError {
       rethrow;
     } catch (e) {
@@ -877,6 +893,10 @@ class RiderService {
       print('   Final status: ${verifyResponse['status']}');
       print('   Final rider_id: ${verifyResponse['rider_id']}');
       print('   Completed at: ${verifyResponse['completed_at']}');
+
+      invalidateJobOverviewCache();
+      DataChangeMonitor.instance.notifyDispatchJobsChanged();
+      DataChangeMonitor.instance.notifyOrdersChanged();
     } on AppError {
       rethrow;
     } catch (e) {

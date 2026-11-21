@@ -59,7 +59,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     super.didUpdateWidget(oldWidget);
     if (widget.isActive && !oldWidget.isActive &&
         (!_hasLoadedJobs || _jobsDirty)) {
-      _loadOrders(force: false);
+      _loadOrders(force: true);
     }
   }
 
