@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/update_dialog.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/push_notification_service.dart';
@@ -125,6 +126,14 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
               Icons.gavel_outlined,
               'Terms & Privacy',
               const CustomerTermsAndPrivacyScreen(),
+            ),
+            _buildProfileOptionItem(
+              context,
+              icon: Icons.system_update_rounded,
+              label: 'Check for Updates',
+              onTap: () {
+                UpdateDialog.checkAndShow(context, showUpToDateMessage: true);
+              },
             ),
             if (widget.onStartTutorial != null)
               _buildProfileOptionItem(

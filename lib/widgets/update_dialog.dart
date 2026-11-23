@@ -49,6 +49,33 @@ class UpdateDialog extends StatefulWidget {
     return dismissed ?? false;
   }
 
+  /// Checks for updates and displays the dialog if an update is available.
+  /// If [showUpToDateMessage] is true, shows a confirmation SnackBar if already up to date.
+  static Future<bool> checkAndShow(
+    BuildContext context, {
+    bool showUpToDateMessage = false,
+  }) async {
+    final result = await UpdateService.instance.checkForUpdate();
+    if (!context.mounted) return false;
+
+    if (result.hasUpdate) {
+      return await show(context: context, result: result);
+    }
+
+    if (showUpToDateMessage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'You are on the latest version (v${result.currentVersionName})',
+          ),
+          backgroundColor: AppTheme.primaryBlue,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    return true;
+  }
+
   @override
   State<UpdateDialog> createState() => _UpdateDialogState();
 }

@@ -1,13 +1,14 @@
 {
-  "latestVersion": "1.0.4",
-  "latestBuildNumber": 5,
+  "latestVersion": "1.0.5",
+  "latestBuildNumber": 6,
   "minSupportedBuildNumber": 1,
   "apkUrl": "https://raw.githubusercontent.com/johnandreisidamongutiza-commits/infinitywash_application/master/infinitywash.apk",
   "releaseNotes": [
-    "Added rider and staff real-time chat detail screens",
-    "Enhanced customer registration and profile management options",
-    "Improved phone number, email, and input validation",
-    "General bug fixes and stability improvements"
+    "Added in-app 'Check for Updates' in customer, rider, and staff profiles",
+    "Added rider home screen, active GPS route tracking, and payment settlement",
+    "Revamped staff order creation flow, payment processing, and RFID card management",
+    "Added loyalty card free load redemption system",
+    "General performance improvements and bug fixes"
   ],
   "forceUpdate": false
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/update_dialog.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/push_notification_service.dart';
@@ -121,6 +122,14 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
               'Notification Settings',
               const NotificationSettingsScreen(),
             ),
+            _buildProfileOptionItem(
+              context,
+              icon: Icons.system_update_rounded,
+              label: 'Check for Updates',
+              onTap: () {
+                UpdateDialog.checkAndShow(context, showUpToDateMessage: true);
+              },
+            ),
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () async {
@@ -153,6 +162,31 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
               ),
             ),
             const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileOptionItem(BuildContext context, {required IconData icon, required String label, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: AppStyles.cardDecoration,
+        child: Row(
+          children: [
+            Icon(icon, color: AppTheme.textDark),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(fontSize: 16),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
           ],
         ),
       ),
